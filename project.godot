@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 MCPRuntime="*uid://cfbudnvirj11t"
 GameManager="*res://scripts/GameManager.gd"
 ElementDatabase="*res://scripts/ElementDatabase.gd"
+InventoryManager="*res://scripts/InventoryManager.gd"
 
 [editor_plugins]
 
