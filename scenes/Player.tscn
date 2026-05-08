@@ -1,5 +1,8 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cxfen0v27oux3"]
 
-[node name="Player" type="CharacterBody2D"]
+[ext_resource type="Script" path="res://scripts/PlayerMovement.gd" id="1_p0vlq"]
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Player" type="CharacterBody2D" unique_id=297416554]
+script = ExtResource("1_p0vlq")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1569599526]
