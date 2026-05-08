@@ -3,11 +3,13 @@
 [ext_resource type="Script" uid="uid://c17fh4mvgtvhs" path="res://scripts/PlayerMovement.gd" id="1_p0vlq"]
 [ext_resource type="Texture2D" uid="uid://dcequn4h1sp0" path="res://assets/player/player_placeholder_16x16.png" id="2_v6fml"]
 [ext_resource type="Script" uid="uid://d4mhxiqnf6cxf" path="res://scripts/PlayerAnimationStateMachine.gd" id="3_3li8b"]
+[ext_resource type="Script" uid="uid://dfmk1jvfvpfj2" path="res://scripts/PlayerCameraController.gd" id="4_jmcn4"]
 
 [node name="Player" type="CharacterBody2D" unique_id=297416554]
 script = ExtResource("1_p0vlq")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1569599526]
+script = ExtResource("4_jmcn4")
 
 [node name="Visual" type="Sprite2D" parent="." unique_id=2108246815]
 texture_filter = 1
