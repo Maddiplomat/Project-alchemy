@@ -20,6 +20,7 @@ MCPRuntime="*uid://cfbudnvirj11t"
 GameManager="*res://scripts/GameManager.gd"
 ElementDatabase="*res://scripts/ElementDatabase.gd"
 InventoryManager="*res://scripts/InventoryManager.gd"
+CameraShake="*res://scripts/CameraShake.gd"
 
 [editor_plugins]
 
