@@ -104,6 +104,7 @@ func _pick_weighted_element(rng: RandomNumberGenerator, spawn_counts: Dictionary
 func _spawn_element(element_id: StringName, coords: Vector2i, ground_layer: TileMapLayer) -> void:
 	var pickup := ELEMENT_PICKUP_SCENE.instantiate()
 	pickup.name = "%s_%d_%d" % [element_id, coords.x, coords.y]
+	pickup.set(&"element_id", element_id)
 	pickup.set_meta(&"element_id", element_id)
 	pickup.set_meta(&"tile_coords", coords)
 	add_child(pickup)

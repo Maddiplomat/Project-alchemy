@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=4]
+[gd_scene format=4 uid="uid://dse4mn6qgavfq"]
 
-[ext_resource type="TileSet" path="res://assets/tilesets/forest_16x16.tres" id="1_kqs1s"]
+[ext_resource type="TileSet" uid="uid://dtioyuhcvq6ca" path="res://assets/tilesets/forest_16x16.tres" id="1_kqs1s"]
 [ext_resource type="Script" uid="uid://bfxjpw77wdrga" path="res://scripts/WorldGen.gd" id="2_nvi4h"]
+[ext_resource type="PackedScene" uid="uid://cxfen0v27oux3" path="res://scenes/Player.tscn" id="3_7g83o"]
 
 [node name="World" type="Node2D" unique_id=1488050509]
 script = ExtResource("2_nvi4h")
@@ -24,3 +25,19 @@ tile_map_data = PackedByteArray("AAD8//3/AAABAAEAAAACAP7/AAABAAEAAAADAAMAAAACAAE
 tile_set = ExtResource("1_kqs1s")
 
 [node name="ElementSpawnSystem" type="Node2D" parent="." unique_id=1729565649]
+
+[node name="Player" parent="." unique_id=297416554 instance=ExtResource("3_7g83o")]
+position = Vector2(512, 512)
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1866474338]
+layer = 10
+
+[node name="MinimapPlaceholder" type="ColorRect" parent="HUD" unique_id=1230242642]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -72.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 72.0
+color = Color(0, 0, 0, 1)

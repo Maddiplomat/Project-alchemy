@@ -1,6 +1,7 @@
 extends Node2D
 
 const MAP_SIZE := Vector2i(64, 64)
+const TILE_SIZE := 16
 const SOURCE_ID := 0
 const GRASS_TILE := Vector2i(0, 0)
 const TREE_TILE := Vector2i(1, 1)
@@ -23,6 +24,7 @@ func _ready() -> void:
 	_prepare_element_spawn_system()
 	if generate_on_ready:
 		generate_world(_get_world_seed())
+	_wire_camera_bounds()
 
 
 func generate_world(world_seed: int) -> void:
@@ -99,3 +101,23 @@ func _set_world_seed(world_seed: int) -> void:
 	var world_system := get_tree().root.get_node_or_null("WorldSystem")
 	if world_system != null and world_system.has_method("set_seed"):
 		world_system.set_seed(world_seed)
+
+
+func get_world_bounds() -> Rect2:
+	if ground_layer == null:
+		return Rect2(Vector2.ZERO, Vector2(MAP_SIZE) * TILE_SIZE)
+	var used_rect := ground_layer.get_used_rect()
+	if used_rect.size == Vector2i.ZERO:
+		return Rect2(Vector2.ZERO, Vector2(MAP_SIZE) * TILE_SIZE)
+	return Rect2(
+		used_rect.position.x * TILE_SIZE,
+		used_rect.position.y * TILE_SIZE,
+		used_rect.size.x * TILE_SIZE,
+		used_rect.size.y * TILE_SIZE
+	)
+
+
+func _wire_camera_bounds() -> void:
+	var camera := find_child("Camera2D", true, false) as Camera2D
+	if camera != null:
+		camera.set("bounds_source_path", get_path())

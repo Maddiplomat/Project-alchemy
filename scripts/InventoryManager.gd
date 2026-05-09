@@ -54,6 +54,10 @@ func add_item(item_data: Dictionary, quantity: int = 1) -> bool:
 	return true
 
 
+func receive_world_pickup(item_data: Dictionary, quantity: int = 1) -> bool:
+	return add_item(item_data, quantity)
+
+
 func remove_item(item_id: StringName, quantity: int = 1) -> bool:
 	if quantity <= 0 or not items.has(item_id):
 		return false
