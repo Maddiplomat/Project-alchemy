@@ -2,12 +2,21 @@ extends CanvasLayer
 
 @onready var panel = $InventoryPanel
 @onready var grid = $InventoryPanel/Grid
+@onready var tooltip_panel: Panel = $TooltipPanel
+@onready var tooltip_name_label: Label = $TooltipPanel/MarginContainer/TooltipContent/NameLabel
+@onready var tooltip_weight_label: Label = $TooltipPanel/MarginContainer/TooltipContent/WeightLabel
+@onready var tooltip_category_label: Label = $TooltipPanel/MarginContainer/TooltipContent/CategoryLabel
 
 const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
 const SLOT_COUNT := 20
+const TOOLTIP_DELAY := 0.3
+const TOOLTIP_OFFSET := Vector2(18, 18)
 
 var drag_origin_index := -1
 var drag_ghost: TextureRect = null
+var hover_slot_index := -1
+var tooltip_slot_index := -1
+var tooltip_delay_timer: SceneTreeTimer = null
 
 func _ready():
 	for i in range(SLOT_COUNT):
@@ -16,6 +25,8 @@ func _ready():
 		slot.slot_index = i
 		slot.drag_started.connect(_on_slot_drag_started)
 		slot.drag_released.connect(_on_slot_drag_released)
+		slot.hover_started.connect(_on_slot_hover_started)
+		slot.hover_ended.connect(_on_slot_hover_ended)
 		
 		# Set minimum size for GridContainer to respect
 		slot.custom_minimum_size = Vector2(64, 64)
@@ -41,6 +52,7 @@ func _setup_panel():
 	var vp_size = get_viewport().get_visible_rect().size
 	panel.position = Vector2(vp_size.x, (vp_size.y - panel.size.y) / 2)
 	panel.visible = false
+	tooltip_panel.visible = false
 
 func _input(event):
 	if event is InputEventKey and event.keycode == KEY_TAB and event.pressed and not event.echo:
@@ -52,6 +64,8 @@ func _input(event):
 func _process(_delta: float) -> void:
 	if drag_ghost != null:
 		drag_ghost.global_position = get_viewport().get_mouse_position() - (drag_ghost.size / 2.0)
+	if tooltip_panel.visible:
+		_update_tooltip_position()
 
 func toggle_inventory():
 	var vp_size = get_viewport().get_visible_rect().size
@@ -62,6 +76,8 @@ func toggle_inventory():
 		panel.visible = true
 		target_x = vp_size.x - panel.size.x - 50
 		refresh_grid()
+	else:
+		_hide_tooltip()
 	
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -80,6 +96,11 @@ func refresh_grid():
 			slot.update_slot(data.id, data.quantity, data.purity)
 		else:
 			slot.clear()
+	
+	if tooltip_panel.visible and hover_slot_index >= 0:
+		_show_tooltip_for_slot(hover_slot_index)
+	elif hover_slot_index == -1:
+		_hide_tooltip()
 
 func _on_slot_drag_started(slot_index: int) -> void:
 	if _is_dragging():
@@ -91,6 +112,7 @@ func _on_slot_drag_started(slot_index: int) -> void:
 	if not slot.has_item():
 		return
 	
+	_hide_tooltip()
 	drag_origin_index = slot_index
 	slot.set_drag_origin(true)
 	_create_drag_ghost(slot)
@@ -139,3 +161,84 @@ func _clear_drag_ghost() -> void:
 
 func _is_dragging() -> bool:
 	return drag_origin_index != -1 and drag_ghost != null
+
+func _on_slot_hover_started(slot_index: int) -> void:
+	if _is_dragging():
+		return
+	if slot_index < 0 or slot_index >= grid.get_child_count():
+		return
+	
+	var slot = grid.get_child(slot_index)
+	if not slot.has_item():
+		_hide_tooltip()
+		return
+	
+	hover_slot_index = slot_index
+	tooltip_slot_index = -1
+	tooltip_panel.visible = false
+	_start_tooltip_delay(slot_index)
+
+func _on_slot_hover_ended(slot_index: int) -> void:
+	if hover_slot_index == slot_index:
+		hover_slot_index = -1
+	_hide_tooltip()
+
+func _start_tooltip_delay(slot_index: int) -> void:
+	var timer := get_tree().create_timer(TOOLTIP_DELAY)
+	tooltip_delay_timer = timer
+	timer.timeout.connect(func() -> void:
+		if tooltip_delay_timer != timer:
+			return
+		tooltip_delay_timer = null
+		if hover_slot_index != slot_index or _is_dragging() or not panel.visible:
+			return
+		_show_tooltip_for_slot(slot_index)
+	)
+
+func _show_tooltip_for_slot(slot_index: int) -> void:
+	var data = InventoryManager.get_slot_item(slot_index)
+	if data.is_empty():
+		_hide_tooltip()
+		return
+	
+	var item_id := StringName(str(data.get("id", "")))
+	var element_data := ElementDatabase.get_element(item_id)
+	if element_data.is_empty():
+		_hide_tooltip()
+		return
+	
+	tooltip_name_label.text = str(element_data.get("display_name", item_id))
+	tooltip_weight_label.text = "Weight: %.1f" % float(element_data.get("weight", 0.0))
+	tooltip_category_label.text = "Category: %s" % _format_category(str(element_data.get("category", "")))
+	tooltip_slot_index = slot_index
+	tooltip_panel.visible = true
+	_update_tooltip_position()
+
+func _hide_tooltip() -> void:
+	tooltip_delay_timer = null
+	tooltip_slot_index = -1
+	tooltip_panel.visible = false
+
+func _update_tooltip_position() -> void:
+	var viewport_rect := get_viewport().get_visible_rect()
+	var tooltip_size := tooltip_panel.size
+	var target_position := get_viewport().get_mouse_position() + TOOLTIP_OFFSET
+	
+	if target_position.x + tooltip_size.x > viewport_rect.size.x:
+		target_position.x = viewport_rect.size.x - tooltip_size.x - 8.0
+	if target_position.y + tooltip_size.y > viewport_rect.size.y:
+		target_position.y = viewport_rect.size.y - tooltip_size.y - 8.0
+	
+	tooltip_panel.global_position = Vector2(
+		maxf(8.0, target_position.x),
+		maxf(8.0, target_position.y)
+	)
+
+func _format_category(category: String) -> String:
+	if category.is_empty():
+		return "Unknown"
+	
+	var words := category.split("_", false)
+	for i in range(words.size()):
+		words[i] = words[i].capitalize()
+	return " ".join(words)

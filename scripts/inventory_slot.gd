@@ -2,6 +2,8 @@ extends Panel
 
 signal drag_started(slot_index: int)
 signal drag_released(slot_index: int)
+signal hover_started(slot_index: int)
+signal hover_ended(slot_index: int)
 
 @onready var item_icon: TextureRect = $ItemIcon
 @onready var quantity_label: Label = $QuantityLabel
@@ -17,6 +19,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	item_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	quantity_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_entered.connect(_on_mouse_entered)
+	mouse_exited.connect(_on_mouse_exited)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -36,7 +40,6 @@ func update_slot(item_id: String, quantity: int, purity: float) -> void:
 		item_icon.texture = _get_placeholder_texture(item_id)
 		item_icon.modulate = _get_item_color(item_id)
 		quantity_label.text = str(quantity)
-		tooltip_text = "%s (Purity: %.2f)" % [item_id, purity]
 	else:
 		current_item_id = ""
 	
@@ -65,11 +68,15 @@ func _apply_visual_state() -> void:
 		item_icon.texture = _get_placeholder_texture(current_item_id)
 		item_icon.modulate = _get_item_color(current_item_id)
 		quantity_label.text = str(current_quantity)
-		tooltip_text = "%s (Purity: %.2f)" % [current_item_id, current_purity]
 	else:
 		item_icon.texture = null
 		quantity_label.text = ""
-		tooltip_text = ""
+
+func _on_mouse_entered() -> void:
+	hover_started.emit(slot_index)
+
+func _on_mouse_exited() -> void:
+	hover_ended.emit(slot_index)
 
 func _get_item_color(item_id: String) -> Color:
 	match item_id:
