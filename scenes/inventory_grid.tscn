@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://b1f6s64gvfqtt"]
+
+[ext_resource type="Script" uid="uid://bye0gqyf7kcxg" path="res://scripts/inventory_grid.gd" id="1_pkvtp"]
+
+[node name="Node" type="CanvasLayer" unique_id=771886120]
+script = ExtResource("1_pkvtp")
+
+[node name="InventoryPanel" type="Control" parent="." unique_id=1131795663]
+layout_mode = 3
+anchors_preset = 0
+
+[node name="Grid" type="GridContainer" parent="InventoryPanel" unique_id=123695224]
+layout_mode = 0
+columns = 5
