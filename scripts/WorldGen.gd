@@ -44,6 +44,9 @@ func generate_world(world_seed: int) -> void:
 				objects_layer.set_cell(coords, SOURCE_ID, ROCK_TILE, 0)
 				continue
 
+			if _is_spawn_area(coords):
+				continue
+
 			var noise_value := _normalized_noise(noise, coords)
 			if noise_value >= DENSE_TREE_MIN:
 				objects_layer.set_cell(coords, SOURCE_ID, TREE_TILE, 0)
@@ -65,6 +68,11 @@ func _clear_layers() -> void:
 
 func _is_edge(coords: Vector2i) -> bool:
 	return coords.x == 0 or coords.y == 0 or coords.x == MAP_SIZE.x - 1 or coords.y == MAP_SIZE.y - 1
+
+
+func _is_spawn_area(coords: Vector2i) -> bool:
+	var spawn_coords := Vector2i(MAP_SIZE / 2)
+	return abs(coords.x - spawn_coords.x) <= 2 and abs(coords.y - spawn_coords.y) <= 2
 
 
 func _normalized_noise(noise: FastNoiseLite, coords: Vector2i) -> float:
