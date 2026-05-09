@@ -1,15 +1,18 @@
 extends Node
 
 signal inventory_changed
+signal held_item_changed(item_id: String)
 
 const DEFAULT_SLOT_COUNT := 20
 
 # Dictionary of {element_id: {quantity: int, purity: float}}
 var items: Dictionary = {}
 var slot_order: Array[String] = []
+var held_item_id := ""
 
 func _ready() -> void:
 	_ensure_slot_count(DEFAULT_SLOT_COUNT)
+	_sync_held_item()
 
 func add_element(id: String, qty: int, purity: float) -> void:
 	if items.has(id):
@@ -28,6 +31,7 @@ func add_element(id: String, qty: int, purity: float) -> void:
 		}
 		_assign_item_to_slot(id)
 	
+	_sync_held_item()
 	inventory_changed.emit()
 
 func remove_element(id: String, qty: int) -> void:
@@ -37,6 +41,7 @@ func remove_element(id: String, qty: int) -> void:
 			items.erase(id)
 			_remove_item_from_slots(id)
 		
+		_sync_held_item()
 		inventory_changed.emit()
 
 func get_stack(id: String) -> Dictionary:
@@ -67,6 +72,27 @@ func get_slot_item(slot_index: int) -> Dictionary:
 	var stack: Dictionary = items[item_id].duplicate(true)
 	stack["id"] = item_id
 	return stack
+
+func get_held_item_id() -> String:
+	return held_item_id
+
+func get_held_item() -> Dictionary:
+	if held_item_id == "" or not items.has(held_item_id):
+		return {}
+	
+	var stack: Dictionary = items[held_item_id].duplicate(true)
+	stack["id"] = held_item_id
+	return stack
+
+func set_held_item(id: String) -> bool:
+	if id == held_item_id:
+		return true
+	if id != "" and not items.has(id):
+		return false
+	
+	held_item_id = id
+	held_item_changed.emit(held_item_id)
+	return true
 
 func swap_slots(from_slot: int, to_slot: int) -> void:
 	_ensure_slot_count(DEFAULT_SLOT_COUNT)
@@ -101,3 +127,14 @@ func _remove_item_from_slots(id: String) -> void:
 func _ensure_slot_count(count: int) -> void:
 	while slot_order.size() < count:
 		slot_order.append("")
+
+func _sync_held_item() -> void:
+	if held_item_id != "" and items.has(held_item_id):
+		return
+	
+	for item_id in slot_order:
+		if item_id != "" and items.has(item_id):
+			set_held_item(item_id)
+			return
+	
+	set_held_item("")
