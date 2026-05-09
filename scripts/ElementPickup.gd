@@ -20,10 +20,6 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 
-	var inventory_callable := Callable(InventoryManager, "receive_world_pickup")
-	if not picked_up.is_connected(inventory_callable):
-		picked_up.connect(inventory_callable)
-
 	_setup_animations()
 	_play_idle_animation()
 
@@ -59,9 +55,7 @@ func _attempt_pickup() -> void:
 	if item_data.is_empty():
 		return
 
-	if not InventoryManager.can_add_item(item_data, pickup_quantity):
-		return
-
+	InventoryManager.add_element(item_data.id, pickup_quantity, 1.0)
 	picked_up.emit(item_data, pickup_quantity)
 	prompt_label.visible = false
 	queue_free()
@@ -75,27 +69,7 @@ func _get_pickup_item_data() -> Dictionary:
 	if resolved_element_id.is_empty():
 		return {}
 
-	var item_data := ElementDatabase.get_element(resolved_element_id)
-	if item_data.is_empty():
-		return {}
-
-	item_data[&"category"] = InventoryManager.InventoryItemCategory.ELEMENT
-	item_data[&"risk_level"] = _to_inventory_risk_level(str(item_data.get(&"carrier_risk", "none")))
-	return item_data
-
-
-func _to_inventory_risk_level(risk_level_name: String) -> int:
-	match risk_level_name.to_lower():
-		"low":
-			return InventoryManager.InventoryRiskLevel.LOW
-		"medium":
-			return InventoryManager.InventoryRiskLevel.MEDIUM
-		"high":
-			return InventoryManager.InventoryRiskLevel.HIGH
-		"extreme":
-			return InventoryManager.InventoryRiskLevel.EXTREME
-		_:
-			return InventoryManager.InventoryRiskLevel.NONE
+	return ElementDatabase.get_element(resolved_element_id)
 
 
 func _log_shape_size_once() -> void:

@@ -25,6 +25,9 @@ func _ready():
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 		
+	InventoryManager.inventory_changed.connect(refresh_grid)
+	refresh_grid()
+	
 	call_deferred("_setup_panel")
 
 func _setup_panel():
@@ -44,6 +47,7 @@ func toggle_inventory():
 		# opening
 		panel.visible = true
 		target_x = vp_size.x - panel.size.x - 50
+		refresh_grid()
 	
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -53,3 +57,16 @@ func toggle_inventory():
 	if target_x >= vp_size.x - 1:
 		# closing
 		tween.tween_callback(func(): panel.visible = false)
+
+func refresh_grid():
+	var items = InventoryManager.get_all_items()
+	var item_ids = items.keys()
+	
+	for i in range(grid.get_child_count()):
+		var slot = grid.get_child(i)
+		if i < item_ids.size():
+			var id = item_ids[i]
+			var data = items[id]
+			slot.update_slot(id, data.quantity, data.purity)
+		else:
+			slot.clear()
