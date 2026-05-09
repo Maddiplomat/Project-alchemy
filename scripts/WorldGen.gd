@@ -7,6 +7,7 @@ const TREE_TILE := Vector2i(1, 1)
 const ROCK_TILE := Vector2i(2, 1)
 const SPARSE_TREE_MIN := 0.3
 const DENSE_TREE_MIN := 0.6
+const ELEMENT_SPAWN_SYSTEM_SCRIPT := preload("res://scripts/ElementSpawn.gd")
 
 @export var generate_on_ready := true
 @export var noise_frequency := 0.08
@@ -15,19 +16,21 @@ const DENSE_TREE_MIN := 0.6
 @onready var ground_layer: TileMapLayer = $Ground
 @onready var decor_layer: TileMapLayer = $Decor
 @onready var objects_layer: TileMapLayer = $Objects
+@onready var element_spawn_system := get_node_or_null("ElementSpawnSystem") as Node2D
 
 
 func _ready() -> void:
+	_prepare_element_spawn_system()
 	if generate_on_ready:
 		generate_world(_get_world_seed())
 
 
-func generate_world(seed: int) -> void:
-	_set_world_seed(seed)
+func generate_world(world_seed: int) -> void:
+	_set_world_seed(world_seed)
 	_clear_layers()
 
 	var noise := FastNoiseLite.new()
-	noise.seed = seed
+	noise.seed = world_seed
 	noise.frequency = noise_frequency
 
 	for y in range(MAP_SIZE.y):
@@ -42,12 +45,14 @@ func generate_world(seed: int) -> void:
 			var noise_value := _normalized_noise(noise, coords)
 			if noise_value >= DENSE_TREE_MIN:
 				objects_layer.set_cell(coords, SOURCE_ID, TREE_TILE, 0)
-			elif noise_value >= SPARSE_TREE_MIN and _passes_sparse_tree_roll(seed, coords):
+			elif noise_value >= SPARSE_TREE_MIN and _passes_sparse_tree_roll(world_seed, coords):
 				objects_layer.set_cell(coords, SOURCE_ID, TREE_TILE, 0)
 
+	_spawn_elements(world_seed)
 
-func regenerate_with_seed(seed: int) -> void:
-	generate_world(seed)
+
+func regenerate_with_seed(world_seed: int) -> void:
+	generate_world(world_seed)
 
 
 func _clear_layers() -> void:
@@ -64,9 +69,23 @@ func _normalized_noise(noise: FastNoiseLite, coords: Vector2i) -> float:
 	return (noise.get_noise_2d(coords.x, coords.y) + 1.0) * 0.5
 
 
-func _passes_sparse_tree_roll(seed: int, coords: Vector2i) -> bool:
-	var roll := posmod(hash("%d:%d:%d" % [seed, coords.x, coords.y]), 10000) / 10000.0
+func _passes_sparse_tree_roll(world_seed: int, coords: Vector2i) -> bool:
+	var roll := posmod(hash("%d:%d:%d" % [world_seed, coords.x, coords.y]), 10000) / 10000.0
 	return roll < sparse_tree_density
+
+
+func _prepare_element_spawn_system() -> void:
+	if element_spawn_system == null:
+		return
+
+	if element_spawn_system.get_script() == null:
+		element_spawn_system.set_script(ELEMENT_SPAWN_SYSTEM_SCRIPT)
+
+
+func _spawn_elements(world_seed: int) -> void:
+	_prepare_element_spawn_system()
+	if element_spawn_system != null and element_spawn_system.has_method("spawn_elements"):
+		element_spawn_system.spawn_elements(ground_layer, objects_layer, world_seed)
 
 
 func _get_world_seed() -> int:
@@ -76,7 +95,7 @@ func _get_world_seed() -> int:
 	return 0
 
 
-func _set_world_seed(seed: int) -> void:
+func _set_world_seed(world_seed: int) -> void:
 	var world_system := get_tree().root.get_node_or_null("WorldSystem")
 	if world_system != null and world_system.has_method("set_seed"):
-		world_system.set_seed(seed)
+		world_system.set_seed(world_seed)
