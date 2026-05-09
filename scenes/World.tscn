@@ -1,8 +1,10 @@
-[gd_scene format=4]
+[gd_scene load_steps=3 format=4]
 
 [ext_resource type="TileSet" path="res://assets/tilesets/forest_16x16.tres" id="1_kqs1s"]
+[ext_resource type="Script" uid="uid://bfxjpw77wdrga" path="res://scripts/WorldGen.gd" id="2_nvi4h"]
 
 [node name="World" type="Node2D" unique_id=1488050509]
+script = ExtResource("2_nvi4h")
 
 [node name="Ground" type="TileMapLayer" parent="." unique_id=1510409461]
 texture_filter = 1

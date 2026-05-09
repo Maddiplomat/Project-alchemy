@@ -22,6 +22,7 @@ GameManager="*res://scripts/GameManager.gd"
 ElementDatabase="*res://scripts/ElementDatabase.gd"
 InventoryManager="*res://scripts/InventoryManager.gd"
 CameraShake="*res://scripts/CameraShake.gd"
+WorldSystem="*res://scripts/WorldSystem.gd"
 
 [editor_plugins]
 
