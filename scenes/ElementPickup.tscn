@@ -1,5 +1,27 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://d1r5lm770s0sc"]
 
-[node name="ElementPickup" type="Area2D"]
+[ext_resource type="Script" uid="uid://cloa3xcrjo7sr" path="res://scripts/ElementPickup.gd" id="1_518e3"]
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_vpl80"]
+size = Vector2(12, 12)
+
+[node name="ElementPickup" type="Area2D" unique_id=1542228159]
+collision_layer = 0
+script = ExtResource("1_518e3")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1982428542]
+texture_filter = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=929658224]
+shape = SubResource("RectangleShape2D_vpl80")
+
+[node name="PromptLabel" type="Label" parent="." unique_id=265235135]
+visible = false
+offset_left = -24.0
+offset_top = -22.0
+offset_right = 24.0
+offset_bottom = -6.0
+text = "Press E"
+horizontal_alignment = 1
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=146369253]
