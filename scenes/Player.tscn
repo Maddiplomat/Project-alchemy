@@ -5,8 +5,14 @@
 [ext_resource type="Script" uid="uid://d4mhxiqnf6cxf" path="res://scripts/PlayerAnimationStateMachine.gd" id="3_3li8b"]
 [ext_resource type="Script" uid="uid://dfmk1jvfvpfj2" path="res://scripts/PlayerCameraController.gd" id="4_jmcn4"]
 
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_7yryn"]
+size = Vector2(12, 12)
+
 [node name="Player" type="CharacterBody2D" unique_id=297416554]
 script = ExtResource("1_p0vlq")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_7yryn")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1569599526]
 script = ExtResource("4_jmcn4")
