@@ -4,6 +4,7 @@
   "display_name": "Stone",
   "category": "mineral",
   "weight": 1.5,
+  "stress_multiplier": 1.0,
   "properties": {
     "flammability": 0.0,
     "toxicity": 0.0,

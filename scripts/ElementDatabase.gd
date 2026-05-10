@@ -148,6 +148,7 @@ func _normalize_element_data(raw_data: Dictionary) -> Dictionary:
 		&"display_name",
 		&"category",
 		&"weight",
+		&"stress_multiplier",
 		&"properties",
 		&"carrier_risk",
 		&"biome_spawn",
@@ -174,8 +175,9 @@ func _normalize_element_data(raw_data: Dictionary) -> Dictionary:
 		&"display_name": str(raw_data.get(&"display_name")),
 		&"category": str(raw_data.get(&"category")),
 		&"weight": float(raw_data.get(&"weight")),
+		&"stress_multiplier": float(raw_data.get(&"stress_multiplier")),
 		&"properties": raw_properties.duplicate(true),
-		&"carrier_risk": str(raw_data.get(&"carrier_risk")),
+		&"carrier_risk": raw_data.get(&"carrier_risk"),
 		&"biome_spawn": normalized_biomes,
 	}
 
@@ -473,7 +475,8 @@ func _create_element(
 	environmental_hint: String,
 	carrier_risk: String,
 	biome_spawn: Array[StringName],
-	primary_use: String
+	primary_use: String,
+	stress_multiplier: float = 1.0
 ) -> Dictionary:
 	return {
 		&"id": element_id,
@@ -482,6 +485,7 @@ func _create_element(
 		&"category": category,
 		&"risk_level": risk_level,
 		&"weight": weight,
+		&"stress_multiplier": stress_multiplier,
 		&"extraction_tool": extraction_tool,
 		&"properties": properties,
 		&"environmental_hint": environmental_hint,
