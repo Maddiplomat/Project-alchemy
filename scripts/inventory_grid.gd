@@ -2,6 +2,8 @@ extends CanvasLayer
 
 @onready var panel = $InventoryPanel
 @onready var grid = $InventoryPanel/Grid
+@onready var weight_bar: ProgressBar = $InventoryPanel/WeightRow/WeightBar
+@onready var weight_label: Label = $InventoryPanel/WeightRow/WeightLabel
 @onready var tooltip_panel: Panel = $TooltipPanel
 @onready var tooltip_name_label: Label = $TooltipPanel/MarginContainer/TooltipContent/NameLabel
 @onready var tooltip_weight_label: Label = $TooltipPanel/MarginContainer/TooltipContent/WeightLabel
@@ -18,6 +20,9 @@ const ONBOARDING_CONFIG_PATH := "user://onboarding_hints.cfg"
 const ONBOARDING_SECTION := "inventory_hints"
 const INVENTORY_HINT_KEY := "inventory_seen"
 const SELECT_HINT_KEY := "select_seen"
+const WEIGHT_NORMAL_COLOR := Color(0.45, 0.83, 0.61, 1.0)
+const WEIGHT_WARNING_COLOR := Color(0.95, 0.67, 0.29, 1.0)
+const WEIGHT_DANGER_COLOR := Color(0.89, 0.29, 0.24, 1.0)
 
 var drag_origin_index := -1
 var drag_ghost: TextureRect = null
@@ -56,7 +61,9 @@ func _ready():
 		
 	InventoryManager.inventory_changed.connect(refresh_grid)
 	InventoryManager.held_item_changed.connect(func(_id): refresh_grid())
+	InventoryManager.weight_changed.connect(_on_weight_changed)
 	refresh_grid()
+	_update_weight_display(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	
 	call_deferred("_setup_panel")
 
@@ -127,6 +134,25 @@ func refresh_grid():
 		_show_tooltip_for_slot(hover_slot_index)
 	elif hover_slot_index == -1:
 		_hide_tooltip()
+
+func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
+	_update_weight_display(total_weight, carry_capacity)
+
+func _update_weight_display(total_weight: float, carry_capacity: float) -> void:
+	var safe_capacity := maxf(carry_capacity, 0.0)
+	var displayed_weight := minf(total_weight, safe_capacity) if safe_capacity > 0.0 else 0.0
+	var weight_ratio := total_weight / safe_capacity if safe_capacity > 0.0 else 0.0
+
+	weight_bar.max_value = safe_capacity
+	weight_bar.value = displayed_weight
+	weight_label.text = "%.1f / %.1f kg" % [total_weight, safe_capacity]
+
+	if weight_ratio > 1.0:
+		weight_bar.modulate = WEIGHT_DANGER_COLOR
+	elif weight_ratio >= 0.8:
+		weight_bar.modulate = WEIGHT_WARNING_COLOR
+	else:
+		weight_bar.modulate = WEIGHT_NORMAL_COLOR
 
 func _on_slot_drag_started(slot_index: int) -> void:
 	if _is_dragging():
