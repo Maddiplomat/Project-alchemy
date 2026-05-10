@@ -42,6 +42,9 @@ func can_add_item(item_data: Dictionary, quantity: int = 1) -> bool:
 		return false
 
 	var added_weight := _get_stack_unit_weight(item_id, item_data) * float(quantity)
+	if current_weight < max_weight:
+		return true
+
 	return current_weight + added_weight <= max_weight
 
 
@@ -218,16 +221,16 @@ func clear_inventory() -> void:
 	_emit_inventory_state_changed()
 
 
-func add_element(id: String, qty: int, purity: float) -> void:
+func add_element(id: String, qty: int, purity: float) -> bool:
 	var item_id := StringName(id)
 	var item_data := ElementDatabase.get_element(item_id)
 	if item_data.is_empty():
-		return
+		return false
 
 	item_data[&"purity"] = purity
 	item_data[&"category"] = InventoryItemCategory.ELEMENT
 	item_data[&"risk_level"] = _to_inventory_risk_level(item_data.get(&"carrier_risk"))
-	add_item(item_data, qty)
+	return add_item(item_data, qty)
 
 
 func remove_element(id: String, qty: int) -> void:
