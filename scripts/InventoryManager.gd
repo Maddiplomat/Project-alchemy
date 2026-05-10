@@ -1,19 +1,24 @@
 extends Node
 
 signal inventory_changed
+signal weight_changed(total_weight: float, carry_capacity: float)
 signal held_item_changed(item_id: String)
 
 const DEFAULT_SLOT_COUNT := 20
+const carry_capacity := 20.0
 
 # Dictionary of {element_id: {quantity: int, purity: float}}
 var items: Dictionary = {}
 var slot_order: Array[String] = []
 var held_item_id := ""
 var manual_selection := false
+var total_weight := 0.0
 
 func _ready() -> void:
 	_ensure_slot_count(DEFAULT_SLOT_COUNT)
+	_refresh_total_weight()
 	_sync_held_item()
+	weight_changed.emit(total_weight, carry_capacity)
 
 func add_element(id: String, qty: int, purity: float) -> void:
 	if items.has(id):
@@ -33,6 +38,8 @@ func add_element(id: String, qty: int, purity: float) -> void:
 		_assign_item_to_slot(id)
 	
 	_sync_held_item()
+	_refresh_total_weight()
+	weight_changed.emit(total_weight, carry_capacity)
 	inventory_changed.emit()
 
 func remove_element(id: String, qty: int) -> void:
@@ -43,6 +50,8 @@ func remove_element(id: String, qty: int) -> void:
 			_remove_item_from_slots(id)
 		
 		_sync_held_item()
+		_refresh_total_weight()
+		weight_changed.emit(total_weight, carry_capacity)
 		inventory_changed.emit()
 
 func get_stack(id: String) -> Dictionary:
@@ -85,6 +94,9 @@ func get_held_item() -> Dictionary:
 	stack["id"] = held_item_id
 	return stack
 
+func is_over_capacity() -> bool:
+	return total_weight > carry_capacity
+
 func set_held_item(id: String, manual: bool = false) -> bool:
 	if id == held_item_id:
 		manual_selection = manual or manual_selection
@@ -114,6 +126,7 @@ func swap_slots(from_slot: int, to_slot: int) -> void:
 	var from_item := slot_order[from_slot]
 	slot_order[from_slot] = slot_order[to_slot]
 	slot_order[to_slot] = from_item
+	weight_changed.emit(total_weight, carry_capacity)
 	inventory_changed.emit()
 
 func _assign_item_to_slot(id: String) -> void:
@@ -135,6 +148,17 @@ func _remove_item_from_slots(id: String) -> void:
 func _ensure_slot_count(count: int) -> void:
 	while slot_order.size() < count:
 		slot_order.append("")
+
+func _refresh_total_weight() -> void:
+	total_weight = 0.0
+	for item_id in items.keys():
+		var stack: Dictionary = items[item_id]
+		var quantity := int(stack.get("quantity", 0))
+		if quantity <= 0:
+			continue
+
+		var element_data := ElementDatabase.get_element(StringName(item_id))
+		total_weight += float(element_data.get("weight", 0.0)) * quantity
 
 func _sync_held_item() -> void:
 	if manual_selection and held_item_id != "" and items.has(held_item_id):
