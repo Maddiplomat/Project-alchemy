@@ -4,6 +4,11 @@ extends CanvasLayer
 @onready var health_label: Label = $HealthBar/HealthLabel
 @onready var held_item_icon: TextureRect = $HeldItemContainer/HBoxContainer/ActiveItemIcon
 @onready var held_item_label: Label = $HeldItemContainer/HBoxContainer/ActiveItemLabel
+@onready var carry_vignette: ColorRect = $CarryVignette
+
+const CARRY_VIGNETTE_MAX_ALPHA := 0.35
+const CARRY_VIGNETTE_START_RATIO := 0.9
+const CARRY_VIGNETTE_END_RATIO := 1.0
 
 var _placeholder_textures := {}
 
@@ -11,9 +16,11 @@ func _ready() -> void:
 	GameManager.player_health_changed.connect(_update_health)
 	InventoryManager.inventory_changed.connect(_refresh_held_item)
 	InventoryManager.held_item_changed.connect(_on_held_item_changed)
+	InventoryManager.weight_changed.connect(_on_weight_changed)
 	
 	_update_health(GameManager.player_health, GameManager.max_player_health)
 	_refresh_held_item()
+	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
 
 func _update_health(current_health: int, max_health: int) -> void:
 	health_bar.max_value = max_health
@@ -36,6 +43,18 @@ func _refresh_held_item() -> void:
 
 func _on_held_item_changed(_item_id: String) -> void:
 	_refresh_held_item()
+
+func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
+	var capacity_ratio := 0.0
+	if carry_capacity > 0.0:
+		capacity_ratio = total_weight / carry_capacity
+
+	var overlay_alpha := 0.0
+	if capacity_ratio >= CARRY_VIGNETTE_START_RATIO:
+		var alpha_ratio := inverse_lerp(CARRY_VIGNETTE_START_RATIO, CARRY_VIGNETTE_END_RATIO, minf(capacity_ratio, CARRY_VIGNETTE_END_RATIO))
+		overlay_alpha = alpha_ratio * CARRY_VIGNETTE_MAX_ALPHA
+
+	carry_vignette.color.a = overlay_alpha
 
 func _get_item_color(item_id: String) -> Color:
 	match item_id:
