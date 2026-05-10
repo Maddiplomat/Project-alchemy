@@ -4,6 +4,7 @@
   "display_name": "Iron",
   "category": "metal",
   "weight": 2.8,
+  "stress_multiplier": 1.2,
   "properties": {
     "flammability": 0.0,
     "toxicity": 0.0,
