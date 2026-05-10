@@ -6,25 +6,36 @@ extends CanvasLayer
 @onready var tooltip_name_label: Label = $TooltipPanel/MarginContainer/TooltipContent/NameLabel
 @onready var tooltip_weight_label: Label = $TooltipPanel/MarginContainer/TooltipContent/WeightLabel
 @onready var tooltip_category_label: Label = $TooltipPanel/MarginContainer/TooltipContent/CategoryLabel
+@onready var onboarding_hint: PanelContainer = $OnboardingHint
+@onready var inventory_hint_label: Label = $OnboardingHint/MarginContainer/HintContent/InventoryHintLabel
+@onready var select_hint_label: Label = $OnboardingHint/MarginContainer/HintContent/SelectHintLabel
 
 const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
 const SLOT_COUNT := 20
 const TOOLTIP_DELAY := 0.3
 const TOOLTIP_OFFSET := Vector2(18, 18)
+const ONBOARDING_CONFIG_PATH := "user://onboarding_hints.cfg"
+const ONBOARDING_SECTION := "inventory_hints"
+const INVENTORY_HINT_KEY := "inventory_seen"
+const SELECT_HINT_KEY := "select_seen"
 
 var drag_origin_index := -1
 var drag_ghost: TextureRect = null
 var hover_slot_index := -1
 var tooltip_slot_index := -1
 var tooltip_delay_timer: SceneTreeTimer = null
+var inventory_hint_seen := false
+var select_hint_seen := false
 
 func _ready():
+	_load_onboarding_state()
 	for i in range(SLOT_COUNT):
 		var slot = SLOT_SCENE.instantiate()
 		grid.add_child(slot)
 		slot.slot_index = i
 		slot.drag_started.connect(_on_slot_drag_started)
 		slot.drag_released.connect(_on_slot_drag_released)
+		slot.clicked.connect(_on_slot_clicked)
 		slot.hover_started.connect(_on_slot_hover_started)
 		slot.hover_ended.connect(_on_slot_hover_ended)
 		
@@ -44,6 +55,7 @@ func _ready():
 		label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 		
 	InventoryManager.inventory_changed.connect(refresh_grid)
+	InventoryManager.held_item_changed.connect(func(_id): refresh_grid())
 	refresh_grid()
 	
 	call_deferred("_setup_panel")
@@ -53,11 +65,21 @@ func _setup_panel():
 	panel.position = Vector2(vp_size.x, (vp_size.y - panel.size.y) / 2)
 	panel.visible = false
 	tooltip_panel.visible = false
+	_update_onboarding_hint()
 
 func _input(event):
-	if event is InputEventKey and event.keycode == KEY_TAB and event.pressed and not event.echo:
+	if event.is_action_pressed("toggle_inventory"):
+		_mark_inventory_hint_seen()
 		toggle_inventory()
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+	
+	# Hotkeys 1-9 for slots 0-8
+	for i in range(1, 10):
+		if event.is_action_pressed("slot_%d" % i):
+			_mark_select_hint_seen()
+			InventoryManager.select_slot(i - 1)
+			return
+
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
 		if _is_dragging():
 			_finish_drag(_get_slot_index_at_position(get_viewport().get_mouse_position()))
 
@@ -89,9 +111,13 @@ func toggle_inventory():
 		tween.tween_callback(func(): panel.visible = false)
 
 func refresh_grid():
+	var held_id = InventoryManager.get_held_item_id()
 	for i in range(grid.get_child_count()):
 		var slot = grid.get_child(i)
 		var data = InventoryManager.get_slot_item(i)
+		
+		slot.is_equipped = (not data.is_empty() and data.id == held_id)
+		
 		if not data.is_empty():
 			slot.update_slot(data.id, data.quantity, data.purity)
 		else:
@@ -120,6 +146,9 @@ func _on_slot_drag_started(slot_index: int) -> void:
 func _on_slot_drag_released(slot_index: int) -> void:
 	if _is_dragging():
 		_finish_drag(slot_index)
+
+func _on_slot_clicked(slot_index: int) -> void:
+	InventoryManager.select_slot(slot_index)
 
 func _create_drag_ghost(source_slot) -> void:
 	_clear_drag_ghost()
@@ -242,3 +271,38 @@ func _format_category(category: String) -> String:
 	for i in range(words.size()):
 		words[i] = words[i].capitalize()
 	return " ".join(words)
+
+func _load_onboarding_state() -> void:
+	var config := ConfigFile.new()
+	var err := config.load(ONBOARDING_CONFIG_PATH)
+	if err != OK:
+		return
+	inventory_hint_seen = bool(config.get_value(ONBOARDING_SECTION, INVENTORY_HINT_KEY, false))
+	select_hint_seen = bool(config.get_value(ONBOARDING_SECTION, SELECT_HINT_KEY, false))
+
+func _save_onboarding_state() -> void:
+	var config := ConfigFile.new()
+	config.set_value(ONBOARDING_SECTION, INVENTORY_HINT_KEY, inventory_hint_seen)
+	config.set_value(ONBOARDING_SECTION, SELECT_HINT_KEY, select_hint_seen)
+	config.save(ONBOARDING_CONFIG_PATH)
+
+func _mark_inventory_hint_seen() -> void:
+	if inventory_hint_seen:
+		return
+	inventory_hint_seen = true
+	_save_onboarding_state()
+	_update_onboarding_hint()
+
+func _mark_select_hint_seen() -> void:
+	if select_hint_seen:
+		return
+	select_hint_seen = true
+	_save_onboarding_state()
+	_update_onboarding_hint()
+
+func _update_onboarding_hint() -> void:
+	if onboarding_hint == null:
+		return
+	inventory_hint_label.visible = not inventory_hint_seen
+	select_hint_label.visible = not select_hint_seen
+	onboarding_hint.visible = not inventory_hint_seen or not select_hint_seen

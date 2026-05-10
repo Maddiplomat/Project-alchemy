@@ -3,21 +3,56 @@
 [ext_resource type="Script" uid="uid://bye0gqyf7kcxg" path="res://scripts/inventory_grid.gd" id="1_pkvtp"]
 
 [node name="Node" type="CanvasLayer" unique_id=771886120]
+layer = 10
 script = ExtResource("1_pkvtp")
 
-[node name="InventoryPanel" type="Control" parent="." unique_id=1131795663]
-layout_mode = 3
-anchors_preset = 0
+[node name="InventoryPanel" type="Panel" parent="." unique_id=582636693]
+custom_minimum_size = Vector2(300, 400)
 
 [node name="Grid" type="GridContainer" parent="InventoryPanel" unique_id=123695224]
+custom_minimum_size = Vector2(256, 320)
 layout_mode = 0
-columns = 5
+columns = 4
 
 [node name="TooltipPanel" type="Panel" parent="." unique_id=391146286]
 visible = false
 offset_right = 180.0
 offset_bottom = 74.0
 mouse_filter = 2
+
+[node name="OnboardingHint" type="PanelContainer" parent="." unique_id=196403517]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -308.0
+offset_top = 88.0
+offset_right = -20.0
+offset_bottom = 188.0
+mouse_filter = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="OnboardingHint" unique_id=727302170]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="HintContent" type="VBoxContainer" parent="OnboardingHint/MarginContainer" unique_id=134620724]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TitleLabel" type="Label" parent="OnboardingHint/MarginContainer/HintContent" unique_id=118043295]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "Controls"
+
+[node name="InventoryHintLabel" type="Label" parent="OnboardingHint/MarginContainer/HintContent" unique_id=154494981]
+layout_mode = 2
+text = "Tab: open inventory"
+
+[node name="SelectHintLabel" type="Label" parent="OnboardingHint/MarginContainer/HintContent" unique_id=629159014]
+layout_mode = 2
+text = "1-9: select active item"
 
 [node name="MarginContainer" type="MarginContainer" parent="TooltipPanel" unique_id=272547761]
 layout_mode = 0

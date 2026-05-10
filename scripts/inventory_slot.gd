@@ -2,6 +2,7 @@ extends Panel
 
 signal drag_started(slot_index: int)
 signal drag_released(slot_index: int)
+signal clicked(slot_index: int)
 signal hover_started(slot_index: int)
 signal hover_ended(slot_index: int)
 
@@ -13,7 +14,9 @@ var current_item_id := ""
 var current_quantity := 0
 var current_purity := 0.0
 var is_drag_origin := false
+var is_equipped := false
 var _placeholder_textures := {}
+var _press_start_pos := Vector2.ZERO
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -25,8 +28,11 @@ func _ready() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			_press_start_pos = event.global_position
 			drag_started.emit(slot_index)
 		else:
+			if event.global_position.distance_to(_press_start_pos) < 10.0:
+				clicked.emit(slot_index)
 			drag_released.emit(slot_index)
 		accept_event()
 
@@ -63,6 +69,11 @@ func _apply_visual_state() -> void:
 	var has_stack := has_item()
 	item_icon.visible = has_stack and not is_drag_origin
 	quantity_label.visible = has_stack and not is_drag_origin
+	
+	if is_equipped:
+		self_modulate = Color(1.5, 1.5, 1.0) # Bright highlight
+	else:
+		self_modulate = Color.WHITE
 	
 	if has_stack:
 		item_icon.texture = _get_placeholder_texture(current_item_id)

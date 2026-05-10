@@ -9,6 +9,7 @@ const DEFAULT_SLOT_COUNT := 20
 var items: Dictionary = {}
 var slot_order: Array[String] = []
 var held_item_id := ""
+var manual_selection := false
 
 func _ready() -> void:
 	_ensure_slot_count(DEFAULT_SLOT_COUNT)
@@ -84,15 +85,22 @@ func get_held_item() -> Dictionary:
 	stack["id"] = held_item_id
 	return stack
 
-func set_held_item(id: String) -> bool:
+func set_held_item(id: String, manual: bool = false) -> bool:
 	if id == held_item_id:
+		manual_selection = manual or manual_selection
 		return true
 	if id != "" and not items.has(id):
 		return false
 	
 	held_item_id = id
+	manual_selection = manual
 	held_item_changed.emit(held_item_id)
 	return true
+
+func select_slot(slot_index: int) -> void:
+	var item = get_slot_item(slot_index)
+	if not item.is_empty():
+		set_held_item(item.id, true)
 
 func swap_slots(from_slot: int, to_slot: int) -> void:
 	_ensure_slot_count(DEFAULT_SLOT_COUNT)
@@ -129,12 +137,13 @@ func _ensure_slot_count(count: int) -> void:
 		slot_order.append("")
 
 func _sync_held_item() -> void:
-	if held_item_id != "" and items.has(held_item_id):
+	if manual_selection and held_item_id != "" and items.has(held_item_id):
 		return
 	
+	manual_selection = false
 	for item_id in slot_order:
 		if item_id != "" and items.has(item_id):
-			set_held_item(item_id)
+			set_held_item(item_id, false)
 			return
 	
-	set_held_item("")
+	set_held_item("", false)
