@@ -22,6 +22,7 @@ GameManager="*res://scripts/GameManager.gd"
 ElementDatabase="*res://scripts/ElementDatabase.gd"
 RecipeDatabase="*res://scripts/RecipeDatabase.gd"
 InventoryManager="*res://scripts/InventoryManager.gd"
+CraftingManager="*res://scripts/CraftingManager.gd"
 CameraShake="*res://scripts/CameraShake.gd"
 WorldSystem="*res://scripts/WorldSystem.gd"
 
