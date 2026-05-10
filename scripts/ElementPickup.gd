@@ -55,7 +55,9 @@ func _attempt_pickup() -> void:
 	if item_data.is_empty():
 		return
 
-	InventoryManager.add_element(item_data.id, pickup_quantity, 1.0)
+	if not InventoryManager.add_element(item_data.id, pickup_quantity, 1.0):
+		return
+
 	picked_up.emit(item_data, pickup_quantity)
 	prompt_label.visible = false
 	queue_free()
