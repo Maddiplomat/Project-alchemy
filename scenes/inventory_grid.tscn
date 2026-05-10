@@ -47,7 +47,7 @@ text = "0.0 / 20.0 kg"
 [node name="TooltipPanel" type="Panel" parent="." unique_id=391146286]
 visible = false
 offset_right = 180.0
-offset_bottom = 74.0
+offset_bottom = 96.0
 mouse_filter = 2
 
 [node name="OnboardingHint" type="PanelContainer" parent="." unique_id=196403517]
@@ -89,7 +89,7 @@ layout_mode = 0
 offset_left = 8.0
 offset_top = 8.0
 offset_right = 172.0
-offset_bottom = 66.0
+offset_bottom = 88.0
 mouse_filter = 2
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 8
@@ -111,3 +111,8 @@ text = "Weight: 0.0"
 [node name="CategoryLabel" type="Label" parent="TooltipPanel/MarginContainer/TooltipContent" unique_id=382661166]
 layout_mode = 2
 text = "Category: Unknown"
+
+[node name="DurabilityLabel" type="Label" parent="TooltipPanel/MarginContainer/TooltipContent" unique_id=1073360525]
+visible = false
+layout_mode = 2
+text = "Durability: 100%"

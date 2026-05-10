@@ -8,6 +8,7 @@ extends CanvasLayer
 @onready var tooltip_name_label: Label = $TooltipPanel/MarginContainer/TooltipContent/NameLabel
 @onready var tooltip_weight_label: Label = $TooltipPanel/MarginContainer/TooltipContent/WeightLabel
 @onready var tooltip_category_label: Label = $TooltipPanel/MarginContainer/TooltipContent/CategoryLabel
+@onready var tooltip_durability_label: Label = $TooltipPanel/MarginContainer/TooltipContent/DurabilityLabel
 @onready var onboarding_hint: PanelContainer = $OnboardingHint
 @onready var inventory_hint_label: Label = $OnboardingHint/MarginContainer/HintContent/InventoryHintLabel
 @onready var select_hint_label: Label = $OnboardingHint/MarginContainer/HintContent/SelectHintLabel
@@ -126,7 +127,7 @@ func refresh_grid():
 		slot.is_equipped = (not data.is_empty() and data.id == held_id)
 		
 		if not data.is_empty():
-			slot.update_slot(data.id, data.quantity, data.purity)
+			slot.update_slot(data.id, data.quantity, data.purity, data.get("durability"), data.get("max_durability"))
 		else:
 			slot.clear()
 	
@@ -258,13 +259,10 @@ func _show_tooltip_for_slot(slot_index: int) -> void:
 	
 	var item_id := StringName(str(data.get("id", "")))
 	var element_data := ElementDatabase.get_element(item_id)
-	if element_data.is_empty():
-		_hide_tooltip()
-		return
-	
-	tooltip_name_label.text = str(element_data.get("display_name", item_id))
-	tooltip_weight_label.text = "Weight: %.1f" % float(element_data.get("weight", 0.0))
-	tooltip_category_label.text = "Category: %s" % _format_category(str(element_data.get("category", "")))
+	tooltip_name_label.text = _get_tooltip_item_name(data, element_data, item_id)
+	tooltip_weight_label.text = "Weight: %.1f" % _get_tooltip_item_weight(data, element_data)
+	tooltip_category_label.text = "Category: %s" % _format_category_value(data.get("category", element_data.get("category", "")))
+	_update_tooltip_durability(data)
 	tooltip_slot_index = slot_index
 	tooltip_panel.visible = true
 	_update_tooltip_position()
@@ -273,6 +271,7 @@ func _hide_tooltip() -> void:
 	tooltip_delay_timer = null
 	tooltip_slot_index = -1
 	tooltip_panel.visible = false
+	tooltip_durability_label.visible = false
 
 func _update_tooltip_position() -> void:
 	var viewport_rect := get_viewport().get_visible_rect()
@@ -297,6 +296,45 @@ func _format_category(category: String) -> String:
 	for i in range(words.size()):
 		words[i] = words[i].capitalize()
 	return " ".join(words)
+
+func _format_category_value(category_value) -> String:
+	if category_value is int:
+		match int(category_value):
+			InventoryManager.InventoryItemCategory.ELEMENT:
+				return "Element"
+			InventoryManager.InventoryItemCategory.TOOL:
+				return "Tool"
+			InventoryManager.InventoryItemCategory.CRAFTED:
+				return "Crafted"
+			InventoryManager.InventoryItemCategory.CONSUMABLE:
+				return "Consumable"
+			_:
+				return "Generic"
+	return _format_category(str(category_value))
+
+func _get_tooltip_item_name(item_data: Dictionary, element_data: Dictionary, item_id: StringName) -> String:
+	if not element_data.is_empty():
+		return str(element_data.get("display_name", item_id))
+	return str(item_data.get("display_name", item_id))
+
+func _get_tooltip_item_weight(item_data: Dictionary, element_data: Dictionary) -> float:
+	if not element_data.is_empty():
+		return float(element_data.get("weight", item_data.get("unit_weight", 0.0)))
+	return float(item_data.get("unit_weight", item_data.get("weight", 0.0)))
+
+func _update_tooltip_durability(item_data: Dictionary) -> void:
+	var durability = item_data.get("durability")
+	var max_durability = item_data.get("max_durability")
+	if durability == null or max_durability == null:
+		tooltip_durability_label.visible = false
+		return
+
+	var max_value := maxf(float(max_durability), 0.0)
+	var percent := 0
+	if max_value > 0.0:
+		percent = int(round(clampf(float(durability) / max_value, 0.0, 1.0) * 100.0))
+	tooltip_durability_label.text = "Durability: %d%%" % percent
+	tooltip_durability_label.visible = true
 
 func _load_onboarding_state() -> void:
 	var config := ConfigFile.new()
