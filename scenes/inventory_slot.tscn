@@ -8,5 +8,54 @@ script = ExtResource("1_dxvxp")
 [node name="ItemIcon" type="TextureRect" parent="." unique_id=1107692164]
 layout_mode = 0
 
+[node name="BrokenOverlay" type="Control" parent="." unique_id=195002143]
+visible = false
+layout_mode = 0
+mouse_filter = 2
+
+[node name="CrackA" type="ColorRect" parent="BrokenOverlay" unique_id=976444111]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 12.0
+offset_right = 18.0
+offset_bottom = 50.0
+rotation = 0.45
+color = Color(0.12, 0.12, 0.12, 0.9)
+
+[node name="CrackB" type="ColorRect" parent="BrokenOverlay" unique_id=133423121]
+layout_mode = 0
+offset_left = 28.0
+offset_top = 14.0
+offset_right = 32.0
+offset_bottom = 42.0
+rotation = -0.62
+color = Color(0.12, 0.12, 0.12, 0.9)
+
+[node name="CrackC" type="ColorRect" parent="BrokenOverlay" unique_id=683429541]
+layout_mode = 0
+offset_left = 21.0
+offset_top = 27.0
+offset_right = 43.0
+offset_bottom = 31.0
+rotation = 0.18
+color = Color(0.12, 0.12, 0.12, 0.9)
+
+[node name="DurabilityBarBackground" type="ColorRect" parent="." unique_id=860099070]
+visible = false
+layout_mode = 0
+offset_left = 6.0
+offset_top = 56.0
+offset_right = 58.0
+offset_bottom = 60.0
+mouse_filter = 2
+color = Color(0.12, 0.12, 0.12, 0.85)
+
+[node name="DurabilityBarFill" type="ColorRect" parent="DurabilityBarBackground" unique_id=329827891]
+layout_mode = 0
+offset_right = 52.0
+offset_bottom = 4.0
+mouse_filter = 2
+color = Color(0.45, 0.83, 0.35, 1)
+
 [node name="QuantityLabel" type="Label" parent="." unique_id=1383563743]
 layout_mode = 0
