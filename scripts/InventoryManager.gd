@@ -12,7 +12,8 @@ signal volatile_risk_changed(risk_item_ids: Array[StringName])
 const DEFAULT_SLOT_COUNT := 20
 const DEFAULT_ITEM_WEIGHT := 1.0
 const DEFAULT_ITEM_PURITY := 1.0
-const DEFAULT_ITEM_DURABILITY := -1
+const DEFAULT_ITEM_DURABILITY := 1.0
+const DEFAULT_ITEM_MAX_DURABILITY := 1.0
 const NO_HELD_ITEM := &""
 const carry_capacity := 20.0
 
@@ -237,6 +238,28 @@ func remove_element(id: String, qty: int) -> void:
 	remove_item(StringName(id), qty)
 
 
+func degrade_item(item_id: StringName, amount: float) -> bool:
+	if amount <= 0.0 or not items.has(item_id):
+		return false
+
+	var stored_item := items[item_id]
+	if stored_item.get(&"durability") == null:
+		return false
+
+	var current_durability := float(stored_item.get(&"durability", DEFAULT_ITEM_DURABILITY))
+	var next_durability := clampf(current_durability - amount, 0.0, float(stored_item.get(&"max_durability", DEFAULT_ITEM_MAX_DURABILITY)))
+	if is_equal_approx(next_durability, current_durability):
+		return false
+
+	stored_item[&"durability"] = next_durability
+	if next_durability <= 0.0:
+		return remove_item(item_id, stored_item.get(&"quantity", 1))
+
+	items[item_id] = stored_item
+	_emit_inventory_state_changed()
+	return true
+
+
 func set_max_weight(value: float) -> void:
 	var clamped_weight := maxf(0.0, value)
 	if is_equal_approx(max_weight, clamped_weight):
@@ -287,8 +310,22 @@ func _normalize_item_data(item_data: Dictionary, quantity: int) -> Dictionary:
 	if not normalized.has(&"category"):
 		normalized[&"category"] = InventoryItemCategory.GENERIC
 
-	if not normalized.has(&"durability"):
-		normalized[&"durability"] = DEFAULT_ITEM_DURABILITY
+	var category: int = normalized.get(&"category", InventoryItemCategory.GENERIC)
+	var is_raw_element := category == InventoryItemCategory.ELEMENT
+	var max_durability = normalized.get(&"max_durability")
+	if is_raw_element:
+		normalized[&"durability"] = null
+		normalized[&"max_durability"] = null
+	else:
+		if max_durability == null:
+			max_durability = DEFAULT_ITEM_MAX_DURABILITY
+		max_durability = maxf(0.0, float(max_durability))
+		normalized[&"max_durability"] = max_durability
+
+		var durability = normalized.get(&"durability")
+		if durability == null:
+			durability = max_durability
+		normalized[&"durability"] = clampf(float(durability), 0.0, max_durability)
 
 	return normalized
 
