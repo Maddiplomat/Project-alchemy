@@ -9,6 +9,7 @@ signal capacity_changed(current_weight: float, max_weight: float)
 signal weight_changed(total_weight: float, carry_capacity: float)
 signal volatile_risk_changed(risk_item_ids: Array[StringName])
 
+const DEFAULT_SLOT_COUNT := 20
 const DEFAULT_ITEM_WEIGHT := 1.0
 const DEFAULT_ITEM_PURITY := 1.0
 const DEFAULT_ITEM_DURABILITY := -1
@@ -22,8 +23,14 @@ var items: Dictionary[StringName, Dictionary] = {}
 var max_weight: float = carry_capacity
 var current_weight: float = 0.0
 var total_weight: float = 0.0
+var slot_order: Array[StringName] = []
 var held_item_id: StringName = NO_HELD_ITEM
+var manual_selection := false
 var volatile_risk_item_ids: Array[StringName] = []
+
+
+func _ready() -> void:
+	_ensure_slot_count(DEFAULT_SLOT_COUNT)
 
 
 func can_add_item(item_data: Dictionary, quantity: int = 1) -> bool:
@@ -50,6 +57,8 @@ func add_item(item_data: Dictionary, quantity: int = 1) -> bool:
 	var stored_item := _normalize_item_data(item_data, total_quantity)
 	items[item_id] = stored_item
 	current_weight += _get_stack_unit_weight(item_id, stored_item) * float(quantity)
+	_assign_item_to_slot(item_id)
+	_sync_held_item()
 
 	item_added.emit(item_id, quantity, total_quantity)
 	item_quantity_changed.emit(item_id, total_quantity)
@@ -75,11 +84,14 @@ func remove_item(item_id: StringName, quantity: int = 1) -> bool:
 
 	if remaining_quantity <= 0:
 		items.erase(item_id)
+		_remove_item_from_slots(item_id)
 		if held_item_id == item_id:
 			set_held_item(NO_HELD_ITEM)
 	else:
 		stored_item[&"quantity"] = remaining_quantity
 		items[item_id] = stored_item
+
+	_sync_held_item()
 
 	item_removed.emit(item_id, quantity, remaining_quantity)
 	item_quantity_changed.emit(item_id, remaining_quantity)
@@ -108,20 +120,88 @@ func get_quantity(item_id: StringName) -> int:
 	return items[item_id].get(&"quantity", 0)
 
 
+func get_stack(id: String) -> Dictionary:
+	return items.get(StringName(id), {"quantity": 0, "purity": 0.0})
+
+
+func get_all_items() -> Dictionary:
+	var ordered_items := {}
+	_ensure_slot_count(DEFAULT_SLOT_COUNT)
+	for item_id: StringName in slot_order:
+		if not item_id.is_empty() and items.has(item_id):
+			ordered_items[String(item_id)] = items[item_id]
+
+	for item_id: StringName in items.keys():
+		if not ordered_items.has(String(item_id)):
+			ordered_items[String(item_id)] = items[item_id]
+
+	return ordered_items
+
+
+func get_slot_item(slot_index: int) -> Dictionary:
+	_ensure_slot_count(DEFAULT_SLOT_COUNT)
+	if slot_index < 0 or slot_index >= slot_order.size():
+		return {}
+
+	var item_id := slot_order[slot_index]
+	if item_id.is_empty() or not items.has(item_id):
+		return {}
+
+	var stack: Dictionary = items[item_id].duplicate(true)
+	stack["id"] = String(item_id)
+	return stack
+
+
+func get_held_item_id() -> String:
+	return String(held_item_id)
+
+
+func get_held_item() -> Dictionary:
+	if held_item_id.is_empty() or not items.has(held_item_id):
+		return {}
+
+	var stack: Dictionary = items[held_item_id].duplicate(true)
+	stack["id"] = String(held_item_id)
+	return stack
+
+
 func is_over_capacity() -> bool:
 	return total_weight > max_weight
 
 
-func set_held_item(item_id: StringName) -> bool:
+func set_held_item(item_id: StringName, manual: bool = false) -> bool:
 	if item_id == held_item_id:
+		manual_selection = manual or manual_selection
 		return true
 
 	if not item_id.is_empty() and not items.has(item_id):
 		return false
 
 	held_item_id = item_id
+	manual_selection = manual
 	held_item_changed.emit(held_item_id)
 	return true
+
+
+func select_slot(slot_index: int) -> void:
+	var item = get_slot_item(slot_index)
+	if not item.is_empty():
+		set_held_item(StringName(str(item.get("id", ""))), true)
+
+
+func swap_slots(from_slot: int, to_slot: int) -> void:
+	_ensure_slot_count(DEFAULT_SLOT_COUNT)
+	if from_slot < 0 or from_slot >= slot_order.size():
+		return
+	if to_slot < 0 or to_slot >= slot_order.size():
+		return
+	if from_slot == to_slot:
+		return
+
+	var from_item := slot_order[from_slot]
+	slot_order[from_slot] = slot_order[to_slot]
+	slot_order[to_slot] = from_item
+	inventory_changed.emit()
 
 
 func clear_inventory() -> void:
@@ -129,11 +209,29 @@ func clear_inventory() -> void:
 		return
 
 	items.clear()
+	slot_order.fill(NO_HELD_ITEM)
 	current_weight = 0.0
 	total_weight = 0.0
 	held_item_id = NO_HELD_ITEM
+	manual_selection = false
 	held_item_changed.emit(held_item_id)
 	_emit_inventory_state_changed()
+
+
+func add_element(id: String, qty: int, purity: float) -> void:
+	var item_id := StringName(id)
+	var item_data := ElementDatabase.get_element(item_id)
+	if item_data.is_empty():
+		return
+
+	item_data[&"purity"] = purity
+	item_data[&"category"] = InventoryItemCategory.ELEMENT
+	item_data[&"risk_level"] = _to_inventory_risk_level(item_data.get(&"carrier_risk"))
+	add_item(item_data, qty)
+
+
+func remove_element(id: String, qty: int) -> void:
+	remove_item(StringName(id), qty)
 
 
 func set_max_weight(value: float) -> void:
@@ -212,6 +310,20 @@ func _get_purity(item_data: Dictionary) -> float:
 	return clampf(item_data.get(&"purity", DEFAULT_ITEM_PURITY), 0.0, 1.0)
 
 
+func _to_inventory_risk_level(risk_level_name) -> int:
+	match str(risk_level_name).to_lower():
+		"low":
+			return InventoryRiskLevel.LOW
+		"medium":
+			return InventoryRiskLevel.MEDIUM
+		"high":
+			return InventoryRiskLevel.HIGH
+		"extreme":
+			return InventoryRiskLevel.EXTREME
+		_:
+			return InventoryRiskLevel.NONE
+
+
 func _recalculate_weight() -> void:
 	var recalculated_weight := 0.0
 	for item_id: StringName in items:
@@ -234,6 +346,42 @@ func _recalculate_volatile_risk() -> void:
 
 	if previous_risk_item_ids != volatile_risk_item_ids:
 		volatile_risk_changed.emit(volatile_risk_item_ids.duplicate())
+
+
+func _assign_item_to_slot(item_id: StringName) -> void:
+	_ensure_slot_count(DEFAULT_SLOT_COUNT)
+	if slot_order.has(item_id):
+		return
+
+	var empty_index := slot_order.find(NO_HELD_ITEM)
+	if empty_index == -1:
+		slot_order.append(item_id)
+	else:
+		slot_order[empty_index] = item_id
+
+
+func _remove_item_from_slots(item_id: StringName) -> void:
+	for i in range(slot_order.size()):
+		if slot_order[i] == item_id:
+			slot_order[i] = NO_HELD_ITEM
+
+
+func _ensure_slot_count(count: int) -> void:
+	while slot_order.size() < count:
+		slot_order.append(NO_HELD_ITEM)
+
+
+func _sync_held_item() -> void:
+	if manual_selection and not held_item_id.is_empty() and items.has(held_item_id):
+		return
+
+	manual_selection = false
+	for item_id: StringName in slot_order:
+		if not item_id.is_empty() and items.has(item_id):
+			set_held_item(item_id, false)
+			return
+
+	set_held_item(NO_HELD_ITEM, false)
 
 
 func _is_risky_item(item_data: Dictionary) -> bool:
