@@ -1,0 +1,113 @@
+[gd_scene format=3 uid="uid://b1f6s64gvfqtt"]
+
+[ext_resource type="Script" uid="uid://bye0gqyf7kcxg" path="res://scripts/inventory_grid.gd" id="1_pkvtp"]
+
+[node name="Node" type="CanvasLayer" unique_id=771886120]
+layer = 10
+script = ExtResource("1_pkvtp")
+
+[node name="InventoryPanel" type="Panel" parent="." unique_id=582636693]
+custom_minimum_size = Vector2(300, 408)
+
+[node name="Grid" type="GridContainer" parent="InventoryPanel" unique_id=123695224]
+custom_minimum_size = Vector2(256, 320)
+layout_mode = 0
+offset_left = 22.0
+offset_top = 16.0
+offset_right = 278.0
+offset_bottom = 336.0
+columns = 4
+
+[node name="WeightRow" type="HBoxContainer" parent="InventoryPanel"]
+layout_mode = 0
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 16.0
+offset_top = 352.0
+offset_right = -16.0
+offset_bottom = 384.0
+theme_override_constants/separation = 12
+
+[node name="WeightBar" type="ProgressBar" parent="InventoryPanel/WeightRow"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0, 0, 0, 0)
+max_value = 20.0
+show_percentage = false
+modulate = Color(0.45, 0.83, 0.61, 1)
+
+[node name="WeightLabel" type="Label" parent="InventoryPanel/WeightRow"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+horizontal_alignment = 2
+vertical_alignment = 1
+text = "0.0 / 20.0 kg"
+
+[node name="TooltipPanel" type="Panel" parent="." unique_id=391146286]
+visible = false
+offset_right = 180.0
+offset_bottom = 74.0
+mouse_filter = 2
+
+[node name="OnboardingHint" type="PanelContainer" parent="." unique_id=196403517]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -308.0
+offset_top = 88.0
+offset_right = -20.0
+offset_bottom = 188.0
+mouse_filter = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="OnboardingHint" unique_id=727302170]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="HintContent" type="VBoxContainer" parent="OnboardingHint/MarginContainer" unique_id=134620724]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TitleLabel" type="Label" parent="OnboardingHint/MarginContainer/HintContent" unique_id=118043295]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "Controls"
+
+[node name="InventoryHintLabel" type="Label" parent="OnboardingHint/MarginContainer/HintContent" unique_id=154494981]
+layout_mode = 2
+text = "Tab: open inventory"
+
+[node name="SelectHintLabel" type="Label" parent="OnboardingHint/MarginContainer/HintContent" unique_id=629159014]
+layout_mode = 2
+text = "1-9: select active item"
+
+[node name="MarginContainer" type="MarginContainer" parent="TooltipPanel" unique_id=272547761]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 172.0
+offset_bottom = 66.0
+mouse_filter = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="TooltipContent" type="VBoxContainer" parent="TooltipPanel/MarginContainer" unique_id=419235073]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="TooltipPanel/MarginContainer/TooltipContent" unique_id=1771532748]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Item Name"
+
+[node name="WeightLabel" type="Label" parent="TooltipPanel/MarginContainer/TooltipContent" unique_id=457005486]
+layout_mode = 2
+text = "Weight: 0.0"
+
+[node name="CategoryLabel" type="Label" parent="TooltipPanel/MarginContainer/TooltipContent" unique_id=382661166]
+layout_mode = 2
+text = "Category: Unknown"

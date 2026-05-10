@@ -1,3 +1,80 @@
-[gd_scene format=3]
+[gd_scene load_steps=2 format=3]
 
-[node name="HUD" type="Control"]
+[ext_resource type="Script" path="res://scripts/HUD.gd" id="1_hud"]
+
+[node name="HUD" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_hud")
+
+[node name="MinimapPlaceholder" type="ColorRect" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -72.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 72.0
+color = Color(0, 0, 0, 1)
+
+[node name="HealthBar" type="ProgressBar" parent="."]
+anchors_preset = 3
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -52.0
+offset_right = 304.0
+offset_bottom = -24.0
+show_percentage = false
+max_value = 100.0
+value = 100.0
+
+[node name="HealthLabel" type="Label" parent="HealthBar"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -39.0
+offset_top = -11.0
+offset_right = 39.0
+offset_bottom = 11.0
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "100 / 100 HP"
+
+[node name="HeldItemContainer" type="Panel" parent="."]
+anchors_preset = 10
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -110.0
+offset_top = -88.0
+offset_right = 110.0
+offset_bottom = -24.0
+
+[node name="HBoxContainer" type="HBoxContainer" parent="HeldItemContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 8.0
+offset_right = -12.0
+offset_bottom = -8.0
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="ActiveItemIcon" type="TextureRect" parent="HeldItemContainer/HBoxContainer"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ActiveItemLabel" type="Label" parent="HeldItemContainer/HBoxContainer"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+size_flags_vertical = 4
+vertical_alignment = 1
+text = "Hands Empty"
