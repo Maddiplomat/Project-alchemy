@@ -13,9 +13,11 @@ var elements: Dictionary[StringName, Dictionary] = {}
 var discovered_elements: Array[StringName] = []
 var biome_elements: Dictionary[StringName, Array] = {}
 
-var starter_element_ids: Array[StringName] = [&"wood_carbon", &"silicon", &"iron", &"pure_carbon"]
-var mid_game_element_ids: Array[StringName] = [&"sulfur", &"lithium", &"phosphorus", &"nitrogen"]
-var late_game_element_ids: Array[StringName] = [&"uranium", &"mercury", &"sodium", &"platinum"]
+const ELEMENT_DATA_DIR := "res://data/elements"
+
+var starter_element_ids: Array[StringName] = [&"wood", &"stone", &"iron"]
+var mid_game_element_ids: Array[StringName] = []
+var late_game_element_ids: Array[StringName] = []
 
 
 func _ready() -> void:
@@ -47,8 +49,10 @@ func get_elements_for_biome(biome_id: StringName) -> Array[StringName]:
 
 func get_elements_by_category(category: ElementCategory) -> Array[StringName]:
 	var result: Array[StringName] = []
+	var category_name := _category_to_string(category)
 	for element_id: StringName in elements:
-		if elements[element_id].get(&"category") == category:
+		var element_category = elements[element_id].get(&"category")
+		if element_category == category or element_category == category_name:
 			result.append(element_id)
 
 	return result
@@ -56,8 +60,10 @@ func get_elements_by_category(category: ElementCategory) -> Array[StringName]:
 
 func get_elements_by_risk(risk_level: RiskLevel) -> Array[StringName]:
 	var result: Array[StringName] = []
+	var risk_name := _risk_to_string(risk_level)
 	for element_id: StringName in elements:
-		if elements[element_id].get(&"risk_level") == risk_level:
+		var element_risk = elements[element_id].get(&"risk_level", elements[element_id].get(&"carrier_risk"))
+		if element_risk == risk_level or element_risk == risk_name:
 			result.append(element_id)
 
 	return result
@@ -98,14 +104,124 @@ func _seed_elements() -> void:
 	discovered_elements.clear()
 	biome_elements.clear()
 
-	for element_data: Dictionary in _get_seed_element_data():
+	var seed_data := _load_element_data_files()
+	if seed_data.is_empty():
+		seed_data = _get_seed_element_data()
+
+	for element_data: Dictionary in seed_data:
 		register_element(element_data)
+
+
+func _load_element_data_files() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var file_names := DirAccess.get_files_at(ELEMENT_DATA_DIR)
+
+	for file_name in file_names:
+		if not file_name.ends_with(".json"):
+			continue
+
+		var file_path := ELEMENT_DATA_DIR.path_join(file_name)
+		var file := FileAccess.open(file_path, FileAccess.READ)
+		if file == null:
+			push_warning("Unable to open element data file: %s" % file_path)
+			continue
+
+		var parsed = JSON.parse_string(file.get_as_text())
+		if not parsed is Dictionary:
+			push_warning("Skipping invalid element data file: %s" % file_path)
+			continue
+
+		var element_data := _normalize_element_data(parsed)
+		if element_data.is_empty():
+			push_warning("Skipping incomplete element data file: %s" % file_path)
+			continue
+
+		result.append(element_data)
+
+	return result
+
+
+func _normalize_element_data(raw_data: Dictionary) -> Dictionary:
+	var required_keys := [
+		&"id",
+		&"symbol",
+		&"display_name",
+		&"category",
+		&"weight",
+		&"stress_multiplier",
+		&"properties",
+		&"carrier_risk",
+		&"biome_spawn",
+	]
+	for key: StringName in required_keys:
+		if not raw_data.has(key):
+			return {}
+
+	var raw_properties = raw_data.get(&"properties")
+	if not raw_properties is Dictionary:
+		return {}
+
+	var raw_biomes = raw_data.get(&"biome_spawn")
+	if not raw_biomes is Array:
+		return {}
+
+	var normalized_biomes: Array[StringName] = []
+	for biome in raw_biomes:
+		normalized_biomes.append(StringName(str(biome)))
+
+	return {
+		&"id": StringName(str(raw_data.get(&"id"))),
+		&"symbol": str(raw_data.get(&"symbol")),
+		&"display_name": str(raw_data.get(&"display_name")),
+		&"category": str(raw_data.get(&"category")),
+		&"weight": float(raw_data.get(&"weight")),
+		&"stress_multiplier": float(raw_data.get(&"stress_multiplier")),
+		&"properties": raw_properties.duplicate(true),
+		&"carrier_risk": raw_data.get(&"carrier_risk"),
+		&"biome_spawn": normalized_biomes,
+	}
+
+
+func _category_to_string(category: ElementCategory) -> String:
+	match category:
+		ElementCategory.ORGANIC:
+			return "organic"
+		ElementCategory.MINERAL:
+			return "mineral"
+		ElementCategory.METAL:
+			return "metal"
+		ElementCategory.VOLATILE:
+			return "volatile"
+		ElementCategory.GAS:
+			return "gas"
+		ElementCategory.RADIOACTIVE:
+			return "radioactive"
+		ElementCategory.CATALYST:
+			return "catalyst"
+		_:
+			return ""
+
+
+func _risk_to_string(risk_level: RiskLevel) -> String:
+	match risk_level:
+		RiskLevel.NONE:
+			return "none"
+		RiskLevel.LOW:
+			return "low"
+		RiskLevel.MEDIUM:
+			return "medium"
+		RiskLevel.HIGH:
+			return "high"
+		RiskLevel.EXTREME:
+			return "extreme"
+		_:
+			return ""
 
 
 func _get_seed_element_data() -> Array[Dictionary]:
 	return [
 		_create_element(
-			&"wood_carbon",
+			&"wood",
 			"C",
 			"Wood Carbon",
 			ElementCategory.ORGANIC,
@@ -125,7 +241,7 @@ func _get_seed_element_data() -> Array[Dictionary]:
 			"Universal base material and early fuel."
 		),
 		_create_element(
-			&"silicon",
+			&"stone",
 			"Si",
 			"Stone Silicon",
 			ElementCategory.MINERAL,
@@ -359,7 +475,8 @@ func _create_element(
 	environmental_hint: String,
 	carrier_risk: String,
 	biome_spawn: Array[StringName],
-	primary_use: String
+	primary_use: String,
+	stress_multiplier: float = 1.0
 ) -> Dictionary:
 	return {
 		&"id": element_id,
@@ -368,6 +485,7 @@ func _create_element(
 		&"category": category,
 		&"risk_level": risk_level,
 		&"weight": weight,
+		&"stress_multiplier": stress_multiplier,
 		&"extraction_tool": extraction_tool,
 		&"properties": properties,
 		&"environmental_hint": environmental_hint,

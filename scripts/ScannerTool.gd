@@ -1,40 +1,32 @@
 extends Node2D
 
-## ScannerTool — attached to the Player node.
-## Press and hold Q to reveal floating info panels for all ElementPickup nodes
-## within SCAN_RADIUS pixels.  Each panel shows symbol, display_name, category,
-## and weight.  Panels auto-dismiss after AUTO_DISMISS_SECONDS or when Q is
-## released, whichever comes first.
-
-const SCAN_RADIUS   : float = 80.0
-const AUTO_DISMISS  : float = 3.0
-
-## Visual tweak constants
-const PANEL_WIDTH   : float = 140.0
-const PANEL_HEIGHT  : float = 76.0
-const PANEL_OFFSET  : Vector2 = Vector2(12.0, -64.0)   # relative to pickup world pos
-
-# ── category colour map (ARGB hex-ish) ──────────────────────────────────────
-const CATEGORY_COLOURS : Dictionary = {
-	"organic"    : Color(0.45, 0.80, 0.30, 1.0),
-	"mineral"    : Color(0.60, 0.60, 0.60, 1.0),
-	"metal"      : Color(0.75, 0.80, 0.90, 1.0),
-	"volatile"   : Color(1.00, 0.55, 0.15, 1.0),
-	"gas"        : Color(0.55, 0.90, 1.00, 1.0),
-	"radioactive": Color(0.40, 1.00, 0.10, 1.0),
-	"catalyst"   : Color(1.00, 0.85, 0.20, 1.0),
-}
-const FALLBACK_COLOUR : Color = Color(0.85, 0.85, 0.85, 1.0)
-
-# ── runtime state ────────────────────────────────────────────────────────────
-var _active_panels : Dictionary = {}   # pickup node → PanelContainer
-var _timers        : Dictionary = {}   # pickup node → float (time left)
-var _scanning      : bool = false
-
 @onready var _anim : AnimationPlayer = $ToolAnimationPlayer
+@onready var _visuals : Node2D = $ScannerToolVisuals
 
-# Physics space for overlap queries
+## Configuration
+const SCAN_RADIUS := 80.0
+const AUTO_DISMISS := 3.0
+const PANEL_OFFSET := Vector2(0, -40)
+const PANEL_WIDTH  := 140
+const PANEL_HEIGHT := 76
+const FALLBACK_COLOUR := Color(0.6, 0.6, 0.6)
+
+const CATEGORY_COLOURS := {
+	"organic": Color(0.48, 0.77, 0.46),
+	"mineral": Color(0.85, 0.72, 0.45),
+	"metal":   Color(0.46, 0.65, 1.0),
+	"volatile": Color(1.0, 0.45, 0.45),
+	"gas":     Color(0.6, 0.9, 0.9),
+	"radioactive": Color(0.7, 1.0, 0.2),
+	"catalyst": Color(0.9, 0.5, 1.0)
+}
+
+## State
 var _space_state : PhysicsDirectSpaceState2D
+var _active_panels : Dictionary = {} # Node2D -> Control
+var _timers : Dictionary = {}        # Node2D -> float
+var _scanning : bool = false
+var _canvas : CanvasLayer
 
 
 func _ready() -> void:
@@ -42,70 +34,68 @@ func _ready() -> void:
 	_setup_animations()
 
 
-func _setup_animations() -> void:
-	var anim_lib := AnimationLibrary.new()
-	var scan_anim := Animation.new()
-	
-	# Ripple Scale
-	var scale_idx := scan_anim.add_track(Animation.TYPE_VALUE)
-	scan_anim.track_set_path(scale_idx, "ScannerToolVisuals/ScanRipple:scale")
-	scan_anim.track_insert_key(scale_idx, 0.0, Vector2.ZERO)
-	scan_anim.track_insert_key(scale_idx, 0.4, Vector2.ONE)
-	
-	# Ripple Alpha (fade out)
-	var alpha_idx := scan_anim.add_track(Animation.TYPE_VALUE)
-	scan_anim.track_set_path(alpha_idx, "ScannerToolVisuals/ScanRipple:modulate:a")
-	scan_anim.track_insert_key(alpha_idx, 0.0, 1.0)
-	scan_anim.track_insert_key(alpha_idx, 0.4, 0.0)
-	
-	# Visibility
-	var vis_idx := scan_anim.add_track(Animation.TYPE_VALUE)
-	scan_anim.track_set_path(vis_idx, "ScannerToolVisuals/ScanRipple:visible")
-	scan_anim.track_insert_key(vis_idx, 0.0, true)
-	scan_anim.track_insert_key(vis_idx, 0.4, false)
-	
-	anim_lib.add_animation("scan", scan_anim)
-	_anim.add_animation_library("", anim_lib)
+func _process(delta: float) -> void:
+	if _active_panels.is_empty():
+		return
+
+	# Handle auto-dismiss timers
+	var to_remove : Array[Node2D] = []
+	for pickup in _timers:
+		_timers[pickup] -= delta
+		if _timers[pickup] <= 0:
+			to_remove.append(pickup)
+
+	for pickup in to_remove:
+		_remove_panel(pickup)
+
+	# Keep panels pinned to world positions
+	for pickup in _active_panels:
+		if is_instance_valid(pickup):
+			_update_panel_position(_active_panels[pickup], pickup)
 
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("scan"):
 		_begin_scan()
 	elif event.is_action_released("scan"):
 		_end_scan()
 
 
-func _process(delta: float) -> void:
-	if not _scanning:
-		return
+func _setup_animations() -> void:
+	var anim_lib := AnimationLibrary.new()
+	var scan_anim := Animation.new()
+	
+	# Reset ripple
+	scan_anim.track_insert_key(scan_anim.add_track(Animation.TYPE_VALUE), 0.0, 0.0)
+	scan_anim.track_set_path(0, "ScannerToolVisuals/ScanRipple:scale")
+	scan_anim.track_insert_key(0, 0.0, Vector2(0.1, 0.1))
+	scan_anim.track_insert_key(0, 0.4, Vector2(1.2, 1.2)) # ~80px radius at 1.0 scale
+	
+	scan_anim.track_insert_key(scan_anim.add_track(Animation.TYPE_VALUE), 0.0, 0.0)
+	scan_anim.track_set_path(1, "ScannerToolVisuals/ScanRipple:modulate:a")
+	scan_anim.track_insert_key(1, 0.0, 0.0)
+	scan_anim.track_insert_key(1, 0.05, 0.8)
+	scan_anim.track_insert_key(1, 0.4, 0.0)
+	
+	anim_lib.add_animation("scan", scan_anim)
+	_anim.add_animation_library("", anim_lib)
 
-	# tick timers and remove expired panels
-	var expired : Array = []
-	for pickup in _timers.keys():
-		_timers[pickup] -= delta
-		if _timers[pickup] <= 0.0:
-			expired.append(pickup)
-	for pickup in expired:
-		_remove_panel(pickup)
-
-
-# ── scan lifecycle ────────────────────────────────────────────────────────────
 
 func _begin_scan() -> void:
+	if _scanning:
+		return
 	_scanning = true
-	_clear_all_panels()
-
+	
 	var player_pos : Vector2 = (get_parent() as Node2D).global_position
 	var query := PhysicsShapeQueryParameters2D.new()
 	var circle_shape := CircleShape2D.new()
 	circle_shape.radius = SCAN_RADIUS
 	query.shape = circle_shape
 	query.transform = Transform2D(0.0, player_pos)
-	query.collision_mask = 0xFFFFFFFF   # all layers
+	query.collision_mask = 2 # Target ElementPickups specifically
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
-
-	var results := _space_state.intersect_shape(query, 32)
+	var results := _space_state.intersect_shape(query, 64)
 	
 	# Play visual ripple
 	_anim.play("scan")
@@ -114,16 +104,20 @@ func _begin_scan() -> void:
 		var collider : Node = hit.get("collider")
 		if collider == null:
 			continue
+		
 		# walk up to find the Area2D root of an ElementPickup
 		var pickup_node := _find_element_pickup(collider)
 		if pickup_node == null or _active_panels.has(pickup_node):
 			continue
+			
 		var element_id : StringName = _resolve_element_id(pickup_node)
 		if element_id.is_empty():
 			continue
+			
 		var data := ElementDatabase.get_element(element_id)
 		if data.is_empty():
 			continue
+			
 		_spawn_panel(pickup_node, data)
 		_flash_element(pickup_node)
 
@@ -144,6 +138,7 @@ func _end_scan() -> void:
 
 func _spawn_panel(pickup: Node2D, data: Dictionary) -> void:
 	var panel := _build_panel(data)
+	panel.name = "ScannerPanel_" + pickup.name
 	# attach to CanvasLayer so it renders on top regardless of z-index
 	var canvas := _get_or_create_canvas()
 	canvas.add_child(panel)
@@ -310,11 +305,11 @@ func _resolve_element_id(pickup: Node) -> StringName:
 
 
 func _get_or_create_canvas() -> CanvasLayer:
-	var existing := get_tree().root.get_node_or_null("ScannerCanvas")
+	var existing := get_tree().current_scene.get_node_or_null("ScannerCanvas")
 	if existing != null:
 		return existing as CanvasLayer
 	var canvas := CanvasLayer.new()
 	canvas.name  = "ScannerCanvas"
 	canvas.layer = 128   # above everything
-	get_tree().root.add_child(canvas)
+	get_tree().current_scene.add_child(canvas)
 	return canvas
