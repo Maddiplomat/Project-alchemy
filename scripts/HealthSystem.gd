@@ -29,6 +29,11 @@ func _ready() -> void:
 	_emit_state()
 
 
+func _exit_tree() -> void:
+	if GameManager.player_health_system == self:
+		GameManager.bind_player_health_system(null)
+
+
 func take_damage(amount: int, type: StringName = DAMAGE_TYPE_PHYSICAL) -> void:
 	if amount <= 0 or _is_dead:
 		return
