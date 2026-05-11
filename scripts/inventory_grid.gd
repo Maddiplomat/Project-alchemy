@@ -1,9 +1,10 @@
 extends CanvasLayer
 
 @onready var panel = $InventoryPanel
-@onready var grid = $InventoryPanel/Grid
-@onready var weight_bar: ProgressBar = $InventoryPanel/WeightRow/WeightBar
-@onready var weight_label: Label = $InventoryPanel/WeightRow/WeightLabel
+@onready var grid = $InventoryPanel/PanelContent/InventoryColumn/Grid
+@onready var weight_bar: ProgressBar = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightBar
+@onready var weight_label: Label = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightLabel
+@onready var recipes_list: VBoxContainer = $InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/RecipesScroll/RecipesList
 @onready var tooltip_panel: Panel = $TooltipPanel
 @onready var tooltip_name_label: Label = $TooltipPanel/MarginContainer/TooltipContent/NameLabel
 @onready var tooltip_weight_label: Label = $TooltipPanel/MarginContainer/TooltipContent/WeightLabel
@@ -24,6 +25,12 @@ const SELECT_HINT_KEY := "select_seen"
 const WEIGHT_NORMAL_COLOR := Color(0.45, 0.83, 0.61, 1.0)
 const WEIGHT_WARNING_COLOR := Color(0.95, 0.67, 0.29, 1.0)
 const WEIGHT_DANGER_COLOR := Color(0.89, 0.29, 0.24, 1.0)
+const CRAFT_READY_COLOR := Color(0.45, 0.83, 0.61, 1.0)
+const CRAFT_LOCKED_COLOR := Color(0.36, 0.39, 0.43, 1.0)
+const RECIPE_ROW_BG_COLOR := Color(0.14, 0.16, 0.19, 0.9)
+const RECIPE_ROW_BORDER_COLOR := Color(0.29, 0.31, 0.36, 1.0)
+const RECIPE_DURABILITY_COLOR := Color(0.75, 0.86, 0.43, 1.0)
+const ITEM_ICON_SIZE := Vector2(34, 34)
 
 var drag_origin_index := -1
 var drag_ghost: TextureRect = null
@@ -32,6 +39,8 @@ var tooltip_slot_index := -1
 var tooltip_delay_timer: SceneTreeTimer = null
 var inventory_hint_seen := false
 var select_hint_seen := false
+var recipe_row_refs: Dictionary[StringName, Dictionary] = {}
+var _placeholder_textures := {}
 
 func _ready():
 	_load_onboarding_state()
@@ -63,6 +72,8 @@ func _ready():
 	InventoryManager.inventory_changed.connect(refresh_grid)
 	InventoryManager.held_item_changed.connect(func(_id): refresh_grid())
 	InventoryManager.weight_changed.connect(_on_weight_changed)
+	CraftingManager.crafted.connect(_on_item_crafted)
+	_build_recipe_rows()
 	refresh_grid()
 	_update_weight_display(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	
@@ -135,6 +146,8 @@ func refresh_grid():
 		_show_tooltip_for_slot(hover_slot_index)
 	elif hover_slot_index == -1:
 		_hide_tooltip()
+
+	_refresh_recipe_states()
 
 func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 	_update_weight_display(total_weight, carry_capacity)
@@ -335,6 +348,182 @@ func _update_tooltip_durability(item_data: Dictionary) -> void:
 		percent = int(round(clampf(float(durability) / max_value, 0.0, 1.0) * 100.0))
 	tooltip_durability_label.text = "Durability: %d%%" % percent
 	tooltip_durability_label.visible = true
+
+func _build_recipe_rows() -> void:
+	for child in recipes_list.get_children():
+		child.queue_free()
+	recipe_row_refs.clear()
+
+	var recipe_ids: Array[String] = []
+	for recipe_id: StringName in RecipeDatabase.get_all_recipes().keys():
+		recipe_ids.append(String(recipe_id))
+	recipe_ids.sort()
+
+	for recipe_id_text: String in recipe_ids:
+		var recipe_id := StringName(recipe_id_text)
+		var recipe := RecipeDatabase.get_recipe(recipe_id)
+		if recipe.is_empty():
+			continue
+
+		var row := PanelContainer.new()
+		row.custom_minimum_size = Vector2(0, 88)
+		var row_style := StyleBoxFlat.new()
+		row_style.bg_color = RECIPE_ROW_BG_COLOR
+		row_style.border_width_left = 1
+		row_style.border_width_top = 1
+		row_style.border_width_right = 1
+		row_style.border_width_bottom = 1
+		row_style.border_color = RECIPE_ROW_BORDER_COLOR
+		row_style.corner_radius_top_left = 8
+		row_style.corner_radius_top_right = 8
+		row_style.corner_radius_bottom_right = 8
+		row_style.corner_radius_bottom_left = 8
+		row.add_theme_stylebox_override("panel", row_style)
+		recipes_list.add_child(row)
+
+		var margin := MarginContainer.new()
+		margin.add_theme_constant_override("margin_left", 10)
+		margin.add_theme_constant_override("margin_top", 10)
+		margin.add_theme_constant_override("margin_right", 10)
+		margin.add_theme_constant_override("margin_bottom", 10)
+		row.add_child(margin)
+
+		var row_box := HBoxContainer.new()
+		row_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row_box.alignment = BoxContainer.ALIGNMENT_CENTER
+		row_box.add_theme_constant_override("separation", 10)
+		margin.add_child(row_box)
+
+		var recipe_flow := HBoxContainer.new()
+		recipe_flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		recipe_flow.add_theme_constant_override("separation", 6)
+		row_box.add_child(recipe_flow)
+
+		var inputs: Array = recipe.get(&"inputs", [])
+		for i in range(inputs.size()):
+			var input_data: Dictionary = inputs[i]
+			recipe_flow.add_child(_create_recipe_item_block(
+				String(input_data.get(&"element_id", "")),
+				int(input_data.get(&"qty", 0))
+			))
+			if i < inputs.size() - 1:
+				recipe_flow.add_child(_create_separator_label("+"))
+
+		recipe_flow.add_child(_create_separator_label("->"))
+
+		var output: Dictionary = recipe.get(&"output", {})
+		recipe_flow.add_child(_create_recipe_item_block(
+			String(output.get(&"item_id", "")),
+			int(output.get(&"qty", 0))
+		))
+
+		var durability_box := VBoxContainer.new()
+		durability_box.custom_minimum_size = Vector2(82, 0)
+		durability_box.alignment = BoxContainer.ALIGNMENT_CENTER
+		row_box.add_child(durability_box)
+
+		var durability_label := Label.new()
+		durability_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		durability_label.text = "Durability"
+		durability_box.add_child(durability_label)
+
+		var durability_bar := ProgressBar.new()
+		durability_bar.custom_minimum_size = Vector2(72, 10)
+		durability_bar.max_value = 1.0
+		durability_bar.show_percentage = false
+		durability_bar.value = float(recipe.get(&"durability", 1.0))
+		durability_bar.modulate = RECIPE_DURABILITY_COLOR
+		durability_box.add_child(durability_bar)
+
+		var durability_value := Label.new()
+		durability_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		durability_value.text = "%d%%" % int(round(float(recipe.get(&"durability", 1.0)) * 100.0))
+		durability_box.add_child(durability_value)
+
+		var craft_button := Button.new()
+		craft_button.custom_minimum_size = Vector2(82, 32)
+		craft_button.text = "Craft"
+		craft_button.pressed.connect(_on_craft_pressed.bind(recipe_id))
+		row_box.add_child(craft_button)
+
+		recipe_row_refs[recipe_id] = {
+			"button": craft_button,
+			"style": row_style,
+		}
+
+func _create_recipe_item_block(item_id: String, quantity: int) -> VBoxContainer:
+	var block := VBoxContainer.new()
+	block.custom_minimum_size = Vector2(42, 0)
+	block.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var icon_holder := CenterContainer.new()
+	icon_holder.custom_minimum_size = ITEM_ICON_SIZE
+	block.add_child(icon_holder)
+
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = ITEM_ICON_SIZE
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture = _get_placeholder_texture(item_id)
+	icon.modulate = _get_item_color(item_id)
+	icon_holder.add_child(icon)
+
+	var quantity_label := Label.new()
+	quantity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	quantity_label.text = "x%d" % quantity
+	block.add_child(quantity_label)
+
+	return block
+
+func _create_separator_label(text: String) -> Label:
+	var label := Label.new()
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.text = text
+	return label
+
+func _refresh_recipe_states() -> void:
+	for recipe_id: StringName in recipe_row_refs:
+		var row_ref: Dictionary = recipe_row_refs[recipe_id]
+		var craft_button: Button = row_ref.get("button")
+		var row_style: StyleBoxFlat = row_ref.get("style")
+		var can_craft_now := CraftingManager.can_craft(recipe_id)
+		craft_button.disabled = not can_craft_now
+		craft_button.modulate = CRAFT_READY_COLOR if can_craft_now else CRAFT_LOCKED_COLOR
+		row_style.border_color = CRAFT_READY_COLOR if can_craft_now else RECIPE_ROW_BORDER_COLOR
+
+func _on_craft_pressed(recipe_id: StringName) -> void:
+	CraftingManager.craft(recipe_id)
+
+func _on_item_crafted(_recipe_id: StringName) -> void:
+	refresh_grid()
+
+func _get_item_color(item_id: String) -> Color:
+	match item_id:
+		"wood":
+			return Color.BURLYWOOD
+		"stone":
+			return Color.GRAY
+		"iron":
+			return Color.SILVER
+		"primitive_axe":
+			return Color(0.76, 0.82, 0.88, 1.0)
+		_:
+			return Color.WHITE
+
+func _get_placeholder_texture(item_id: String) -> Texture2D:
+	if _placeholder_textures.has(item_id):
+		return _placeholder_textures[item_id]
+
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color.WHITE)
+	gradient.set_color(1, Color.WHITE)
+
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = int(ITEM_ICON_SIZE.x)
+	texture.height = int(ITEM_ICON_SIZE.y)
+	_placeholder_textures[item_id] = texture
+	return texture
 
 func _load_onboarding_state() -> void:
 	var config := ConfigFile.new()

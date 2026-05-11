@@ -7,28 +7,32 @@ layer = 10
 script = ExtResource("1_pkvtp")
 
 [node name="InventoryPanel" type="Panel" parent="." unique_id=582636693]
-custom_minimum_size = Vector2(300, 408)
+custom_minimum_size = Vector2(760, 440)
 
-[node name="Grid" type="GridContainer" parent="InventoryPanel" unique_id=123695224]
-custom_minimum_size = Vector2(256, 320)
+[node name="PanelContent" type="HBoxContainer" parent="InventoryPanel" unique_id=181028481]
 layout_mode = 0
-offset_left = 22.0
+offset_left = 16.0
 offset_top = 16.0
-offset_right = 278.0
-offset_bottom = 336.0
+offset_right = 744.0
+offset_bottom = 424.0
+theme_override_constants/separation = 18
+
+[node name="InventoryColumn" type="VBoxContainer" parent="InventoryPanel/PanelContent" unique_id=1442415162]
+custom_minimum_size = Vector2(268, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+
+[node name="Grid" type="GridContainer" parent="InventoryPanel/PanelContent/InventoryColumn" unique_id=123695224]
+custom_minimum_size = Vector2(256, 320)
+layout_mode = 2
 columns = 4
 
-[node name="WeightRow" type="HBoxContainer" parent="InventoryPanel"]
-layout_mode = 0
-anchors_preset = 10
-anchor_right = 1.0
-offset_left = 16.0
-offset_top = 352.0
-offset_right = -16.0
-offset_bottom = 384.0
+[node name="WeightRow" type="HBoxContainer" parent="InventoryPanel/PanelContent/InventoryColumn"]
+layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="WeightBar" type="ProgressBar" parent="InventoryPanel/WeightRow"]
+[node name="WeightBar" type="ProgressBar" parent="InventoryPanel/PanelContent/InventoryColumn/WeightRow"]
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -37,12 +41,50 @@ max_value = 20.0
 show_percentage = false
 modulate = Color(0.45, 0.83, 0.61, 1)
 
-[node name="WeightLabel" type="Label" parent="InventoryPanel/WeightRow"]
+[node name="WeightLabel" type="Label" parent="InventoryPanel/PanelContent/InventoryColumn/WeightRow"]
 custom_minimum_size = Vector2(96, 0)
 layout_mode = 2
 horizontal_alignment = 2
 vertical_alignment = 1
 text = "0.0 / 20.0 kg"
+
+[node name="CraftingPanel" type="PanelContainer" parent="InventoryPanel/PanelContent" unique_id=944136859]
+custom_minimum_size = Vector2(430, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="InventoryPanel/PanelContent/CraftingPanel" unique_id=1927158014]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="CraftingContent" type="VBoxContainer" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer" unique_id=1671815692]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CraftingTitle" type="Label" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent" unique_id=1206868868]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Crafting"
+
+[node name="CraftingHint" type="Label" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent" unique_id=195734373]
+layout_mode = 2
+autowrap_mode = 3
+text = "Recipes appear here. Craft buttons enable automatically when the required materials are in your inventory."
+
+[node name="RecipesScroll" type="ScrollContainer" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent" unique_id=900397119]
+custom_minimum_size = Vector2(0, 300)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="RecipesList" type="VBoxContainer" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/RecipesScroll" unique_id=1048866388]
+custom_minimum_size = Vector2(388, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
 
 [node name="TooltipPanel" type="Panel" parent="." unique_id=391146286]
 visible = false
