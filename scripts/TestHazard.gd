@@ -1,6 +1,6 @@
 extends Area2D
 
-@export var damage_amount: int = 8
+@export var damage_amount: int = 10
 @export var damage_interval_seconds: float = 0.75
 @export var damage_on_entry := true
 
@@ -63,7 +63,13 @@ func _apply_damage() -> void:
 		_damage_timer.stop()
 		return
 
-	GameManager.damage_player(damage_amount)
+	var player_body: Node2D = _tracked_bodies.front()
+	if player_body == null:
+		return
+
+	var health_system: Node = player_body.get_node_or_null("HealthSystem")
+	if health_system != null and health_system.has_method("take_damage"):
+		health_system.take_damage(damage_amount, &"physical")
 
 
 func _is_player_body(body: Node) -> bool:
