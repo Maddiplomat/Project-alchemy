@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" uid="uid://cxfen0v27oux3" path="res://scenes/Player.tscn" id="3_7g83o"]
 [ext_resource type="PackedScene" path="res://scenes/UI/HUD.tscn" id="4_hud"]
 [ext_resource type="PackedScene" uid="uid://b1f6s64gvfqtt" path="res://scenes/inventory_grid.tscn" id="5_1lgw5"]
+[ext_resource type="PackedScene" path="res://scenes/TestHazard.tscn" id="6_30o7v"]
 
 [node name="World" type="Node2D" unique_id=1488050509]
 script = ExtResource("2_nvi4h")
@@ -30,6 +31,9 @@ tile_set = ExtResource("1_kqs1s")
 
 [node name="Player" parent="." unique_id=297416554 instance=ExtResource("3_7g83o")]
 position = Vector2(512, 512)
+
+[node name="TestHazard" parent="." instance=ExtResource("6_30o7v")]
+position = Vector2(560, 512)
 
 [node name="HUD" parent="." unique_id=1866474338 instance=ExtResource("4_hud")]
 

@@ -1,0 +1,23 @@
+[gd_scene format=3 uid="uid://dr4m4n4u7k11p"]
+
+[ext_resource type="Script" path="res://scripts/TestHazard.gd" id="1_mrmnk"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_a2h0j"]
+size = Vector2(16, 16)
+
+[node name="TestHazard" type="Area2D"]
+script = ExtResource("1_mrmnk")
+
+[node name="Pit" type="Polygon2D" parent="."]
+color = Color(0.141176, 0.0745098, 0.0980392, 1)
+polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
+
+[node name="Spikes" type="Polygon2D" parent="."]
+color = Color(0.788235, 0.227451, 0.196078, 1)
+polygon = PackedVector2Array(-8, 8, -6, -4, -2, 8, 0, -4, 4, 8, 6, -4, 8, 8)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_a2h0j")
+
+[node name="DamageTimer" type="Timer" parent="."]
+one_shot = false
