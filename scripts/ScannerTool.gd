@@ -102,6 +102,8 @@ func _begin_scan() -> void:
 	query.shape = circle_shape
 	query.transform = Transform2D(0.0, player_pos)
 	query.collision_mask = 0xFFFFFFFF   # all layers
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
 
 	var results := _space_state.intersect_shape(query, 32)
 	
