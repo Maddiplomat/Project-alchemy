@@ -17,6 +17,7 @@ const VALID_DAMAGE_TYPES: Array[StringName] = [
 
 @export var max_health: int = 100
 @export var current_health: int = 100
+@export var over_capacity_damage_multiplier: float = 1.5
 
 var status_effects: Array[StringName] = []
 var _is_dead := false
@@ -32,6 +33,9 @@ func _ready() -> void:
 func take_damage(amount: int, type: StringName = DAMAGE_TYPE_PHYSICAL) -> void:
 	if amount <= 0 or _is_dead:
 		return
+
+	if InventoryManager.is_over_capacity():
+		amount = int(float(amount) * over_capacity_damage_multiplier)
 
 	var damage_type := _normalize_damage_type(type)
 	match damage_type:
