@@ -1,0 +1,15 @@
+extends Control
+
+const WORLD_SCENE_PATH := "res://scenes/World.tscn"
+
+@onready var start_button: Button = $CenterContainer/Panel/VBoxContainer/StartButton
+
+
+func _ready() -> void:
+	GameManager.set_game_state(GameManager.GameState.MAIN_MENU)
+	start_button.pressed.connect(_on_start_button_pressed)
+
+
+func _on_start_button_pressed() -> void:
+	GameManager.start_new_game()
+	get_tree().change_scene_to_file(WORLD_SCENE_PATH)
