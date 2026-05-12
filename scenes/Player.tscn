@@ -4,6 +4,9 @@
 [ext_resource type="Texture2D" uid="uid://dcequn4h1sp0" path="res://assets/player/player_placeholder_16x16.png" id="2_v6fml"]
 [ext_resource type="Script" uid="uid://d4mhxiqnf6cxf" path="res://scripts/PlayerAnimationStateMachine.gd" id="3_3li8b"]
 [ext_resource type="Script" uid="uid://dfmk1jvfvpfj2" path="res://scripts/PlayerCameraController.gd" id="4_jmcn4"]
+[ext_resource type="Script" uid="uid://dduid12nwmq5v" path="res://scripts/ScannerTool.gd" id="5_qu4a1"]
+[ext_resource type="Texture2D" uid="uid://bw1vwo1kan6kh" path="res://assets/generated/scan_ripple.png" id="6_70d11"]
+[ext_resource type="Script" path="res://scripts/HealthSystem.gd" id="7_q1w23"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_mdl7e"]
 size = Vector2(8, 8)
@@ -26,3 +29,18 @@ vframes = 8
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=457091043]
 script = ExtResource("3_3li8b")
+
+[node name="HealthSystem" type="Node" parent="."]
+script = ExtResource("7_q1w23")
+
+[node name="ScannerTool" type="Node2D" parent="." unique_id=52746031]
+script = ExtResource("5_qu4a1")
+
+[node name="ScannerToolVisuals" type="Node2D" parent="ScannerTool" unique_id=1656883800]
+
+[node name="ScanRipple" type="Sprite2D" parent="ScannerTool/ScannerToolVisuals" unique_id=365688623]
+visible = false
+scale = Vector2(1e-05, 1e-05)
+texture = ExtResource("6_70d11")
+
+[node name="ToolAnimationPlayer" type="AnimationPlayer" parent="ScannerTool" unique_id=1425251196]

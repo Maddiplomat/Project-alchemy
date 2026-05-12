@@ -6,7 +6,7 @@
 size = Vector2(12, 12)
 
 [node name="ElementPickup" type="Area2D" unique_id=1542228159]
-collision_layer = 0
+collision_layer = 2
 script = ExtResource("1_518e3")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1982428542]

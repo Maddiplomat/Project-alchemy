@@ -1,15 +1,47 @@
-# v0.1.0-proto1 Playtest Note
+# v0.1.0-proto2 Playtest Brief
 
-## What felt right
+## Focus For This Pass
 
-- The seeded forest map reads clearly at a glance, and the spawn clearing gives the first few seconds room to breathe.
-- Element pickups are easy to understand: walk up, interact, see the item land in inventory, then inspect it through hover details.
-- Inventory drag-and-drop feels direct for a prototype; the ghost icon and swap behavior make slot intent obvious.
-- The HUD framing is serviceable already. Health is legible in peripheral vision, and the held-item panel grounds the current state.
+- Test whether over-capacity pressure changes movement and decision-making enough to matter.
+- Test whether crafting is discoverable from the current UI without external explanation.
+- Confirm that failure state work now has a clear place in the prototype roadmap before chemistry hazards escalate.
 
-## What needs tuning in P2
+## Playtest Questions
 
-- Inventory discoverability is still weak. The `Tab` toggle is functional, but the game needs an on-screen prompt or onboarding hint.
-- Pickup and movement collision should be tuned together. The smaller player shape helps navigation, but object spacing and interaction radius still need a pass.
-- Held-item state needs actual gameplay weight. Right now it displays well, but it should drive use, drop, consume, or tool-specific actions.
-- Health is only a shell. P2 should connect damage, healing, feedback, and failure states so the bar carries tension instead of just occupying space.
+### 1. Does over-capacity feel punishing enough?
+
+- Current read: not yet.
+- The slowdown is noticeable, but it does not consistently force a hard choice between keeping loot and staying safe.
+- Because the penalty is mostly movement speed, the player can still tolerate being overloaded for too long without a strong sense of risk.
+
+### 2. Is crafting discoverable without instructions?
+
+- Current read: partially, but not reliably.
+- Players who open the inventory and inspect the panel can find crafting.
+- Players who do not press `Tab` or who do not read the full inventory layout may miss it completely.
+- The system is present, but the route into it still depends too much on curiosity.
+
+## What Worked
+
+- Health now has consequence. Hazard damage creates tension and supports the next failure-state layer.
+- Inventory slot selection and held-item clarity are solid enough to support more mechanics.
+- The crafting panel establishes the right direction for Prototype 3 even if onboarding is still thin.
+
+## What Did Not Land Hard Enough
+
+- Over-capacity friction is soft. It inconveniences the player more than it pressures them.
+- Crafting lacks an obvious first-use invitation.
+- Death handling exists conceptually in the roadmap, but it needs visible presentation and a recovery loop to make failure readable during playtests.
+
+## Upgrade Targets
+
+- Increase over-capacity stakes with either steeper slowdown, stamina-style pressure, drop-risk, or direct hazard vulnerability while overloaded.
+- Add one explicit crafting affordance: prompt text, first-time highlight, or contextual hint near the inventory panel.
+- Make failure state unmistakable with a death overlay, retry flow, and reset loop that supports repeated chemistry hazard testing.
+- Keep the next pass focused on readability over breadth. Prototype 3 needs clear loops more than new systems.
+
+## Recommended Next Questions
+
+- At what inventory threshold does the player start making different choices instead of simply tolerating slowdown?
+- Do players understand that held items plus the crafting panel imply combination mechanics?
+- Once chemistry explosions arrive, does death feel fair, legible, and fast to recover from?

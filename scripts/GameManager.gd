@@ -44,6 +44,7 @@ var day_start_time: float = 0.25
 var max_player_health: int = 100
 var player_health: int = 100
 var player_status_effects: Array[StringName] = []
+var player_health_system: Node = null
 
 var is_paused: bool = false
 var active_environmental_warnings: Array[StringName] = []
@@ -67,9 +68,7 @@ func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -
 	playtime_seconds = 0
 	playtime_changed.emit(playtime_seconds)
 	set_gameplay_phase(GameplayPhase.SCAN)
-	player_status_effects.clear()
-	player_status_effects_changed.emit(player_status_effects.duplicate())
-	set_player_health(max_player_health)
+	reset_player_state()
 	clear_dirty()
 	resume_game()
 	set_game_state(GameState.PLAYING)
@@ -226,11 +225,19 @@ func damage_player(amount: int) -> void:
 	if amount <= 0:
 		return
 
+	if player_health_system != null and player_health_system.has_method("take_damage"):
+		player_health_system.take_damage(amount, &"physical")
+		return
+
 	set_player_health(player_health - amount)
 
 
 func heal_player(amount: int) -> void:
 	if amount <= 0:
+		return
+
+	if player_health_system != null and player_health_system.has_method("heal"):
+		player_health_system.heal(amount)
 		return
 
 	set_player_health(player_health + amount)
@@ -243,6 +250,42 @@ func set_player_status_effects(effects: Array[StringName]) -> void:
 	player_status_effects = effects.duplicate()
 	player_status_effects_changed.emit(player_status_effects.duplicate())
 	mark_dirty()
+
+
+func bind_player_health_system(health_system: Node) -> void:
+	if player_health_system == health_system:
+		return
+
+	if player_health_system != null:
+		var previous_health_changed := Callable(self, "_on_bound_player_health_changed")
+		if player_health_system.health_changed.is_connected(previous_health_changed):
+			player_health_system.health_changed.disconnect(previous_health_changed)
+
+		var previous_player_died := Callable(self, "_on_bound_player_died")
+		if player_health_system.player_died.is_connected(previous_player_died):
+			player_health_system.player_died.disconnect(previous_player_died)
+
+		var previous_status_effects_changed := Callable(self, "_on_bound_player_status_effects_changed")
+		if player_health_system.status_effects_changed.is_connected(previous_status_effects_changed):
+			player_health_system.status_effects_changed.disconnect(previous_status_effects_changed)
+
+	player_health_system = health_system
+	if player_health_system == null:
+		return
+
+	player_health_system.health_changed.connect(_on_bound_player_health_changed)
+	player_health_system.player_died.connect(_on_bound_player_died)
+	player_health_system.status_effects_changed.connect(_on_bound_player_status_effects_changed)
+
+
+func reset_player_state() -> void:
+	if player_health_system != null and player_health_system.has_method("reset_state"):
+		player_health_system.reset_state()
+		return
+
+	player_status_effects.clear()
+	player_status_effects_changed.emit(player_status_effects.duplicate())
+	set_player_health(max_player_health)
 
 
 func set_environmental_warning(warning_id: StringName, active: bool) -> void:
@@ -258,6 +301,34 @@ func set_environmental_warning(warning_id: StringName, active: bool) -> void:
 	if not active and warning_index != -1:
 		active_environmental_warnings.remove_at(warning_index)
 		environmental_warning_changed.emit(warning_id, false)
+
+
+func _on_bound_player_health_changed(current_health: int, maximum_health: int) -> void:
+	max_player_health = maximum_health
+	_sync_player_health(current_health)
+
+
+func _on_bound_player_died() -> void:
+	if game_state == GameState.GAME_OVER:
+		return
+
+	request_save(SaveTrigger.DEATH)
+	player_died.emit()
+	set_game_state(GameState.GAME_OVER)
+
+
+func _on_bound_player_status_effects_changed(status_effects: Array[StringName]) -> void:
+	set_player_status_effects(status_effects)
+
+
+func _sync_player_health(value: int) -> void:
+	var clamped_health := clampi(value, 0, max_player_health)
+	if player_health == clamped_health:
+		return
+
+	player_health = clamped_health
+	player_health_changed.emit(player_health, max_player_health)
+	mark_dirty()
 
 
 func _is_time_night(value: float) -> bool:

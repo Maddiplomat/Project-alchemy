@@ -221,7 +221,7 @@ func _risk_to_string(risk_level: RiskLevel) -> String:
 func _get_seed_element_data() -> Array[Dictionary]:
 	return [
 		_create_element(
-			&"wood_carbon",
+			&"wood",
 			"C",
 			"Wood Carbon",
 			ElementCategory.ORGANIC,
@@ -241,7 +241,7 @@ func _get_seed_element_data() -> Array[Dictionary]:
 			"Universal base material and early fuel."
 		),
 		_create_element(
-			&"silicon",
+			&"stone",
 			"Si",
 			"Stone Silicon",
 			ElementCategory.MINERAL,

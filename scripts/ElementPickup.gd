@@ -134,3 +134,9 @@ func _play_idle_animation() -> void:
 	var anim_name := "idle_" + str(resolved_element_id)
 	if anim_player.has_animation(anim_name):
 		anim_player.play(anim_name)
+
+
+func get_element_id() -> StringName:
+	if not element_id.is_empty():
+		return element_id
+	return get_meta(&"element_id", &"")
