@@ -92,7 +92,7 @@ func _log_shape_size_once() -> void:
 
 func _setup_animations() -> void:
 	var lib := AnimationLibrary.new()
-	
+
 	# Wood: gentle sway
 	var anim_wood := Animation.new()
 	anim_wood.length = 1.5
@@ -105,13 +105,13 @@ func _setup_animations() -> void:
 	anim_wood.track_insert_key(track_wood, 1.125, deg_to_rad(-2.0))
 	anim_wood.track_insert_key(track_wood, 1.5, 0.0)
 	lib.add_animation("idle_wood", anim_wood)
-	
+
 	# Stone: none
 	var anim_stone := Animation.new()
 	anim_stone.length = 1.5
 	anim_stone.loop_mode = Animation.LOOP_LINEAR
 	lib.add_animation("idle_stone", anim_stone)
-	
+
 	# Iron: glint pulse
 	var anim_iron := Animation.new()
 	anim_iron.length = 1.5
@@ -122,7 +122,7 @@ func _setup_animations() -> void:
 	anim_iron.track_insert_key(track_iron, 0.75, Color(1, 1, 1, 0.85))
 	anim_iron.track_insert_key(track_iron, 1.5, Color(1, 1, 1, 1.0))
 	lib.add_animation("idle_iron", anim_iron)
-	
+
 	anim_player.add_animation_library("", lib)
 
 
@@ -130,7 +130,7 @@ func _play_idle_animation() -> void:
 	var resolved_element_id := element_id
 	if resolved_element_id.is_empty():
 		resolved_element_id = get_meta(&"element_id", &"")
-		
+
 	var anim_name := "idle_" + str(resolved_element_id)
 	if anim_player.has_animation(anim_name):
 		anim_player.play(anim_name)

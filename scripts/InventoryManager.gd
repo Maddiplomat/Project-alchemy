@@ -176,7 +176,7 @@ func is_over_capacity() -> bool:
 func lose_random_item() -> bool:
 	if items.is_empty():
 		return false
-	
+
 	var item_ids := items.keys()
 	var random_id = item_ids[randi() % item_ids.size()]
 	return remove_item(random_id, 1)

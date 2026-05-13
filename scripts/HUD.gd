@@ -29,7 +29,7 @@ func _ready() -> void:
 	InventoryManager.weight_changed.connect(_on_weight_changed)
 	retry_button.pressed.connect(_on_retry_button_pressed)
 	quit_button.pressed.connect(_on_quit_button_pressed)
-	
+
 	_update_health(GameManager.player_health, GameManager.max_player_health)
 	_refresh_held_item()
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
@@ -47,7 +47,7 @@ func _refresh_held_item() -> void:
 		held_item_icon.modulate = Color(1.0, 1.0, 1.0, 0.25)
 		held_item_label.text = "Hands Empty"
 		return
-	
+
 	var item_id := str(held_item.get("id", ""))
 	var element_data := ElementDatabase.get_element(StringName(item_id))
 	held_item_icon.texture = _get_placeholder_texture(item_id)
@@ -136,11 +136,11 @@ func _get_item_color(item_id: String) -> Color:
 func _get_placeholder_texture(item_id: String) -> Texture2D:
 	if _placeholder_textures.has(item_id):
 		return _placeholder_textures[item_id]
-	
+
 	var gradient := Gradient.new()
 	gradient.set_color(0, Color.WHITE)
 	gradient.set_color(1, Color.WHITE)
-	
+
 	var texture := GradientTexture2D.new()
 	texture.gradient = gradient
 	texture.width = 48

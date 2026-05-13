@@ -57,14 +57,14 @@ func update_slot(item_id: String, quantity: int, purity: float, durability = nul
 	current_durability = durability
 	current_max_durability = max_durability
 	is_drag_origin = false
-	
+
 	if quantity > 0:
 		item_icon.texture = _get_placeholder_texture(item_id)
 		item_icon.modulate = _get_icon_color()
 		quantity_label.text = str(quantity)
 	else:
 		current_item_id = ""
-	
+
 	_apply_visual_state()
 
 func clear() -> void:
@@ -87,12 +87,12 @@ func _apply_visual_state() -> void:
 	var has_stack := has_item()
 	item_icon.visible = has_stack and not is_drag_origin
 	quantity_label.visible = has_stack and not is_drag_origin
-	
+
 	if is_equipped:
 		self_modulate = Color(1.5, 1.5, 1.0) # Bright highlight
 	else:
 		self_modulate = Color.WHITE
-	
+
 	if has_stack:
 		item_icon.texture = _get_placeholder_texture(current_item_id)
 		item_icon.modulate = _get_icon_color()
@@ -100,7 +100,7 @@ func _apply_visual_state() -> void:
 	else:
 		item_icon.texture = null
 		quantity_label.text = ""
-	
+
 	var has_durability := _has_durability()
 	var durability_ratio := _get_durability_ratio()
 	durability_bar_background.visible = has_stack and has_durability and not is_drag_origin
@@ -164,11 +164,11 @@ func _get_durability_color(ratio: float) -> Color:
 func _get_placeholder_texture(item_id: String) -> Texture2D:
 	if _placeholder_textures.has(item_id):
 		return _placeholder_textures[item_id]
-	
+
 	var gradient := Gradient.new()
 	gradient.set_color(0, Color.WHITE)
 	gradient.set_color(1, Color.WHITE)
-	
+
 	var texture := GradientTexture2D.new()
 	texture.gradient = gradient
 	texture.width = 64

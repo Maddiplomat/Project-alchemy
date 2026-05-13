@@ -45,25 +45,25 @@ func _ready() -> void:
 func _setup_animations() -> void:
 	var anim_lib := AnimationLibrary.new()
 	var scan_anim := Animation.new()
-	
+
 	# Ripple Scale
 	var scale_idx := scan_anim.add_track(Animation.TYPE_VALUE)
 	scan_anim.track_set_path(scale_idx, "ScannerToolVisuals/ScanRipple:scale")
 	scan_anim.track_insert_key(scale_idx, 0.0, Vector2.ZERO)
 	scan_anim.track_insert_key(scale_idx, 0.4, Vector2.ONE)
-	
+
 	# Ripple Alpha (fade out)
 	var alpha_idx := scan_anim.add_track(Animation.TYPE_VALUE)
 	scan_anim.track_set_path(alpha_idx, "ScannerToolVisuals/ScanRipple:modulate:a")
 	scan_anim.track_insert_key(alpha_idx, 0.0, 1.0)
 	scan_anim.track_insert_key(alpha_idx, 0.4, 0.0)
-	
+
 	# Visibility
 	var vis_idx := scan_anim.add_track(Animation.TYPE_VALUE)
 	scan_anim.track_set_path(vis_idx, "ScannerToolVisuals/ScanRipple:visible")
 	scan_anim.track_insert_key(vis_idx, 0.0, true)
 	scan_anim.track_insert_key(vis_idx, 0.4, false)
-	
+
 	anim_lib.add_animation("scan", scan_anim)
 	_anim.add_animation_library("", anim_lib)
 
@@ -107,28 +107,28 @@ func _begin_scan() -> void:
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
 	var results := _space_state.intersect_shape(query, 64)
-	
+
 	# Play visual ripple
 	_anim.play("scan")
-	
+
 	for hit in results:
 		var collider : Node = hit.get("collider")
 		if collider == null:
 			continue
-		
+
 		# walk up to find the Area2D root of an ElementPickup
 		var pickup_node := _find_element_pickup(collider)
 		if pickup_node == null or _active_panels.has(pickup_node):
 			continue
-			
+
 		var element_id : StringName = _resolve_element_id(pickup_node)
 		if element_id.is_empty():
 			continue
-			
+
 		var data := ElementDatabase.get_element(element_id)
 		if data.is_empty():
 			continue
-			
+
 		_spawn_panel(pickup_node, data)
 		_flash_element(pickup_node)
 
