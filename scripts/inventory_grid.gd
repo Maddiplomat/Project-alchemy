@@ -17,7 +17,7 @@ const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
 const SLOT_COUNT := 20
 const TOOLTIP_DELAY := 0.3
 const TOOLTIP_OFFSET := Vector2(18, 18)
-const CRAFTING_PULSE_ANIMATION_NAME := &"crafting_pulse"
+const CRAFTING_PULSE_ANIMATION_NAME := "crafting_pulse"
 const WEIGHT_NORMAL_COLOR := Color(0.45, 0.83, 0.61, 1.0)
 const WEIGHT_WARNING_COLOR := Color(0.95, 0.67, 0.29, 1.0)
 const WEIGHT_DANGER_COLOR := Color(0.89, 0.29, 0.24, 1.0)
@@ -541,7 +541,7 @@ func _setup_crafting_pulse_animation() -> void:
 	animation.track_insert_key(track, 0.0, Color(1.0, 1.0, 1.0, 0.2))
 	animation.track_insert_key(track, 0.6, Color(1.0, 1.0, 1.0, 1.0))
 	animation.track_insert_key(track, 1.2, Color(1.0, 1.0, 1.0, 0.2))
-	animation_library.add_animation(CRAFTING_PULSE_ANIMATION_NAME, animation)
+	animation_library.add_animation(String(CRAFTING_PULSE_ANIMATION_NAME), animation)
 	crafting_pulse_player.add_animation_library("", animation_library)
 
 func _get_item_color(item_id: String) -> Color:
