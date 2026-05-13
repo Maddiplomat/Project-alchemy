@@ -21,3 +21,12 @@ shape = SubResource("RectangleShape2D_solid")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
 shape = SubResource("RectangleShape2D_interaction")
+
+[node name="PromptLabel" type="Label" parent="."]
+visible = false
+offset_left = -76.0
+offset_top = -46.0
+offset_right = 76.0
+offset_bottom = -8.0
+text = "Press E to use Furnace"
+horizontal_alignment = 1
