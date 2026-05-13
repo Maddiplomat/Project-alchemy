@@ -20,6 +20,7 @@ shape = SubResource("RectangleShape2D_mdl7e")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1569599526]
 script = ExtResource("4_jmcn4")
+zoom = Vector2(3, 3)
 
 [node name="Visual" type="Sprite2D" parent="." unique_id=2108246815]
 texture_filter = 1
