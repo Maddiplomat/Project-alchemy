@@ -71,7 +71,7 @@ func _is_edge(coords: Vector2i) -> bool:
 
 
 func _is_spawn_area(coords: Vector2i) -> bool:
-	var spawn_coords := Vector2i(MAP_SIZE / 2)
+	var spawn_coords := Vector2i(MAP_SIZE.x >> 1, MAP_SIZE.y >> 1)
 	return abs(coords.x - spawn_coords.x) <= 2 and abs(coords.y - spawn_coords.y) <= 2
 
 
