@@ -1,7 +1,7 @@
 extends Node
 
 signal health_changed(current: int, max: int)
-signal player_died
+signal player_died(cause_of_death: StringName)
 signal status_effects_changed(status_effects: Array[StringName])
 
 const DAMAGE_TYPE_PHYSICAL := &"physical"
@@ -43,7 +43,7 @@ func take_damage(amount: int, type: StringName = DAMAGE_TYPE_PHYSICAL) -> void:
 			current_health = clampi(current_health - amount, 0, max_health)
 
 	if current_health <= 0:
-		die()
+		die(damage_type)
 		return
 
 	health_changed.emit(current_health, max_health)
@@ -63,7 +63,7 @@ func heal(amount: int) -> void:
 	GameManager.mark_dirty()
 
 
-func die() -> void:
+func die(cause_of_death: StringName = DAMAGE_TYPE_PHYSICAL) -> void:
 	if _is_dead:
 		return
 
@@ -71,7 +71,7 @@ func die() -> void:
 	current_health = 0
 	health_changed.emit(current_health, max_health)
 	GameManager.mark_dirty()
-	player_died.emit()
+	player_died.emit(cause_of_death)
 
 
 func reset_state() -> void:

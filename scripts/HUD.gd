@@ -10,6 +10,7 @@ const DEATH_OVERLAY_FADE_SECONDS := 1.0
 @onready var held_item_label: Label = $HeldItemContainer/HBoxContainer/ActiveItemLabel
 @onready var carry_vignette: ColorRect = $CarryVignette
 @onready var death_overlay: Panel = $DeathOverlay
+@onready var death_cause_label: Label = $DeathOverlay/CenterContainer/DialogPanel/VBoxContainer/CauseLabel
 @onready var retry_button: Button = $DeathOverlay/CenterContainer/DialogPanel/VBoxContainer/RetryButton
 @onready var quit_button: Button = $DeathOverlay/CenterContainer/DialogPanel/VBoxContainer/QuitButton
 
@@ -69,12 +70,13 @@ func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 	carry_vignette.color.a = overlay_alpha
 
 
-func _show_death_overlay() -> void:
+func _show_death_overlay(cause_of_death: StringName) -> void:
 	if _death_overlay_tween != null:
 		_death_overlay_tween.kill()
 
 	death_overlay.visible = true
 	death_overlay.modulate.a = 0.0
+	death_cause_label.text = "Cause of death: %s" % _format_cause_of_death(cause_of_death)
 	retry_button.disabled = true
 	quit_button.disabled = true
 	_death_overlay_tween = create_tween()
@@ -85,6 +87,7 @@ func _show_death_overlay() -> void:
 func _hide_death_overlay() -> void:
 	death_overlay.visible = false
 	death_overlay.modulate.a = 0.0
+	death_cause_label.text = "Cause of death: Unknown"
 	retry_button.disabled = false
 	quit_button.disabled = false
 
@@ -102,6 +105,22 @@ func _on_retry_button_pressed() -> void:
 func _on_quit_button_pressed() -> void:
 	GameManager.set_game_state(GameManager.GameState.MAIN_MENU)
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
+
+
+func _format_cause_of_death(cause_of_death: StringName) -> String:
+	match cause_of_death:
+		&"physical":
+			return "Physical damage"
+		&"burn":
+			return "Burn damage"
+		&"toxic":
+			return "Toxic exposure"
+		&"radiation":
+			return "Radiation exposure"
+		&"unknown", &"":
+			return "Unknown"
+		_:
+			return String(cause_of_death).replace("_", " ").capitalize()
 
 func _get_item_color(item_id: String) -> Color:
 	match item_id:

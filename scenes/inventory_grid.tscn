@@ -7,7 +7,7 @@ layer = 10
 script = ExtResource("1_pkvtp")
 
 [node name="InventoryPanel" type="Panel" parent="." unique_id=582636693]
-custom_minimum_size = Vector2(760, 440)
+custom_minimum_size = Vector2(760, 500)
 
 [node name="PanelContent" type="HBoxContainer" parent="InventoryPanel" unique_id=181028481]
 layout_mode = 0
@@ -28,25 +28,25 @@ custom_minimum_size = Vector2(256, 320)
 layout_mode = 2
 columns = 4
 
-[node name="WeightRow" type="HBoxContainer" parent="InventoryPanel/PanelContent/InventoryColumn"]
+[node name="WeightRow" type="HBoxContainer" parent="InventoryPanel/PanelContent/InventoryColumn" unique_id=1977411127]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="WeightBar" type="ProgressBar" parent="InventoryPanel/PanelContent/InventoryColumn/WeightRow"]
+[node name="WeightBar" type="ProgressBar" parent="InventoryPanel/PanelContent/InventoryColumn/WeightRow" unique_id=1679782331]
+modulate = Color(0.45, 0.83, 0.61, 1)
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0, 0, 0, 0)
 max_value = 20.0
 show_percentage = false
-modulate = Color(0.45, 0.83, 0.61, 1)
 
-[node name="WeightLabel" type="Label" parent="InventoryPanel/PanelContent/InventoryColumn/WeightRow"]
+[node name="WeightLabel" type="Label" parent="InventoryPanel/PanelContent/InventoryColumn/WeightRow" unique_id=234948455]
 custom_minimum_size = Vector2(96, 0)
 layout_mode = 2
+text = "0.0 / 20.0 kg"
 horizontal_alignment = 2
 vertical_alignment = 1
-text = "0.0 / 20.0 kg"
 
 [node name="CraftingPanel" type="PanelContainer" parent="InventoryPanel/PanelContent" unique_id=944136859]
 custom_minimum_size = Vector2(430, 0)
@@ -71,8 +71,8 @@ text = "Crafting"
 
 [node name="CraftingHint" type="Label" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent" unique_id=195734373]
 layout_mode = 2
-autowrap_mode = 3
 text = "Recipes appear here. Craft buttons enable automatically when the required materials are in your inventory."
+autowrap_mode = 3
 
 [node name="RecipesScroll" type="ScrollContainer" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent" unique_id=900397119]
 custom_minimum_size = Vector2(0, 300)
@@ -86,45 +86,33 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
+[node name="CraftingHighlight" type="Panel" parent="InventoryPanel/PanelContent/CraftingPanel" unique_id=1651295995]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="CraftingPulsePlayer" type="AnimationPlayer" parent="InventoryPanel/PanelContent/CraftingPanel" unique_id=1891137308]
+
+[node name="KeybindStrip" type="HBoxContainer" parent="InventoryPanel" unique_id=1814229381]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 434.0
+offset_right = 744.0
+offset_bottom = 466.0
+theme_override_constants/separation = 24
+
+[node name="InventoryKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1822337350]
+layout_mode = 2
+text = "Tab: open inventory"
+
+[node name="SelectKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1590047737]
+layout_mode = 2
+text = "1-9: select active item"
+
 [node name="TooltipPanel" type="Panel" parent="." unique_id=391146286]
 visible = false
 offset_right = 180.0
 offset_bottom = 96.0
 mouse_filter = 2
-
-[node name="OnboardingHint" type="PanelContainer" parent="." unique_id=196403517]
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -308.0
-offset_top = 88.0
-offset_right = -20.0
-offset_bottom = 188.0
-mouse_filter = 2
-
-[node name="MarginContainer" type="MarginContainer" parent="OnboardingHint" unique_id=727302170]
-layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 10
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 10
-
-[node name="HintContent" type="VBoxContainer" parent="OnboardingHint/MarginContainer" unique_id=134620724]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="TitleLabel" type="Label" parent="OnboardingHint/MarginContainer/HintContent" unique_id=118043295]
-layout_mode = 2
-theme_override_font_sizes/font_size = 15
-text = "Controls"
-
-[node name="InventoryHintLabel" type="Label" parent="OnboardingHint/MarginContainer/HintContent" unique_id=154494981]
-layout_mode = 2
-text = "Tab: open inventory"
-
-[node name="SelectHintLabel" type="Label" parent="OnboardingHint/MarginContainer/HintContent" unique_id=629159014]
-layout_mode = 2
-text = "1-9: select active item"
 
 [node name="MarginContainer" type="MarginContainer" parent="TooltipPanel" unique_id=272547761]
 layout_mode = 0

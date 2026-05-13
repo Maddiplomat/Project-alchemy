@@ -10,18 +10,14 @@ extends CanvasLayer
 @onready var tooltip_weight_label: Label = $TooltipPanel/MarginContainer/TooltipContent/WeightLabel
 @onready var tooltip_category_label: Label = $TooltipPanel/MarginContainer/TooltipContent/CategoryLabel
 @onready var tooltip_durability_label: Label = $TooltipPanel/MarginContainer/TooltipContent/DurabilityLabel
-@onready var onboarding_hint: PanelContainer = $OnboardingHint
-@onready var inventory_hint_label: Label = $OnboardingHint/MarginContainer/HintContent/InventoryHintLabel
-@onready var select_hint_label: Label = $OnboardingHint/MarginContainer/HintContent/SelectHintLabel
+@onready var crafting_highlight: Panel = $InventoryPanel/PanelContent/CraftingPanel/CraftingHighlight
+@onready var crafting_pulse_player: AnimationPlayer = $InventoryPanel/PanelContent/CraftingPanel/CraftingPulsePlayer
 
 const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
 const SLOT_COUNT := 20
 const TOOLTIP_DELAY := 0.3
 const TOOLTIP_OFFSET := Vector2(18, 18)
-const ONBOARDING_CONFIG_PATH := "user://onboarding_hints.cfg"
-const ONBOARDING_SECTION := "inventory_hints"
-const INVENTORY_HINT_KEY := "inventory_seen"
-const SELECT_HINT_KEY := "select_seen"
+const CRAFTING_PULSE_ANIMATION_NAME := &"crafting_pulse"
 const WEIGHT_NORMAL_COLOR := Color(0.45, 0.83, 0.61, 1.0)
 const WEIGHT_WARNING_COLOR := Color(0.95, 0.67, 0.29, 1.0)
 const WEIGHT_DANGER_COLOR := Color(0.89, 0.29, 0.24, 1.0)
@@ -37,13 +33,10 @@ var drag_ghost: TextureRect = null
 var hover_slot_index := -1
 var tooltip_slot_index := -1
 var tooltip_delay_timer: SceneTreeTimer = null
-var inventory_hint_seen := false
-var select_hint_seen := false
 var recipe_row_refs: Dictionary[StringName, Dictionary] = {}
 var _placeholder_textures := {}
 
 func _ready():
-	_load_onboarding_state()
 	for i in range(SLOT_COUNT):
 		var slot = SLOT_SCENE.instantiate()
 		grid.add_child(slot)
@@ -73,6 +66,7 @@ func _ready():
 	InventoryManager.held_item_changed.connect(func(_id): refresh_grid())
 	InventoryManager.weight_changed.connect(_on_weight_changed)
 	CraftingManager.crafted.connect(_on_item_crafted)
+	_setup_crafting_pulse_animation()
 	_build_recipe_rows()
 	refresh_grid()
 	_update_weight_display(InventoryManager.total_weight, InventoryManager.carry_capacity)
@@ -84,17 +78,14 @@ func _setup_panel():
 	panel.position = Vector2(vp_size.x, (vp_size.y - panel.size.y) / 2)
 	panel.visible = false
 	tooltip_panel.visible = false
-	_update_onboarding_hint()
 
 func _input(event):
 	if event.is_action_pressed("toggle_inventory"):
-		_mark_inventory_hint_seen()
 		toggle_inventory()
 	
 	# Hotkeys 1-9 for slots 0-8
 	for i in range(1, 10):
 		if event.is_action_pressed("slot_%d" % i):
-			_mark_select_hint_seen()
 			InventoryManager.select_slot(i - 1)
 			return
 
@@ -117,8 +108,10 @@ func toggle_inventory():
 		panel.visible = true
 		target_x = vp_size.x - panel.size.x - 50
 		refresh_grid()
+		_update_crafting_highlight()
 	else:
 		_hide_tooltip()
+		_stop_highlight()
 	
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -496,6 +489,58 @@ func _on_craft_pressed(recipe_id: StringName) -> void:
 
 func _on_item_crafted(_recipe_id: StringName) -> void:
 	refresh_grid()
+	_update_crafting_highlight()
+
+
+func _update_crafting_highlight() -> void:
+	if CraftingManager.first_craft_completed or not panel.visible or not CraftingManager.has_any_craftable_recipe():
+		_stop_highlight()
+		return
+	
+	_start_highlight()
+
+
+func _start_highlight() -> void:
+	if crafting_pulse_player.is_playing():
+		return
+	
+	crafting_highlight.visible = true
+	var style = StyleBoxFlat.new()
+	style.draw_center = false
+	style.border_width_left = 4
+	style.border_width_top = 4
+	style.border_width_right = 4
+	style.border_width_bottom = 4
+	style.border_color = CRAFT_READY_COLOR
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_right = 8
+	style.corner_radius_bottom_left = 8
+	crafting_highlight.add_theme_stylebox_override("panel", style)
+	crafting_highlight.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	crafting_pulse_player.play(CRAFTING_PULSE_ANIMATION_NAME)
+
+
+func _stop_highlight() -> void:
+	if crafting_pulse_player.is_playing():
+		crafting_pulse_player.stop()
+	crafting_highlight.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	crafting_highlight.visible = false
+
+
+func _setup_crafting_pulse_animation() -> void:
+	if crafting_pulse_player.has_animation(CRAFTING_PULSE_ANIMATION_NAME):
+		return
+
+	var animation := Animation.new()
+	animation.length = 1.2
+	animation.loop_mode = Animation.LOOP_LINEAR
+	var track := animation.add_track(Animation.TYPE_VALUE)
+	animation.track_set_path(track, NodePath("../CraftingHighlight:modulate"))
+	animation.track_insert_key(track, 0.0, Color(1.0, 1.0, 1.0, 0.2))
+	animation.track_insert_key(track, 0.6, Color(1.0, 1.0, 1.0, 1.0))
+	animation.track_insert_key(track, 1.2, Color(1.0, 1.0, 1.0, 0.2))
+	crafting_pulse_player.add_animation(CRAFTING_PULSE_ANIMATION_NAME, animation)
 
 func _get_item_color(item_id: String) -> Color:
 	match item_id:
@@ -524,38 +569,3 @@ func _get_placeholder_texture(item_id: String) -> Texture2D:
 	texture.height = int(ITEM_ICON_SIZE.y)
 	_placeholder_textures[item_id] = texture
 	return texture
-
-func _load_onboarding_state() -> void:
-	var config := ConfigFile.new()
-	var err := config.load(ONBOARDING_CONFIG_PATH)
-	if err != OK:
-		return
-	inventory_hint_seen = bool(config.get_value(ONBOARDING_SECTION, INVENTORY_HINT_KEY, false))
-	select_hint_seen = bool(config.get_value(ONBOARDING_SECTION, SELECT_HINT_KEY, false))
-
-func _save_onboarding_state() -> void:
-	var config := ConfigFile.new()
-	config.set_value(ONBOARDING_SECTION, INVENTORY_HINT_KEY, inventory_hint_seen)
-	config.set_value(ONBOARDING_SECTION, SELECT_HINT_KEY, select_hint_seen)
-	config.save(ONBOARDING_CONFIG_PATH)
-
-func _mark_inventory_hint_seen() -> void:
-	if inventory_hint_seen:
-		return
-	inventory_hint_seen = true
-	_save_onboarding_state()
-	_update_onboarding_hint()
-
-func _mark_select_hint_seen() -> void:
-	if select_hint_seen:
-		return
-	select_hint_seen = true
-	_save_onboarding_state()
-	_update_onboarding_hint()
-
-func _update_onboarding_hint() -> void:
-	if onboarding_hint == null:
-		return
-	inventory_hint_label.visible = not inventory_hint_seen
-	select_hint_label.visible = not select_hint_seen
-	onboarding_hint.visible = not inventory_hint_seen or not select_hint_seen

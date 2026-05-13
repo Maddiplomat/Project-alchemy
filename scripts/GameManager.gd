@@ -15,7 +15,7 @@ signal playtime_changed(playtime_seconds: int)
 
 signal player_health_changed(current_health: int, max_health: int)
 signal player_status_effects_changed(status_effects: Array[StringName])
-signal player_died
+signal player_died(cause_of_death: StringName)
 signal pause_changed(is_paused: bool)
 
 signal day_changed(day: int)
@@ -206,7 +206,7 @@ func add_playtime(seconds: int) -> void:
 		request_save(SaveTrigger.AUTO_TIMER)
 
 
-func set_player_health(value: int) -> void:
+func set_player_health(value: int, cause_of_death: StringName = &"unknown") -> void:
 	var clamped_health := clampi(value, 0, max_player_health)
 	if player_health == clamped_health:
 		return
@@ -216,7 +216,7 @@ func set_player_health(value: int) -> void:
 	mark_dirty()
 
 	if player_health <= 0:
-		player_died.emit()
+		player_died.emit(cause_of_death)
 		request_save(SaveTrigger.DEATH)
 		set_game_state(GameState.GAME_OVER)
 
@@ -229,7 +229,7 @@ func damage_player(amount: int) -> void:
 		player_health_system.take_damage(amount, &"physical")
 		return
 
-	set_player_health(player_health - amount)
+	set_player_health(player_health - amount, &"physical")
 
 
 func heal_player(amount: int) -> void:
@@ -308,12 +308,12 @@ func _on_bound_player_health_changed(current_health: int, maximum_health: int) -
 	_sync_player_health(current_health)
 
 
-func _on_bound_player_died() -> void:
+func _on_bound_player_died(cause_of_death: StringName) -> void:
 	if game_state == GameState.GAME_OVER:
 		return
 
 	request_save(SaveTrigger.DEATH)
-	player_died.emit()
+	player_died.emit(cause_of_death)
 	set_game_state(GameState.GAME_OVER)
 
 

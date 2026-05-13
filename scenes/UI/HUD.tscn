@@ -128,7 +128,7 @@ offset_right = 0.0
 offset_bottom = 0.0
 
 [node name="DialogPanel" type="Panel" parent="DeathOverlay/CenterContainer"]
-custom_minimum_size = Vector2(320, 220)
+custom_minimum_size = Vector2(320, 248)
 layout_mode = 2
 
 [node name="VBoxContainer" type="VBoxContainer" parent="DeathOverlay/CenterContainer/DialogPanel"]
@@ -151,9 +151,16 @@ theme_override_font_sizes/font_size = 30
 text = "You died"
 horizontal_alignment = 1
 
+[node name="CauseLabel" type="Label" parent="DeathOverlay/CenterContainer/DialogPanel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Cause of death: Unknown"
+horizontal_alignment = 1
+autowrap_mode = 3
+
 [node name="Body" type="Label" parent="DeathOverlay/CenterContainer/DialogPanel/VBoxContainer"]
 layout_mode = 2
-text = "Failure state is live. Reset before the chemistry chain gets meaner."
+text = "Recover, restock, and re-enter before the next mistake costs more."
 horizontal_alignment = 1
 autowrap_mode = 3
 
