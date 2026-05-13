@@ -2,6 +2,8 @@ extends Node
 
 signal crafted(recipe_id: StringName)
 
+var first_craft_completed := false
+
 
 func can_craft(recipe_id: StringName) -> bool:
 	var recipe := RecipeDatabase.get_recipe(recipe_id)
@@ -24,6 +26,13 @@ func can_craft(recipe_id: StringName) -> bool:
 	return InventoryManager.can_add_item(output_data, output_quantity)
 
 
+func has_any_craftable_recipe() -> bool:
+	for recipe_id in RecipeDatabase.get_all_recipes():
+		if can_craft(recipe_id):
+			return true
+	return false
+
+
 func craft(recipe_id: StringName) -> bool:
 	if not can_craft(recipe_id):
 		return false
@@ -38,6 +47,8 @@ func craft(recipe_id: StringName) -> bool:
 	var output_quantity: int = recipe.get(&"output", {}).get(&"qty", 0)
 	if not InventoryManager.add_item(output_data, output_quantity):
 		return false
+
+	first_craft_completed = true
 
 	crafted.emit(recipe_id)
 	return true
