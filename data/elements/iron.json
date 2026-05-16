@@ -8,7 +8,8 @@
   "properties": {
     "flammability": 0.0,
     "toxicity": 0.0,
-    "reactivity": 0.35
+    "reactivity": 0.4,
+    "melting_point": 1538
   },
   "carrier_risk": "low",
   "biome_spawn": [

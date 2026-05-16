@@ -1,0 +1,21 @@
+{
+  "id": "charcoal",
+  "symbol": "C+",
+  "display_name": "Charcoal",
+  "category": "organic",
+  "weight": 1.0,
+  "stress_multiplier": 1.0,
+  "properties": {
+    "flammability": 0.85,
+    "toxicity": 0.05,
+    "reactivity": 0.45,
+    "carbon_percentage": 0.85,
+    "fuel_value": 600
+  },
+  "carrier_risk": "low",
+  "biome_spawn": [
+    "starter_forest",
+    "iron_hills",
+    "deep_mines"
+  ]
+}

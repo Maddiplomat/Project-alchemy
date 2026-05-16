@@ -12,6 +12,10 @@ script = ExtResource("1_518e3")
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1982428542]
 texture_filter = 1
 
+[node name="GlowSprite2D" type="Sprite2D" parent="." unique_id=847210311]
+visible = false
+texture_filter = 1
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=929658224]
 shape = SubResource("RectangleShape2D_vpl80")
 

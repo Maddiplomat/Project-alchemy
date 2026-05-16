@@ -15,6 +15,10 @@ signal hover_ended(slot_index: int)
 const DURABILITY_HIGH_COLOR := Color(0.45, 0.83, 0.35, 1.0)
 const DURABILITY_MID_COLOR := Color(0.92, 0.76, 0.25, 1.0)
 const DURABILITY_LOW_COLOR := Color(0.85, 0.23, 0.2, 1.0)
+const SLOT_BG_DEFAULT := Color(0.18, 0.19, 0.22, 0.96)
+const SLOT_BORDER_DEFAULT := Color(0.32, 0.34, 0.38, 1.0)
+const SLOT_BG_CHARCOAL := Color(0.08, 0.08, 0.09, 0.98)
+const SLOT_BORDER_CHARCOAL := Color(0.20, 0.20, 0.22, 1.0)
 
 var slot_index := -1
 var current_item_id := ""
@@ -38,6 +42,7 @@ func _ready() -> void:
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 	resized.connect(_on_resized)
+	_apply_background_style()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -110,6 +115,8 @@ func _apply_visual_state() -> void:
 		durability_bar_fill.size.x = durability_bar_background.size.x * durability_ratio
 		durability_bar_fill.size.y = durability_bar_background.size.y
 
+	_apply_background_style()
+
 func _on_resized() -> void:
 	if durability_bar_background.visible:
 		durability_bar_fill.size.x = durability_bar_background.size.x * _get_durability_ratio()
@@ -129,8 +136,26 @@ func _get_item_color(item_id: String) -> Color:
 			return Color.GRAY
 		"iron":
 			return Color.SILVER
+		"charcoal":
+			return Color(0.17, 0.18, 0.20, 1.0)
 		_:
 			return Color.WHITE
+
+
+func _apply_background_style() -> void:
+	var is_charcoal_slot := has_item() and current_item_id == "charcoal"
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = SLOT_BG_CHARCOAL if is_charcoal_slot else SLOT_BG_DEFAULT
+	panel_style.border_color = SLOT_BORDER_CHARCOAL if is_charcoal_slot else SLOT_BORDER_DEFAULT
+	panel_style.border_width_left = 1
+	panel_style.border_width_top = 1
+	panel_style.border_width_right = 1
+	panel_style.border_width_bottom = 1
+	panel_style.corner_radius_top_left = 6
+	panel_style.corner_radius_top_right = 6
+	panel_style.corner_radius_bottom_right = 6
+	panel_style.corner_radius_bottom_left = 6
+	add_theme_stylebox_override("panel", panel_style)
 
 func _get_icon_color() -> Color:
 	var base_color := _get_item_color(current_item_id)

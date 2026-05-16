@@ -1,8 +1,7 @@
 extends StaticBody2D
 
 const FURNACE_UI_SCENE := preload("res://scenes/UI/FurnaceUI.tscn")
-const WOOD_HEAT_POTENTIAL := 200.0
-const WOOD_BURN_DURATION := 30.0
+const DEFAULT_FUEL_BURN_DURATION := 30.0
 const PASSIVE_COOL_RATE := 15.0
 
 signal player_entered_range
@@ -30,6 +29,11 @@ var _player: Node
 var _furnace_ui
 var _remaining_heat_potential := 0.0
 var _remaining_burn_time := 0.0
+var _fuel_slot_state: Dictionary = {
+	&"item_id": &"",
+	&"quantity": 0,
+	&"unit_fuel_value": 0.0,
+}
 var _input_slots: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
 	&"input_b": {&"item_id": &"", &"quantity": 0},
@@ -78,11 +82,19 @@ func add_fuel(element_id: StringName, qty: int) -> bool:
 	if qty <= 0:
 		return false
 
-	if element_id != &"wood":
+	var fuel_value := ChemistryEngine.get_fuel_value(String(element_id))
+	if fuel_value <= 0.0:
 		return false
 
-	_remaining_heat_potential += WOOD_HEAT_POTENTIAL * float(qty)
-	_remaining_burn_time += WOOD_BURN_DURATION * float(qty)
+	var active_fuel_id: StringName = _fuel_slot_state.get(&"item_id", &"")
+	if not active_fuel_id.is_empty() and active_fuel_id != element_id:
+		return false
+
+	_remaining_heat_potential += fuel_value * float(qty)
+	_remaining_burn_time += DEFAULT_FUEL_BURN_DURATION * float(qty)
+	_fuel_slot_state[&"item_id"] = element_id
+	_fuel_slot_state[&"quantity"] = int(_fuel_slot_state.get(&"quantity", 0)) + qty
+	_fuel_slot_state[&"unit_fuel_value"] = fuel_value
 	_sync_heat_state()
 	return true
 
@@ -120,6 +132,21 @@ func get_input(slot_name: StringName) -> Dictionary:
 	if not _input_slots.has(slot_name):
 		return {}
 	return _input_slots[slot_name].duplicate(true)
+
+
+func get_fuel_state() -> Dictionary:
+	if not _has_active_fuel():
+		return {&"item_id": &"", &"quantity": 0}
+
+	var fuel_item_id: StringName = _fuel_slot_state.get(&"item_id", &"")
+	var unit_fuel_value := float(_fuel_slot_state.get(&"unit_fuel_value", 0.0))
+	if fuel_item_id.is_empty() or unit_fuel_value <= 0.0:
+		return {&"item_id": &"", &"quantity": 0}
+
+	return {
+		&"item_id": fuel_item_id,
+		&"quantity": maxi(1, int(ceil(fuel_level / unit_fuel_value))),
+	}
 
 
 func open_ui() -> void:
@@ -243,6 +270,11 @@ func _sync_heat_state() -> void:
 	fuel_level = 0.0
 	fuel_rate = 0.0
 	target_temp = 0.0
+	_fuel_slot_state = {
+		&"item_id": &"",
+		&"quantity": 0,
+		&"unit_fuel_value": 0.0,
+	}
 	set_lit(false)
 
 
@@ -264,10 +296,11 @@ func _sync_ui() -> void:
 			int(input_b.get(&"quantity", 0))
 		)
 	if _furnace_ui.has_method("set_fuel_slot"):
-		if fuel_level > 0.0:
-			_furnace_ui.set_fuel_slot(&"wood", maxi(1, int(ceil(fuel_level / WOOD_HEAT_POTENTIAL))))
-		else:
-			_furnace_ui.set_fuel_slot(&"", 0)
+		var fuel_state := get_fuel_state()
+		_furnace_ui.set_fuel_slot(
+			fuel_state.get(&"item_id", &""),
+			int(fuel_state.get(&"quantity", 0))
+		)
 
 
 func _update_sprite() -> void:

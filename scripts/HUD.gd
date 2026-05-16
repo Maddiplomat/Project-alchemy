@@ -130,6 +130,8 @@ func _get_item_color(item_id: String) -> Color:
 			return Color.GRAY
 		"iron":
 			return Color.SILVER
+		"charcoal":
+			return Color(0.17, 0.18, 0.20, 1.0)
 		_:
 			return Color.WHITE
 

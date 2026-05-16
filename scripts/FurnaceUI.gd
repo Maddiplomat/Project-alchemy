@@ -5,7 +5,6 @@ signal smelt_requested
 
 const MAX_TEMPERATURE := 2000.0
 const DANGER_TEMPERATURE := 1600.0
-const WOOD_HEAT_POTENTIAL := 200.0
 const PANEL_BG_COLOR := Color(0.10, 0.11, 0.13, 0.96)
 const PANEL_BORDER_COLOR := Color(0.28, 0.30, 0.34, 1.0)
 const SLOT_BG_COLOR := Color(0.14, 0.16, 0.19, 1.0)
@@ -167,9 +166,7 @@ func set_input_slot_b(item_id: StringName, quantity: int) -> void:
 
 
 func set_fuel_slot(item_id: StringName, quantity: int) -> void:
-	if quantity > 0 and item_id != &"wood":
-		return
-	_set_slot(&"fuel", item_id, quantity, "Wood only")
+	_set_slot(&"fuel", item_id, quantity, "Fuel item")
 
 
 func set_probable_output(item_id: StringName, quantity: int) -> void:
@@ -323,7 +320,7 @@ func _reset_slots() -> void:
 
 	_apply_slot_visual(&"input_a", &"", 0, "No material")
 	_apply_slot_visual(&"input_b", &"", 0, "No material")
-	_apply_slot_visual(&"fuel", &"", 0, "Wood only")
+	_apply_slot_visual(&"fuel", &"", 0, "Fuel item")
 	_apply_slot_visual(&"output", &"", 0, "Awaiting recipe")
 	_update_smelt_button_state()
 
@@ -346,15 +343,14 @@ func _pull_state_from_furnace() -> void:
 		_set_slot(&"input_a", input_a.get(&"item_id", &""), int(input_a.get(&"quantity", 0)), "No material")
 		_set_slot(&"input_b", input_b.get(&"item_id", &""), int(input_b.get(&"quantity", 0)), "No material")
 
-	var fuel_potential = _bound_furnace.get("fuel_level")
-	if fuel_potential == null:
+	if not _bound_furnace.has_method("get_fuel_state"):
 		return
 
-	var remaining_potential := maxf(float(fuel_potential), 0.0)
-	if remaining_potential <= 0.0:
-		set_fuel_slot(&"", 0)
-	else:
-		set_fuel_slot(&"wood", maxi(1, int(ceil(remaining_potential / WOOD_HEAT_POTENTIAL))))
+	var fuel_state: Dictionary = _bound_furnace.get_fuel_state()
+	set_fuel_slot(
+		fuel_state.get(&"item_id", &""),
+		int(fuel_state.get(&"quantity", 0))
+	)
 
 
 func _set_slot(slot_id: StringName, item_id: StringName, quantity: int, empty_label: String) -> void:
@@ -405,17 +401,19 @@ func _refresh_probable_output() -> void:
 		return
 
 	if fuel_qty <= 0:
-		show_output_placeholder("Load wood fuel")
+		show_output_placeholder("Load fuel")
 		return
 
 	if input_b_qty <= 0 and input_a_id == &"wood":
-		_slot_state[&"output"] = {&"item_id": &"pure_carbon", &"quantity": maxi(1, input_a_qty)}
-		_apply_slot_visual(&"output", &"pure_carbon", maxi(1, input_a_qty), "Awaiting recipe")
+		var output_id := _get_charred_output_id()
+		_slot_state[&"output"] = {&"item_id": output_id, &"quantity": maxi(1, input_a_qty)}
+		_apply_slot_visual(&"output", output_id, maxi(1, input_a_qty), "Awaiting recipe")
 		return
 
 	if input_a_qty <= 0 and input_b_id == &"wood":
-		_slot_state[&"output"] = {&"item_id": &"pure_carbon", &"quantity": maxi(1, input_b_qty)}
-		_apply_slot_visual(&"output", &"pure_carbon", maxi(1, input_b_qty), "Awaiting recipe")
+		var output_id := _get_charred_output_id()
+		_slot_state[&"output"] = {&"item_id": output_id, &"quantity": maxi(1, input_b_qty)}
+		_apply_slot_visual(&"output", output_id, maxi(1, input_b_qty), "Awaiting recipe")
 		return
 
 	show_output_placeholder("Unknown output")
@@ -424,6 +422,12 @@ func _refresh_probable_output() -> void:
 func _update_smelt_button_state() -> void:
 	var output_state: Dictionary = _slot_state.get(&"output", {})
 	smelt_button.disabled = int(output_state.get(&"quantity", 0)) <= 0
+
+
+func _get_charred_output_id() -> StringName:
+	if ElementDatabase.has_element(&"charcoal"):
+		return &"charcoal"
+	return &"pure_carbon"
 
 
 func _update_temperature_display(current_temp: float) -> void:
@@ -460,7 +464,11 @@ func _can_accept_drop_to_slot(slot_id: StringName, item_id: StringName, qty: int
 	if qty <= 0 or item_id.is_empty():
 		return false
 	if slot_id == &"fuel":
-		return item_id == &"wood"
+		var fuel_state: Dictionary = _slot_state.get(slot_id, {})
+		var current_fuel_id: StringName = fuel_state.get(&"item_id", &"")
+		return ChemistryEngine.get_fuel_value(String(item_id)) > 0.0 and (
+			current_fuel_id.is_empty() or current_fuel_id == item_id
+		)
 	if ElementDatabase.get_element(item_id).is_empty():
 		return false
 
@@ -490,6 +498,8 @@ func _get_item_color(item_id: String) -> Color:
 			return Color.SILVER
 		"pure_carbon":
 			return Color(0.29, 0.31, 0.35, 1.0)
+		"charcoal":
+			return Color(0.18, 0.19, 0.21, 1.0)
 		"primitive_axe":
 			return Color(0.76, 0.82, 0.88, 1.0)
 		_:

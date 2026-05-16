@@ -585,6 +585,8 @@ func _get_item_color(item_id: String) -> Color:
 			return Color.GRAY
 		"iron":
 			return Color.SILVER
+		"charcoal":
+			return Color(0.17, 0.18, 0.20, 1.0)
 		"primitive_axe":
 			return Color(0.76, 0.82, 0.88, 1.0)
 		_:
