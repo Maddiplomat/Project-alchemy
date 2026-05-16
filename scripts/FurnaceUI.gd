@@ -17,6 +17,8 @@ const BUTTON_IDLE_COLOR := Color(0.28, 0.30, 0.35, 1.0)
 const BUTTON_HOVER_COLOR := Color(0.36, 0.39, 0.45, 1.0)
 const BUTTON_PRESSED_COLOR := Color(0.22, 0.24, 0.28, 1.0)
 const SMELT_BUTTON_COLOR := Color(0.79, 0.47, 0.18, 1.0)
+const PANEL_VIEW_SCALE := 0.46
+const PANEL_MARGIN := Vector2(24.0, 24.0)
 
 @onready var root: Control = $Root
 @onready var panel: PanelContainer = $Root/PanelContainer
@@ -45,6 +47,7 @@ var _slot_state: Dictionary[StringName, Dictionary] = {
 func _ready() -> void:
 	close_button.pressed.connect(_on_close_pressed)
 	smelt_button.pressed.connect(_on_smelt_pressed)
+	get_viewport().size_changed.connect(_layout_panel)
 
 	_slot_refs = {
 		&"input_a": _build_slot_ref("InputSlotA"),
@@ -56,6 +59,7 @@ func _ready() -> void:
 	_apply_theme()
 	_reset_slots()
 	_update_temperature_display(0.0)
+	_layout_panel()
 	root.visible = false
 	_is_initialized = true
 
@@ -77,6 +81,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func open_ui() -> void:
 	_is_open = true
+	_layout_panel()
 	root.visible = true
 	close_button.grab_focus()
 
@@ -93,6 +98,23 @@ func is_open() -> bool:
 	return _is_open
 
 
+func _layout_panel() -> void:
+	if panel == null:
+		return
+
+	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	panel.pivot_offset = Vector2.ZERO
+	panel.size = panel.custom_minimum_size
+	panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
+
+	var viewport_size := get_viewport().get_visible_rect().size
+	var scaled_size := panel.custom_minimum_size * PANEL_VIEW_SCALE
+	panel.position = Vector2(
+		PANEL_MARGIN.x,
+		maxf(PANEL_MARGIN.y, (viewport_size.y - scaled_size.y) * 0.5)
+	)
+
+
 func bind_furnace(furnace: Node) -> void:
 	var callback := Callable(self, "_on_furnace_temp_changed")
 	if is_instance_valid(_bound_furnace) and _bound_furnace.is_connected("temp_changed", callback):
@@ -106,6 +128,34 @@ func bind_furnace(furnace: Node) -> void:
 
 	if _is_initialized:
 		call_deferred("_pull_state_from_furnace")
+
+
+func can_accept_inventory_drop(global_mouse_position: Vector2, item_id: StringName, qty: int) -> bool:
+	if not _is_open or not _is_initialized or not is_instance_valid(_bound_furnace):
+		return false
+
+	var slot_id := _get_drop_slot_id(global_mouse_position)
+	if slot_id.is_empty():
+		return false
+
+	return _can_accept_drop_to_slot(slot_id, item_id, qty)
+
+
+func handle_inventory_drop(global_mouse_position: Vector2, item_id: StringName, qty: int) -> bool:
+	if not can_accept_inventory_drop(global_mouse_position, item_id, qty):
+		return false
+
+	var slot_id := _get_drop_slot_id(global_mouse_position)
+	if slot_id.is_empty():
+		return false
+
+	if not _bound_furnace.has_method("set_input"):
+		return false
+
+	var accepted = _bound_furnace.set_input(slot_id, item_id, qty)
+	if accepted:
+		_pull_state_from_furnace()
+	return accepted
 
 
 func set_input_slot_a(item_id: StringName, quantity: int) -> void:
@@ -191,7 +241,7 @@ func _apply_theme() -> void:
 		slot_style.corner_radius_bottom_left = 10
 		slot_panel.add_theme_stylebox_override("panel", slot_style)
 
-		var slot_visual: PanelContainer = _slot_refs[slot_id][&"visual"]
+		var slot_visual: Panel = _slot_refs[slot_id][&"visual"]
 		var visual_style := StyleBoxFlat.new()
 		visual_style.bg_color = Color(0.09, 0.10, 0.12, 1.0)
 		visual_style.border_width_left = 1
@@ -290,6 +340,12 @@ func _pull_state_from_furnace() -> void:
 	if temp_value != null:
 		_update_temperature_display(float(temp_value))
 
+	if _bound_furnace.has_method("get_input"):
+		var input_a: Dictionary = _bound_furnace.get_input(&"input_a")
+		var input_b: Dictionary = _bound_furnace.get_input(&"input_b")
+		_set_slot(&"input_a", input_a.get(&"item_id", &""), int(input_a.get(&"quantity", 0)), "No material")
+		_set_slot(&"input_b", input_b.get(&"item_id", &""), int(input_b.get(&"quantity", 0)), "No material")
+
 	var fuel_potential = _bound_furnace.get("fuel_level")
 	if fuel_potential == null:
 		return
@@ -385,6 +441,32 @@ func _update_temperature_display(current_temp: float) -> void:
 	fill_style.bg_color = GAUGE_DANGER_COLOR if is_danger else GAUGE_NORMAL_COLOR
 	temperature_gauge.add_theme_stylebox_override("fill", fill_style)
 	danger_label.visible = is_danger
+
+
+func _get_drop_slot_id(global_mouse_position: Vector2) -> StringName:
+	for slot_id: StringName in [&"input_a", &"input_b", &"fuel"]:
+		var slot_ref: Dictionary = _slot_refs.get(slot_id, {})
+		if slot_ref.is_empty():
+			continue
+
+		var slot_visual: Control = slot_ref.get(&"visual")
+		if slot_visual != null and slot_visual.get_global_rect().has_point(global_mouse_position):
+			return slot_id
+
+	return &""
+
+
+func _can_accept_drop_to_slot(slot_id: StringName, item_id: StringName, qty: int) -> bool:
+	if qty <= 0 or item_id.is_empty():
+		return false
+	if slot_id == &"fuel":
+		return item_id == &"wood"
+	if ElementDatabase.get_element(item_id).is_empty():
+		return false
+
+	var slot_state: Dictionary = _slot_state.get(slot_id, {})
+	var current_item_id: StringName = slot_state.get(&"item_id", &"")
+	return current_item_id.is_empty() or current_item_id == item_id
 
 
 func _get_item_label(item_id: StringName) -> String:

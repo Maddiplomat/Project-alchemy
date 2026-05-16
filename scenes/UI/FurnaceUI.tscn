@@ -104,7 +104,7 @@ custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="SlotVisual" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer/IconHolder"]
+[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer/IconHolder"]
 custom_minimum_size = Vector2(92, 92)
 layout_mode = 2
 
@@ -169,7 +169,7 @@ custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="SlotVisual" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer/IconHolder"]
+[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer/IconHolder"]
 custom_minimum_size = Vector2(92, 92)
 layout_mode = 2
 
@@ -234,7 +234,7 @@ custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="SlotVisual" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer/IconHolder"]
+[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer/IconHolder"]
 custom_minimum_size = Vector2(92, 92)
 layout_mode = 2
 
@@ -381,7 +381,7 @@ custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="SlotVisual" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer/IconHolder"]
+[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer/IconHolder"]
 custom_minimum_size = Vector2(92, 92)
 layout_mode = 2
 

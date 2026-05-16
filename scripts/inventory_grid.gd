@@ -207,6 +207,16 @@ func _finish_drag(drop_slot_index: int) -> void:
 
 	if drop_slot_index >= 0 and drop_slot_index < grid.get_child_count() and drop_slot_index != from_slot:
 		InventoryManager.swap_slots(from_slot, drop_slot_index)
+		return
+
+	if from_slot < 0:
+		return
+
+	var dragged_item := InventoryManager.get_slot_item(from_slot)
+	if dragged_item.is_empty():
+		return
+
+	_try_drop_to_furnace(dragged_item)
 
 func _get_slot_index_at_position(global_mouse_position: Vector2) -> int:
 	for i in range(grid.get_child_count()):
@@ -223,6 +233,29 @@ func _clear_drag_ghost() -> void:
 
 func _is_dragging() -> bool:
 	return drag_origin_index != -1 and drag_ghost != null
+
+
+func _try_drop_to_furnace(dragged_item: Dictionary) -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return false
+
+	var furnace_ui := current_scene.find_child("FurnaceUI", true, false)
+	if furnace_ui == null:
+		return false
+	if not furnace_ui.has_method("handle_inventory_drop"):
+		return false
+
+	var item_id := StringName(str(dragged_item.get("id", "")))
+	var quantity := int(dragged_item.get("quantity", 0))
+	if item_id.is_empty() or quantity <= 0:
+		return false
+
+	var mouse_position := get_viewport().get_mouse_position()
+	if not furnace_ui.handle_inventory_drop(mouse_position, item_id, quantity):
+		return false
+
+	return InventoryManager.remove_item(item_id, quantity)
 
 func _on_slot_hover_started(slot_index: int) -> void:
 	if _is_dragging():
