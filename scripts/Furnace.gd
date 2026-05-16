@@ -1,15 +1,21 @@
 extends StaticBody2D
 
 const FURNACE_UI_SCENE := preload("res://scenes/UI/FurnaceUI.tscn")
+const WOOD_HEAT_POTENTIAL := 200.0
+const WOOD_BURN_DURATION := 30.0
+const PASSIVE_COOL_RATE := 15.0
 
 signal player_entered_range
 signal player_exited_range
 signal interaction_started
 signal interaction_ended
+signal temp_changed(current_temp: float)
 
 @export var is_lit := false
 @export var fuel_level := 0.0
 @export var current_temp := 0.0
+@export var target_temp := 0.0
+@export var fuel_rate := 0.0
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var interaction_area: Area2D = $InteractionArea
@@ -22,6 +28,8 @@ var _is_interacting := false
 var _interact_locked_until_release := false
 var _player: Node
 var _furnace_ui
+var _remaining_heat_potential := 0.0
+var _remaining_burn_time := 0.0
 
 
 func _ready() -> void:
@@ -44,9 +52,35 @@ func _process(_delta: float) -> void:
 			_start_interaction()
 
 
+func _physics_process(delta: float) -> void:
+	var remaining_delta := delta
+
+	if _has_active_fuel():
+		remaining_delta = _apply_fuel_heat(delta)
+
+	if remaining_delta > 0.0 and not _has_active_fuel():
+		_apply_cooling(remaining_delta)
+
+	_sync_heat_state()
+	temp_changed.emit(current_temp)
+
+
 func set_lit(value: bool) -> void:
 	is_lit = value
 	_update_sprite()
+
+
+func add_fuel(element_id: StringName, qty: int) -> bool:
+	if qty <= 0:
+		return false
+
+	if element_id != &"wood":
+		return false
+
+	_remaining_heat_potential += WOOD_HEAT_POTENTIAL * float(qty)
+	_remaining_burn_time += WOOD_BURN_DURATION * float(qty)
+	_sync_heat_state()
+	return true
 
 
 func open_ui() -> void:
@@ -57,6 +91,8 @@ func open_ui() -> void:
 		_player.pause_input()
 	_ensure_ui()
 	if _furnace_ui != null:
+		if _furnace_ui.has_method("bind_furnace"):
+			_furnace_ui.bind_furnace(self)
 		_furnace_ui.open_ui()
 	interaction_started.emit()
 
@@ -67,7 +103,7 @@ func close_ui() -> void:
 	_is_interacting = false
 	_interact_locked_until_release = true
 	_show_prompt(_player_in_range)
-	if _furnace_ui != null and _furnace_ui.visible:
+	if _furnace_ui != null:
 		_furnace_ui.close_ui()
 	if is_instance_valid(_player) and _player.has_method("resume_input"):
 		_player.resume_input()
@@ -121,10 +157,53 @@ func _ensure_ui() -> void:
 	_furnace_ui = FURNACE_UI_SCENE.instantiate()
 	ui_parent.add_child(_furnace_ui)
 	_furnace_ui.ui_closed.connect(_on_ui_closed)
+	if _furnace_ui.has_method("bind_furnace"):
+		_furnace_ui.bind_furnace(self)
 
 
 func _on_ui_closed() -> void:
 	close_ui()
+
+
+func _has_active_fuel() -> bool:
+	return _remaining_heat_potential > 0.0 and _remaining_burn_time > 0.0
+
+
+func _apply_fuel_heat(delta: float) -> float:
+	var burn_step := minf(delta, _remaining_burn_time)
+	if burn_step <= 0.0:
+		return delta
+
+	fuel_rate = _remaining_heat_potential / _remaining_burn_time
+	target_temp = current_temp + _remaining_heat_potential
+
+	var rise_amount := fuel_rate * burn_step
+	current_temp = move_toward(current_temp, target_temp, rise_amount)
+	_remaining_heat_potential = maxf(0.0, _remaining_heat_potential - rise_amount)
+	_remaining_burn_time = maxf(0.0, _remaining_burn_time - burn_step)
+
+	return delta - burn_step
+
+
+func _apply_cooling(delta: float) -> void:
+	current_temp = maxf(0.0, current_temp - (PASSIVE_COOL_RATE * delta))
+
+
+func _sync_heat_state() -> void:
+	fuel_level = _remaining_heat_potential
+
+	if _has_active_fuel():
+		fuel_rate = _remaining_heat_potential / _remaining_burn_time
+		target_temp = current_temp + _remaining_heat_potential
+		set_lit(true)
+		return
+
+	_remaining_heat_potential = 0.0
+	_remaining_burn_time = 0.0
+	fuel_level = 0.0
+	fuel_rate = 0.0
+	target_temp = 0.0
+	set_lit(false)
 
 
 func _update_sprite() -> void:
