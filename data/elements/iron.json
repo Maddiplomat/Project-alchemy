@@ -1,0 +1,19 @@
+{
+  "id": "iron",
+  "symbol": "Fe",
+  "display_name": "Iron",
+  "category": "metal",
+  "weight": 2.8,
+  "stress_multiplier": 1.2,
+  "properties": {
+    "flammability": 0.0,
+    "toxicity": 0.0,
+    "reactivity": 0.4,
+    "melting_point": 1538
+  },
+  "carrier_risk": "low",
+  "biome_spawn": [
+    "starter_forest",
+    "iron_hills"
+  ]
+}

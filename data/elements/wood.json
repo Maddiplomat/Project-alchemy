@@ -1,0 +1,19 @@
+{
+  "id": "wood",
+  "symbol": "C",
+  "display_name": "Wood",
+  "category": "organic",
+  "weight": 0.8,
+  "stress_multiplier": 0.8,
+  "properties": {
+    "flammability": 0.9,
+    "toxicity": 0.0,
+    "reactivity": 0.2,
+    "carbon_pct_when_burned": 0.12,
+    "fuel_value": 200
+  },
+  "carrier_risk": "low",
+  "biome_spawn": [
+    "starter_forest"
+  ]
+}
