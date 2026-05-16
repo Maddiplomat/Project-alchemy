@@ -14,24 +14,33 @@ func evaluate_reaction(element_a: String, element_b: String, ratio_b_pct: float,
 	}
 
 	# Identify if this is the Fe + C (Iron + Carbon) reaction
-	# Support both internal IDs and chemical symbols for flexibility
+	# Use ElementDatabase to resolve IDs and properties
+	var data_a := ElementDatabase.get_element(element_a)
+	var data_b := ElementDatabase.get_element(element_b)
+	
+	if data_a.is_empty() or data_b.is_empty():
+		return result
+
+	var symbol_a: String = data_a.get("symbol", "")
+	var symbol_b: String = data_b.get("symbol", "")
+
 	var carbon_ratio := 0.0
 	var is_valid_pair := false
 
 	# Case 1: A is Iron, B is Carbon
-	if (element_a.to_lower() == "iron" or element_a == "Fe") and \
-	   (element_b.to_lower() == "pure_carbon" or element_b.to_lower() == "carbon" or element_b == "C" or element_b == "C+"):
+	if symbol_a == "Fe" and (symbol_b == "C" or symbol_b == "C+"):
 		is_valid_pair = true
 		carbon_ratio = ratio_b_pct
 	# Case 2: A is Carbon, B is Iron
-	elif (element_b.to_lower() == "iron" or element_b == "Fe") and \
-		 (element_a.to_lower() == "pure_carbon" or element_a.to_lower() == "carbon" or element_a == "C" or element_a == "C+"):
+	elif symbol_b == "Fe" and (symbol_a == "C" or symbol_a == "C+"):
 		is_valid_pair = true
 		carbon_ratio = 100.0 - ratio_b_pct
 
 	if is_valid_pair:
-		# Use carbon_ratio for the rest of the logic
+		# For Prototype 3, the thresholds are still specific to the Fe+C reaction tier table.
+		# However, we now identify the reaction by chemical symbols from the Database.
 		var ratio := carbon_ratio
+		
 		# TEMPERATURE OVERRIDE: Explosion
 		if temp > 1600.0:
 			result.output_id = "explosion"
