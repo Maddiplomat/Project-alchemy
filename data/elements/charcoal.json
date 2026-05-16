@@ -1,0 +1,17 @@
+{
+  "id": "charcoal",
+  "symbol": "C+",
+  "display_name": "Charcoal",
+  "category": "organic",
+  "weight": 0.4,
+  "stress_multiplier": 0.5,
+  "properties": {
+    "flammability": 0.8,
+    "toxicity": 0.0,
+    "reactivity": 0.6,
+    "carbon_pct_when_burned": 0.85,
+    "fuel_value": 600
+  },
+  "carrier_risk": "low",
+  "biome_spawn": []
+}
