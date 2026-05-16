@@ -17,14 +17,34 @@ func evaluate_reaction(element_a: String, element_b: String, ratio_b_pct: float,
 	var data_a := ElementDatabase.get_element(element_a)
 	var data_b := ElementDatabase.get_element(element_b)
 	
-	if data_a.is_empty() or data_b.is_empty():
+	if data_a.is_empty():
 		return result
 
 	var symbol_a: String = data_a.get("symbol", "")
-	var symbol_b: String = data_b.get("symbol", "")
+	var symbol_b: String = data_b.get("symbol", "") if not data_b.is_empty() else ""
+
+	# --- SINGLE ELEMENT REACTIONS (Carbonization, etc.) ---
+	if data_b.is_empty() or element_a == element_b:
+		# Wood carbonization: 400°C - 600°C
+		if symbol_a == "C" and data_a.get("id") == "wood":
+			if temp >= 400.0 and temp <= 700.0:
+				result.output_id = "charcoal"
+				result.quality = 1.0
+				result.tier = "intermediate"
+				result.notes = "Wood carbonized into high-purity Charcoal."
+			elif temp > 700.0:
+				result.output_id = "coke_slag"
+				result.notes = "Wood burnt too fast, leaving only useless ash/slag."
+			
+			if result.output_id != null:
+				reaction_evaluated.emit(result)
+				return result
+
+	# --- TWO ELEMENT REACTIONS (Steel, etc.) ---
+	if data_b.is_empty():
+		return result
 
 	# Resolve actual carbon ratio based on element properties
-	# Some elements (like Wood) aren't pure carbon, they have a carbon_pct_when_burned property
 	var is_valid_pair := false
 	var ratio := 0.0
 
@@ -33,7 +53,6 @@ func evaluate_reaction(element_a: String, element_b: String, ratio_b_pct: float,
 		var symbol = data.get("symbol", "")
 		var props = data.get("properties", {})
 		if symbol == "C" or symbol == "C+":
-			# Pure carbon source (or 100% if no pct property found)
 			return mass_pct * props.get("carbon_pct_when_burned", 1.0)
 		return 0.0
 
@@ -51,9 +70,6 @@ func evaluate_reaction(element_a: String, element_b: String, ratio_b_pct: float,
 			ratio = carbon_contrib
 
 	if is_valid_pair:
-		# For Prototype 3, the thresholds are still specific to the Fe+C reaction tier table.
-		# However, we now identify the reaction by chemical symbols and scale by properties.
-		
 		# TEMPERATURE OVERRIDE: Explosion
 		if temp > 1600.0:
 			result.output_id = "explosion"
