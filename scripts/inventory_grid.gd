@@ -4,6 +4,7 @@ extends CanvasLayer
 @onready var grid = $InventoryPanel/PanelContent/InventoryColumn/Grid
 @onready var weight_bar: ProgressBar = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightBar
 @onready var weight_label: Label = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightLabel
+@onready var select_keybind_label: Label = $InventoryPanel/KeybindStrip/SelectKeybindLabel
 @onready var recipes_list: VBoxContainer = $InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/RecipesScroll/RecipesList
 @onready var tooltip_panel: Panel = $TooltipPanel
 @onready var tooltip_name_label: Label = $TooltipPanel/MarginContainer/TooltipContent/NameLabel
@@ -27,9 +28,13 @@ const RECIPE_ROW_BG_COLOR := Color(0.14, 0.16, 0.19, 0.9)
 const RECIPE_ROW_BORDER_COLOR := Color(0.29, 0.31, 0.36, 1.0)
 const RECIPE_DURABILITY_COLOR := Color(0.75, 0.86, 0.43, 1.0)
 const ITEM_ICON_SIZE := Vector2(34, 34)
+const SELECT_KEYBIND_BASE_TEXT := "1-9: select active item"
+const DRAG_QUANTITY_HINT_TEXT := "Wheel while dragging: adjust qty"
 
 var drag_origin_index := -1
 var drag_ghost: TextureRect = null
+var drag_source_quantity := 0
+var drag_quantity := 0
 var hover_slot_index := -1
 var tooltip_slot_index := -1
 var tooltip_delay_timer: SceneTreeTimer = null
@@ -70,6 +75,7 @@ func _ready():
 	_build_recipe_rows()
 	refresh_grid()
 	_update_weight_display(InventoryManager.total_weight, InventoryManager.carry_capacity)
+	_update_drag_hint_label()
 
 	call_deferred("_setup_panel")
 
@@ -82,6 +88,16 @@ func _setup_panel():
 func _input(event):
 	if event.is_action_pressed("toggle_inventory"):
 		toggle_inventory()
+
+	if _is_dragging() and event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_adjust_drag_quantity(1 if not event.shift_pressed else 5)
+			get_viewport().set_input_as_handled()
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_adjust_drag_quantity(-1 if not event.shift_pressed else -5)
+			get_viewport().set_input_as_handled()
+			return
 
 	# Hotkeys 1-9 for slots 0-8
 	for i in range(1, 10):
@@ -173,8 +189,11 @@ func _on_slot_drag_started(slot_index: int) -> void:
 
 	_hide_tooltip()
 	drag_origin_index = slot_index
+	drag_source_quantity = int(InventoryManager.get_slot_item(slot_index).get("quantity", 0))
+	drag_quantity = drag_source_quantity
 	slot.set_drag_origin(true)
 	_create_drag_ghost(slot)
+	_update_drag_hint_label()
 
 func _on_slot_drag_released(slot_index: int) -> void:
 	if _is_dragging():
@@ -195,12 +214,30 @@ func _create_drag_ghost(source_slot) -> void:
 	drag_ghost.z_index = 4096
 	drag_ghost.size = source_slot.get_global_rect().size
 	drag_ghost.global_position = get_viewport().get_mouse_position() - (drag_ghost.size / 2.0)
+
+	var quantity_badge := Label.new()
+	quantity_badge.name = "QuantityBadge"
+	quantity_badge.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	quantity_badge.offset_left = 6.0
+	quantity_badge.offset_top = -24.0
+	quantity_badge.offset_right = -6.0
+	quantity_badge.offset_bottom = -4.0
+	quantity_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	quantity_badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	quantity_badge.add_theme_color_override("font_color", Color(0.97, 0.97, 0.97, 1.0))
+	quantity_badge.add_theme_font_size_override("font_size", 14)
+	drag_ghost.add_child(quantity_badge)
+
 	add_child(drag_ghost)
+	_update_drag_ghost_quantity()
 
 func _finish_drag(drop_slot_index: int) -> void:
 	var from_slot := drag_origin_index
 	_clear_drag_ghost()
 	drag_origin_index = -1
+	drag_source_quantity = 0
+	drag_quantity = 0
+	_update_drag_hint_label()
 
 	if from_slot >= 0 and from_slot < grid.get_child_count():
 		grid.get_child(from_slot).set_drag_origin(false)
@@ -235,6 +272,36 @@ func _is_dragging() -> bool:
 	return drag_origin_index != -1 and drag_ghost != null
 
 
+func _adjust_drag_quantity(delta: int) -> void:
+	if not _is_dragging() or drag_source_quantity <= 1:
+		return
+
+	drag_quantity = clampi(drag_quantity + delta, 1, drag_source_quantity)
+	_update_drag_ghost_quantity()
+
+
+func _update_drag_ghost_quantity() -> void:
+	if drag_ghost == null:
+		return
+
+	var quantity_badge := drag_ghost.get_node_or_null("QuantityBadge") as Label
+	if quantity_badge == null:
+		return
+
+	quantity_badge.text = "x%d" % drag_quantity
+
+
+func _update_drag_hint_label() -> void:
+	if select_keybind_label == null:
+		return
+
+	select_keybind_label.text = (
+		"%s | %s" % [SELECT_KEYBIND_BASE_TEXT, DRAG_QUANTITY_HINT_TEXT]
+		if _is_dragging() and drag_source_quantity > 1 else
+		SELECT_KEYBIND_BASE_TEXT
+	)
+
+
 func _try_drop_to_furnace(dragged_item: Dictionary) -> bool:
 	var current_scene := get_tree().current_scene
 	if current_scene == null:
@@ -247,7 +314,7 @@ func _try_drop_to_furnace(dragged_item: Dictionary) -> bool:
 		return false
 
 	var item_id := StringName(str(dragged_item.get("id", "")))
-	var quantity := int(dragged_item.get("quantity", 0))
+	var quantity := mini(drag_quantity, int(dragged_item.get("quantity", 0)))
 	if item_id.is_empty() or quantity <= 0:
 		return false
 

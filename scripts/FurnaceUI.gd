@@ -5,6 +5,8 @@ signal smelt_requested
 
 const MAX_TEMPERATURE := 2000.0
 const DANGER_TEMPERATURE := 1600.0
+const CARBONISATION_OPTIMAL_MIN := 400.0
+const CARBONISATION_OPTIMAL_MAX := 700.0
 const PANEL_BG_COLOR := Color(0.10, 0.11, 0.13, 0.96)
 const PANEL_BORDER_COLOR := Color(0.28, 0.30, 0.34, 1.0)
 const SLOT_BG_COLOR := Color(0.14, 0.16, 0.19, 1.0)
@@ -12,6 +14,8 @@ const SLOT_BORDER_COLOR := Color(0.34, 0.37, 0.41, 1.0)
 const SLOT_EMPTY_COLOR := Color(0.52, 0.55, 0.60, 1.0)
 const GAUGE_NORMAL_COLOR := Color(0.95, 0.62, 0.22, 1.0)
 const GAUGE_DANGER_COLOR := Color(0.89, 0.29, 0.24, 1.0)
+const CARBONISATION_GOOD_COLOR := Color(0.34, 0.82, 0.45, 1.0)
+const CARBONISATION_SLAG_COLOR := Color(0.89, 0.29, 0.24, 1.0)
 const BUTTON_IDLE_COLOR := Color(0.28, 0.30, 0.35, 1.0)
 const BUTTON_HOVER_COLOR := Color(0.36, 0.39, 0.45, 1.0)
 const BUTTON_PRESSED_COLOR := Color(0.22, 0.24, 0.28, 1.0)
@@ -26,14 +30,26 @@ const PANEL_MARGIN := Vector2(24.0, 24.0)
 @onready var close_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/CloseButton
 @onready var smelt_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/SmeltButton
 @onready var action_hint_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ActionHintLabel
+@onready var mode_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ActionLabel
+@onready var temperature_column_box: VBoxContainer = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer
+@onready var gauge_frame: Control = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame
 @onready var temp_readout_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/TemperatureReadout
 @onready var danger_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/DangerLabel
+@onready var danger_zone: ColorRect = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame/DangerZone
+@onready var danger_line: ColorRect = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame/DangerLine
 @onready var temperature_gauge: ProgressBar = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame/TemperatureGauge
 
 var _is_open := false
 var _is_initialized := false
 var _bound_furnace: Node
+var carbonisation_mode := false
+var _last_reaction_result: Dictionary = {}
 var _placeholder_textures := {}
+var ratio_container: VBoxContainer
+var ratio_slider: HSlider
+var ratio_value_label: Label
+var carbon_slag_zone: ColorRect
+var carbon_optimal_zone: ColorRect
 var _slot_refs: Dictionary[StringName, Dictionary] = {}
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
@@ -44,8 +60,10 @@ var _slot_state: Dictionary[StringName, Dictionary] = {
 
 
 func _ready() -> void:
+	_ensure_dynamic_ui_nodes()
 	close_button.pressed.connect(_on_close_pressed)
 	smelt_button.pressed.connect(_on_smelt_pressed)
+	ratio_slider.value_changed.connect(_on_ratio_slider_changed)
 	get_viewport().size_changed.connect(_layout_panel)
 
 	_slot_refs = {
@@ -57,6 +75,8 @@ func _ready() -> void:
 
 	_apply_theme()
 	_reset_slots()
+	_update_ratio_label(ratio_slider.value)
+	_update_mode_state(false)
 	_update_temperature_display(0.0)
 	_layout_panel()
 	root.visible = false
@@ -80,6 +100,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func open_ui() -> void:
 	_is_open = true
+	_update_mode_state(_should_use_carbonisation_mode())
 	_layout_panel()
 	root.visible = true
 	close_button.grab_focus()
@@ -184,7 +205,12 @@ func _on_close_pressed() -> void:
 
 
 func _on_smelt_pressed() -> void:
+	_evaluate_smelt_request()
 	smelt_requested.emit()
+
+
+func _on_ratio_slider_changed(value: float) -> void:
+	_update_ratio_label(value)
 
 
 func _on_furnace_temp_changed(current_temp: float) -> void:
@@ -280,6 +306,8 @@ func _apply_theme() -> void:
 	summary_label.add_theme_color_override("font_color", Color(0.72, 0.74, 0.79, 1.0))
 	temp_readout_label.add_theme_color_override("font_color", GAUGE_NORMAL_COLOR)
 	action_hint_label.add_theme_color_override("font_color", Color(0.72, 0.74, 0.79, 1.0))
+	mode_label.add_theme_color_override("font_color", Color(0.93, 0.94, 0.96, 1.0))
+	ratio_value_label.add_theme_color_override("font_color", Color(0.72, 0.74, 0.79, 1.0))
 	danger_label.add_theme_color_override("font_color", GAUGE_DANGER_COLOR)
 
 
@@ -322,6 +350,7 @@ func _reset_slots() -> void:
 	_apply_slot_visual(&"input_b", &"", 0, "No material")
 	_apply_slot_visual(&"fuel", &"", 0, "Fuel item")
 	_apply_slot_visual(&"output", &"", 0, "Awaiting recipe")
+	_update_mode_state(false)
 	_update_smelt_button_state()
 
 
@@ -351,6 +380,7 @@ func _pull_state_from_furnace() -> void:
 		fuel_state.get(&"item_id", &""),
 		int(fuel_state.get(&"quantity", 0))
 	)
+	_update_mode_state(_should_use_carbonisation_mode())
 
 
 func _set_slot(slot_id: StringName, item_id: StringName, quantity: int, empty_label: String) -> void:
@@ -395,6 +425,7 @@ func _refresh_probable_output() -> void:
 	var input_a_qty := int(input_a.get(&"quantity", 0))
 	var input_b_qty := int(input_b.get(&"quantity", 0))
 	var fuel_qty := int(fuel.get(&"quantity", 0))
+	_update_mode_state(_should_use_carbonisation_mode())
 
 	if input_a_qty <= 0 and input_b_qty <= 0:
 		show_output_placeholder("Awaiting recipe")
@@ -420,8 +451,11 @@ func _refresh_probable_output() -> void:
 
 
 func _update_smelt_button_state() -> void:
-	var output_state: Dictionary = _slot_state.get(&"output", {})
-	smelt_button.disabled = int(output_state.get(&"quantity", 0)) <= 0
+	var input_a: Dictionary = _slot_state.get(&"input_a", {})
+	var input_b: Dictionary = _slot_state.get(&"input_b", {})
+	var input_a_qty := int(input_a.get(&"quantity", 0))
+	var input_b_qty := int(input_b.get(&"quantity", 0))
+	smelt_button.disabled = input_a_qty <= 0 if carbonisation_mode else (input_a_qty <= 0 or input_b_qty <= 0)
 
 
 func _get_charred_output_id() -> StringName:
@@ -435,16 +469,30 @@ func _update_temperature_display(current_temp: float) -> void:
 		return
 
 	var clamped_temp := clampf(current_temp, 0.0, MAX_TEMPERATURE)
-	var is_danger := clamped_temp >= DANGER_TEMPERATURE
-
 	temperature_gauge.value = clamped_temp
 	temp_readout_label.text = "%d°C" % int(round(clamped_temp))
-	temp_readout_label.add_theme_color_override("font_color", GAUGE_DANGER_COLOR if is_danger else GAUGE_NORMAL_COLOR)
 
 	var fill_style: StyleBoxFlat = temperature_gauge.get_theme_stylebox("fill").duplicate()
-	fill_style.bg_color = GAUGE_DANGER_COLOR if is_danger else GAUGE_NORMAL_COLOR
+	if carbonisation_mode:
+		var is_slag := clamped_temp > CARBONISATION_OPTIMAL_MAX
+		var is_optimal := clamped_temp >= CARBONISATION_OPTIMAL_MIN and clamped_temp <= CARBONISATION_OPTIMAL_MAX
+		var fill_color := GAUGE_NORMAL_COLOR
+		if is_slag:
+			fill_color = CARBONISATION_SLAG_COLOR
+		elif is_optimal:
+			fill_color = CARBONISATION_GOOD_COLOR
+		fill_style.bg_color = fill_color
+		temp_readout_label.add_theme_color_override("font_color", fill_color)
+		danger_label.text = "400-700°C makes Charcoal | >700°C makes Slag"
+		danger_label.visible = true
+	else:
+		var is_danger := clamped_temp >= DANGER_TEMPERATURE
+		fill_style.bg_color = GAUGE_DANGER_COLOR if is_danger else GAUGE_NORMAL_COLOR
+		temp_readout_label.add_theme_color_override("font_color", GAUGE_DANGER_COLOR if is_danger else GAUGE_NORMAL_COLOR)
+		danger_label.text = "Danger above 1600°C"
+		danger_label.visible = is_danger
+
 	temperature_gauge.add_theme_stylebox_override("fill", fill_style)
-	danger_label.visible = is_danger
 
 
 func _get_drop_slot_id(global_mouse_position: Vector2) -> StringName:
@@ -500,6 +548,8 @@ func _get_item_color(item_id: String) -> Color:
 			return Color(0.29, 0.31, 0.35, 1.0)
 		"charcoal":
 			return Color(0.18, 0.19, 0.21, 1.0)
+		"slag":
+			return Color(0.43, 0.18, 0.16, 1.0)
 		"primitive_axe":
 			return Color(0.76, 0.82, 0.88, 1.0)
 		_:
@@ -523,3 +573,168 @@ func _get_placeholder_texture(item_id: String) -> Texture2D:
 	texture.height = 96
 	_placeholder_textures[item_id] = texture
 	return texture
+
+
+func _evaluate_smelt_request() -> void:
+	var input_a: Dictionary = _slot_state.get(&"input_a", {})
+	var input_b: Dictionary = _slot_state.get(&"input_b", {})
+	var input_a_qty := int(input_a.get(&"quantity", 0))
+	var input_b_qty := int(input_b.get(&"quantity", 0))
+	var input_a_id: StringName = input_a.get(&"item_id", &"")
+	var input_b_id: StringName = input_b.get(&"item_id", &"")
+	var current_temp := 0.0
+	if is_instance_valid(_bound_furnace):
+		current_temp = float(_bound_furnace.get("current_temp"))
+
+	_update_mode_state(input_b_qty <= 0)
+
+	if carbonisation_mode:
+		var carbonisation_result := ChemistryEngine.evaluate_reaction("wood", null, 0.0, current_temp)
+		_last_reaction_result = carbonisation_result
+		if input_a_qty <= 0:
+			show_output_placeholder("Load wood into Input A")
+			action_hint_label.text = "Carbonisation mode needs wood in Input A."
+			return
+		_apply_reaction_result(carbonisation_result, input_a_qty)
+		return
+
+	if input_a_qty <= 0 or input_b_qty <= 0:
+		show_output_placeholder("Load two materials")
+		action_hint_label.text = "Alloy mode needs both input slots filled."
+		return
+
+	var alloy_result := ChemistryEngine.evaluate_reaction(
+		String(input_a_id),
+		String(input_b_id),
+		ratio_slider.value,
+		current_temp
+	)
+	_last_reaction_result = alloy_result
+	_apply_reaction_result(alloy_result, mini(input_a_qty, input_b_qty))
+
+
+func _apply_reaction_result(result: Dictionary, quantity: int) -> void:
+	var output_id := StringName(str(result.get("output_id", "")))
+	var notes := str(result.get("notes", ""))
+	action_hint_label.text = notes if not notes.is_empty() else "Reaction evaluated."
+
+	if output_id.is_empty():
+		show_output_placeholder(notes if not notes.is_empty() else "No reaction")
+		return
+
+	var output_quantity := maxi(quantity, 1)
+	_slot_state[&"output"] = {&"item_id": output_id, &"quantity": output_quantity}
+	_apply_slot_visual(&"output", output_id, output_quantity, "Awaiting recipe")
+	_update_smelt_button_state()
+
+
+func _update_mode_state(is_carbonisation: bool) -> void:
+	carbonisation_mode = is_carbonisation
+	if not _is_initialized:
+		return
+
+	mode_label.text = "Carbonisation mode" if carbonisation_mode else "CONTROL"
+	ratio_container.visible = not carbonisation_mode
+	danger_zone.visible = not carbonisation_mode
+	danger_line.visible = not carbonisation_mode
+	carbon_slag_zone.visible = carbonisation_mode
+	carbon_optimal_zone.visible = carbonisation_mode
+	summary_label.text = (
+		"Single-input wood carbonisation. Hold 400-700°C for charcoal; above 700°C burns into slag."
+		if carbonisation_mode else
+		"Load two materials, tune the B ratio, feed fuel, and watch the heat to preview the probable result."
+	)
+	action_hint_label.text = (
+		"Single-input run: Slot B is empty, so the furnace is in carbonisation mode."
+		if carbonisation_mode else
+		"Combine two inputs, adjust the B ratio, and smelt to evaluate the alloy result."
+	)
+	_update_temperature_display(_get_current_temperature())
+
+
+func _should_use_carbonisation_mode() -> bool:
+	var input_b: Dictionary = _slot_state.get(&"input_b", {})
+	return int(input_b.get(&"quantity", 0)) <= 0
+
+
+func _update_ratio_label(value: float) -> void:
+	ratio_value_label.text = "B Mix %d%%" % int(round(value))
+
+
+func _get_current_temperature() -> float:
+	if is_instance_valid(_bound_furnace):
+		return float(_bound_furnace.get("current_temp"))
+	return 0.0
+
+
+func _ensure_dynamic_ui_nodes() -> void:
+	ratio_container = temperature_column_box.get_node_or_null("RatioContainer") as VBoxContainer
+	if ratio_container == null:
+		ratio_container = VBoxContainer.new()
+		ratio_container.name = "RatioContainer"
+		ratio_container.add_theme_constant_override("separation", 4)
+
+		var ratio_title := Label.new()
+		ratio_title.name = "RatioTitleLabel"
+		ratio_title.text = "RATIO"
+		ratio_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ratio_title.add_theme_font_size_override("font_size", 13)
+		ratio_container.add_child(ratio_title)
+
+		ratio_slider = HSlider.new()
+		ratio_slider.name = "RatioSlider"
+		ratio_slider.min_value = 0.0
+		ratio_slider.max_value = 100.0
+		ratio_slider.step = 5.0
+		ratio_slider.value = 50.0
+		ratio_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ratio_container.add_child(ratio_slider)
+
+		ratio_value_label = Label.new()
+		ratio_value_label.name = "RatioValueLabel"
+		ratio_value_label.text = "B Mix 50%"
+		ratio_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ratio_container.add_child(ratio_value_label)
+
+		temperature_column_box.add_child(ratio_container)
+	else:
+		ratio_slider = ratio_container.get_node("RatioSlider") as HSlider
+		ratio_value_label = ratio_container.get_node("RatioValueLabel") as Label
+
+	carbon_slag_zone = gauge_frame.get_node_or_null("CarbonSlagZone") as ColorRect
+	if carbon_slag_zone == null:
+		carbon_slag_zone = ColorRect.new()
+		carbon_slag_zone.name = "CarbonSlagZone"
+		carbon_slag_zone.visible = false
+		carbon_slag_zone.anchor_right = 1.0
+		carbon_slag_zone.anchor_bottom = 0.65
+		carbon_slag_zone.offset_left = 28.0
+		carbon_slag_zone.offset_top = 6.0
+		carbon_slag_zone.offset_right = -28.0
+		carbon_slag_zone.offset_bottom = -2.0
+		carbon_slag_zone.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		carbon_slag_zone.color = Color(0.89, 0.29, 0.24, 0.24)
+		gauge_frame.add_child(carbon_slag_zone)
+
+	carbon_optimal_zone = gauge_frame.get_node_or_null("CarbonOptimalZone") as ColorRect
+	if carbon_optimal_zone == null:
+		carbon_optimal_zone = ColorRect.new()
+		carbon_optimal_zone.name = "CarbonOptimalZone"
+		carbon_optimal_zone.visible = false
+		carbon_optimal_zone.anchor_top = 0.65
+		carbon_optimal_zone.anchor_right = 1.0
+		carbon_optimal_zone.anchor_bottom = 0.8
+		carbon_optimal_zone.offset_left = 28.0
+		carbon_optimal_zone.offset_top = 2.0
+		carbon_optimal_zone.offset_right = -28.0
+		carbon_optimal_zone.offset_bottom = -2.0
+		carbon_optimal_zone.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		carbon_optimal_zone.grow_vertical = Control.GROW_DIRECTION_BOTH
+		carbon_optimal_zone.color = Color(0.34, 0.82, 0.45, 0.28)
+		gauge_frame.add_child(carbon_optimal_zone)
+
+	gauge_frame.move_child(danger_zone, 0)
+	gauge_frame.move_child(carbon_slag_zone, 1)
+	gauge_frame.move_child(carbon_optimal_zone, 2)
+	gauge_frame.move_child(temperature_gauge, 3)
+	gauge_frame.move_child(danger_line, 4)

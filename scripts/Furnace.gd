@@ -198,9 +198,9 @@ func _on_body_exited(body: Node) -> void:
 		player_exited_range.emit()
 
 
-func _show_prompt(show: bool) -> void:
+func _show_prompt(should_show: bool) -> void:
 	if prompt_label:
-		prompt_label.visible = show
+		prompt_label.visible = should_show
 
 
 func _hide_prompt() -> void:

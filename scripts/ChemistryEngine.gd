@@ -5,7 +5,7 @@ extends Node
 
 signal reaction_evaluated(result: Dictionary)
 
-func evaluate_reaction(element_a: String, element_b: String, ratio_b_pct: float, temp: float) -> Dictionary:
+func evaluate_reaction(element_a, element_b, ratio_b_pct: float, temp: float) -> Dictionary:
 	var result = {
 		"output_id": null,
 		"quality": 0.0,
@@ -13,12 +13,19 @@ func evaluate_reaction(element_a: String, element_b: String, ratio_b_pct: float,
 		"notes": ""
 	}
 
-	var element_a_data := _get_element_data(element_a)
-	var element_b_data := _get_element_data(element_b)
-	var is_iron_a := _is_iron_source(element_a, element_a_data)
-	var is_iron_b := _is_iron_source(element_b, element_b_data)
-	var carbon_pct_a := get_carbon_percentage(element_a)
-	var carbon_pct_b := get_carbon_percentage(element_b)
+	var normalized_a := _normalize_element_ref(element_a)
+	var normalized_b := _normalize_element_ref(element_b)
+	if _is_carbonisation_request(normalized_a, normalized_b):
+		result = _evaluate_carbonisation(temp)
+		reaction_evaluated.emit(result)
+		return result
+
+	var element_a_data := _get_element_data(normalized_a)
+	var element_b_data := _get_element_data(normalized_b)
+	var is_iron_a := _is_iron_source(normalized_a, element_a_data)
+	var is_iron_b := _is_iron_source(normalized_b, element_b_data)
+	var carbon_pct_a := get_carbon_percentage(normalized_a)
+	var carbon_pct_b := get_carbon_percentage(normalized_b)
 	var carbon_ratio := 0.0
 	var is_valid_pair := false
 
@@ -71,7 +78,7 @@ func evaluate_reaction(element_a: String, element_b: String, ratio_b_pct: float,
 	return result
 
 
-func get_carbon_percentage(element_ref: String) -> float:
+func get_carbon_percentage(element_ref) -> float:
 	var element_data := _get_element_data(element_ref)
 	if element_data.is_empty():
 		return 0.0
@@ -84,7 +91,7 @@ func get_carbon_percentage(element_ref: String) -> float:
 	)
 
 
-func get_fuel_value(element_ref: String) -> float:
+func get_fuel_value(element_ref) -> float:
 	var element_data := _get_element_data(element_ref)
 	if element_data.is_empty():
 		return 0.0
@@ -93,8 +100,8 @@ func get_fuel_value(element_ref: String) -> float:
 	return maxf(float(properties.get(&"fuel_value", 0.0)), 0.0)
 
 
-func _get_element_data(element_ref: String) -> Dictionary:
-	var normalized_ref := element_ref.strip_edges()
+func _get_element_data(element_ref) -> Dictionary:
+	var normalized_ref := _normalize_element_ref(element_ref)
 	if normalized_ref.is_empty():
 		return {}
 
@@ -117,3 +124,41 @@ func _is_iron_source(element_ref: String, element_data: Dictionary) -> bool:
 
 	var normalized_ref := element_ref.to_lower()
 	return normalized_ref == "iron" or normalized_ref == "fe"
+
+
+func _normalize_element_ref(element_ref) -> String:
+	if element_ref == null:
+		return ""
+	return str(element_ref).strip_edges()
+
+
+func _is_carbonisation_request(element_a: String, element_b: String) -> bool:
+	if not element_b.is_empty():
+		return false
+
+	var normalized_a := element_a.to_lower()
+	return normalized_a == "wood" or normalized_a == "c"
+
+
+func _evaluate_carbonisation(temp: float) -> Dictionary:
+	var result := {
+		"output_id": null,
+		"quality": 0.0,
+		"tier": "unknown",
+		"notes": ""
+	}
+
+	if temp < 400.0:
+		result.notes = "Heat too low for carbonisation (400°C-700°C for charcoal)"
+	elif temp <= 700.0:
+		result.output_id = "charcoal"
+		result.quality = 1.0
+		result.tier = "optimal"
+		result.notes = "Carbonisation stable: wood chars into charcoal"
+	else:
+		result.output_id = "slag"
+		result.quality = 0.0
+		result.tier = "waste"
+		result.notes = "Overburned: carbon collapses into slag"
+
+	return result
