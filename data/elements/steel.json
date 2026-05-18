@@ -1,0 +1,20 @@
+{
+  "id": "steel",
+  "symbol": "St",
+  "display_name": "Steel",
+  "category": "metal",
+  "weight": 3.0,
+  "stress_multiplier": 1.5,
+  "properties": {
+    "flammability": 0.0,
+    "toxicity": 0.0,
+    "reactivity": 0.2,
+    "melting_point": 1480.0,
+    "conductivity": 0.6,
+    "radiation": 0.0
+  },
+  "carrier_risk": "none",
+  "biome_spawn": [],
+  "environmental_hint": "Gleaming, hard alloy with ideal carbon content — a true discovery.",
+  "primary_use": "Weapons, armour, and advanced crafting. Triggers Discovery Journal entry."
+}

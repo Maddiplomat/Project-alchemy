@@ -1,6 +1,6 @@
 {
   "id": "charcoal",
-  "symbol": "C+",
+  "symbol": "C*",
   "display_name": "Charcoal",
   "category": "organic",
   "weight": 1.0,
@@ -15,9 +15,7 @@
     "fuel_value": 600
   },
   "carrier_risk": "low",
-  "biome_spawn": [
-    "starter_forest",
-    "iron_hills",
-    "deep_mines"
-  ]
+  "biome_spawn": ["starter_forest", "iron_hills", "deep_mines"],
+  "environmental_hint": "Black, porous carbon produced by controlled wood burning.",
+  "primary_use": "High-grade fuel and steel alloying agent."
 }

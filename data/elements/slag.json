@@ -1,0 +1,19 @@
+{
+  "id": "slag",
+  "symbol": "Sg",
+  "display_name": "Slag",
+  "category": "mineral",
+  "weight": 1.2,
+  "stress_multiplier": 1.0,
+  "properties": {
+    "flammability": 0.0,
+    "toxicity": 0.1,
+    "reactivity": 0.05,
+    "conductivity": 0.0,
+    "radiation": 0.0
+  },
+  "carrier_risk": "none",
+  "biome_spawn": [],
+  "environmental_hint": "Glassy, porous waste left after overburned reactions.",
+  "primary_use": "Useless byproduct — logs failed attempt in the Discovery Journal."
+}

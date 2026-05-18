@@ -614,44 +614,247 @@ func _evaluate_smelt_request() -> void:
 
 	_update_mode_state(input_b_qty <= 0)
 
+	# ── CARBONISATION PATH ───────────────────────────────────────────────────
 	if carbonisation_mode:
-		var carbonisation_result := ChemistryEngine.evaluate_reaction("wood", null, 0.0, current_temp)
-		_last_reaction_result = carbonisation_result
-		if input_a_qty <= 0:
-			show_output_placeholder("Load wood into Input A")
-			action_hint_label.text = "Carbonisation mode needs wood in Input A."
+		if input_a_qty <= 0 or input_a_id != &"wood":
+			show_output_placeholder("Load Wood into Input A")
+			action_hint_label.text = "Carbonisation mode needs Wood in Input A."
 			return
-		_apply_reaction_result(carbonisation_result, input_a_qty)
+
+		# Validate temperature range 400–700°C
+		if current_temp < CARBONISATION_OPTIMAL_MIN:
+			show_output_placeholder("Heat too low")
+			action_hint_label.text = "Need 400–700°C for charcoal, >700°C gives Slag."
+			return
+
+		var carb_result := ChemistryEngine.evaluate_reaction("wood", null, 0.0, current_temp)
+		_last_reaction_result = carb_result
+
+		# Consume Wood from Slot A
+		var consumed_a := _consume_furnace_slot(&"input_a", input_a_id, input_a_qty)
+		var inputs_log := [{"item_id": input_a_id, "quantity": consumed_a}]
+
+		_apply_reaction_result(carb_result, consumed_a, inputs_log, current_temp)
 		return
 
+	# ── SMELTING PATH ────────────────────────────────────────────────────────
 	if input_a_qty <= 0 or input_b_qty <= 0:
 		show_output_placeholder("Load two materials")
-		action_hint_label.text = "Alloy mode needs both input slots filled."
+		action_hint_label.text = "Smelting mode needs both input slots filled."
 		return
 
+	# Temperature >1600°C → explosion regardless of inputs
+	if current_temp > DANGER_TEMPERATURE:
+		var explosion_result := {
+			"output_id": "explosion",
+			"quality": 0.0,
+			"tier": "danger",
+			"notes": "Temperature exceeded 1600°C — EXPLOSION! Radius 2 tiles.",
+		}
+		_last_reaction_result = explosion_result
+		var inputs_log := [
+			{"item_id": input_a_id, "quantity": input_a_qty},
+			{"item_id": input_b_id, "quantity": input_b_qty},
+		]
+		_consume_furnace_slot(&"input_a", input_a_id, input_a_qty)
+		_consume_furnace_slot(&"input_b", input_b_id, input_b_qty)
+		_apply_reaction_result(explosion_result, 0, inputs_log, current_temp)
+		return
+
+	# Normal smelting: validate 1200–1600°C
+	if current_temp < 1200.0:
+		show_output_placeholder("Heat too low for smelting")
+		action_hint_label.text = "Smelting requires 1200–1600°C."
+		return
+
+	var source_info := _get_active_carbon_source_info()
 	var alloy_result := ChemistryEngine.evaluate_reaction(
 		String(input_a_id),
 		String(input_b_id),
-		_get_effective_b_ratio_from_slider(_get_active_carbon_source_info()),
+		_get_effective_b_ratio_from_slider(source_info),
 		current_temp
 	)
 	_last_reaction_result = alloy_result
-	_apply_reaction_result(alloy_result, mini(input_a_qty, input_b_qty))
+
+	# Consume both inputs from furnace
+	var qty_used := mini(input_a_qty, input_b_qty)
+	var consumed_a2 := _consume_furnace_slot(&"input_a", input_a_id, qty_used)
+	var consumed_b2 := _consume_furnace_slot(&"input_b", input_b_id, qty_used)
+	var inputs_log2 := [
+		{"item_id": input_a_id, "quantity": consumed_a2},
+		{"item_id": input_b_id, "quantity": consumed_b2},
+	]
+	_apply_reaction_result(alloy_result, qty_used, inputs_log2, current_temp)
 
 
-func _apply_reaction_result(result: Dictionary, quantity: int) -> void:
+## Consume `qty` of `item_id` from a furnace input slot and mirror to InventoryManager.
+## Returns the actual quantity consumed.
+func _consume_furnace_slot(slot_id: StringName, item_id: StringName, qty: int) -> int:
+	if qty <= 0 or item_id.is_empty():
+		return 0
+
+	var actual_qty := qty
+
+	# Update furnace internal state
+	if is_instance_valid(_bound_furnace) and _bound_furnace.has_method("clear_input"):
+		_bound_furnace.clear_input(slot_id)
+	elif is_instance_valid(_bound_furnace):
+		# Fallback: zero out the slot directly if clear_input is unavailable
+		if _bound_furnace._input_slots.has(slot_id):
+			_bound_furnace._input_slots[slot_id] = {&"item_id": &"", &"quantity": 0}
+
+	# Remove from player inventory
+	if InventoryManager.has_item(item_id):
+		InventoryManager.remove_item(item_id, actual_qty)
+
+	# Clear the local slot state
+	_slot_state[slot_id] = {&"item_id": &"", &"quantity": 0}
+	_apply_slot_visual(slot_id, &"", 0, "No material")
+	return actual_qty
+
+
+## Apply a reaction result: update the output slot, deliver to InventoryManager,
+## log to DiscoveryLog, and handle the explosion special case.
+func _apply_reaction_result(
+		result: Dictionary,
+		quantity: int,
+		inputs_log: Array,
+		temp: float) -> void:
 	var output_id := StringName(str(result.get("output_id", "")))
 	var notes := str(result.get("notes", ""))
+	var tier := str(result.get("tier", "unknown"))
+
 	action_hint_label.text = notes if not notes.is_empty() else "Reaction evaluated."
 
-	if output_id.is_empty():
-		show_output_placeholder(notes if not notes.is_empty() else "No reaction")
+	# ── EXPLOSION ────────────────────────────────────────────────────────────
+	if output_id == &"explosion":
+		_trigger_explosion(notes, inputs_log, temp)
 		return
 
+	# ── NO REACTION / FAILED TEMP CHECK ─────────────────────────────────────
+	if output_id.is_empty():
+		show_output_placeholder(notes if not notes.is_empty() else "No reaction")
+		_log_to_discovery(result, inputs_log, temp)
+		return
+
+	# ── SUCCESSFUL REACTION ──────────────────────────────────────────────────
 	var output_quantity := maxi(quantity, 1)
+
+	# Deliver output to InventoryManager
+	_deliver_output_to_inventory(output_id, output_quantity)
+
+	# Update UI output slot
 	_slot_state[&"output"] = {&"item_id": output_id, &"quantity": output_quantity}
 	_apply_slot_visual(&"output", output_id, output_quantity, "Awaiting recipe")
 	_update_smelt_button_state()
+
+	# Log to DiscoveryLog (emits signal, marks first discovery, etc.)
+	_log_to_discovery(result, inputs_log, temp)
+
+	# Tier-specific feedback
+	_show_tier_feedback(output_id, tier)
+
+
+## Deliver the smelted output to the player's InventoryManager.
+func _deliver_output_to_inventory(output_id: StringName, quantity: int) -> void:
+	if output_id.is_empty() or quantity <= 0:
+		return
+
+	var element_data := ElementDatabase.get_element(output_id)
+	if element_data.is_empty():
+		# Build a minimal item entry for products not yet in the database.
+		element_data = {
+			&"id": output_id,
+			&"display_name": String(output_id).replace("_", " ").capitalize(),
+			&"weight": 1.0,
+			&"purity": 1.0,
+		}
+
+	var item_data := element_data.duplicate(true)
+	item_data[&"id"] = output_id
+	item_data[&"purity"] = 1.0
+	item_data[&"category"] = InventoryManager.InventoryItemCategory.ELEMENT
+
+	var added := InventoryManager.add_item(item_data, quantity)
+	if not added:
+		action_hint_label.text = "Inventory full! Output dropped on the floor."
+		print("[FurnaceUI] Could not add %s x%d to inventory — capacity reached." % [output_id, quantity])
+
+
+## Trigger an explosion: camera shake, burn damage, clear furnace, log discovery.
+func _trigger_explosion(notes: String, inputs_log: Array, temp: float) -> void:
+	print("[FurnaceUI] EXPLOSION triggered at %d°C" % int(temp))
+
+	# Camera shake — signal on CameraShake autoload
+	if has_node("/root/CameraShake"):
+		get_node("/root/CameraShake").shake.emit(28.0, 0.9)
+
+	# Deal burn damage to the player via HealthSystem
+	var health_nodes := get_tree().get_nodes_in_group("health_system")
+	if health_nodes.is_empty():
+		# Fallback: find the player's HealthSystem directly
+		var player := get_tree().current_scene.find_child("Player", true, false)
+		if is_instance_valid(player):
+			var hs := player.find_child("HealthSystem", true, false)
+			if is_instance_valid(hs) and hs.has_method("take_damage"):
+				hs.take_damage(40, &"burn")
+	else:
+		for hs in health_nodes:
+			if hs.has_method("take_damage"):
+				hs.take_damage(40, &"burn")
+
+	# Clear all furnace inputs and reset output slot
+	_slot_state[&"input_a"] = {&"item_id": &"", &"quantity": 0}
+	_slot_state[&"input_b"] = {&"item_id": &"", &"quantity": 0}
+	_slot_state[&"output"] = {&"item_id": &"", &"quantity": 0}
+	_apply_slot_visual(&"input_a", &"", 0, "No material")
+	_apply_slot_visual(&"input_b", &"", 0, "No material")
+	_apply_slot_visual(&"output", &"", 0, "EXPLOSION!")
+
+	action_hint_label.text = notes if not notes.is_empty() else "EXPLOSION! Temperature exceeded 1600°C."
+
+	# Log the explosion to DiscoveryLog
+	var explosion_result := {
+		"output_id": "explosion",
+		"quality": 0.0,
+		"tier": "danger",
+		"notes": notes,
+	}
+	_log_to_discovery(explosion_result, inputs_log, temp)
+
+
+func _log_to_discovery(result: Dictionary, inputs: Array, temp: float) -> void:
+	var log_node = get_node_or_null("/root/DiscoveryLog")
+	if log_node:
+		if log_node.has_method("log_smelt"):
+			log_node.log_smelt(result, inputs, temp)
+		else:
+			push_error("DiscoveryLog is missing log_smelt method")
+	else:
+		push_error("DiscoveryLog autoload node not found under /root")
+
+
+## Show tier-specific action hint feedback.
+func _show_tier_feedback(output_id: StringName, tier: String) -> void:
+	match tier:
+		"optimal":
+			if output_id == &"steel":
+				action_hint_label.text = "Steel forged! Discovery logged."
+			elif output_id == &"charcoal":
+				action_hint_label.text = "Charcoal produced. Great fuel for the furnace."
+		"low":
+			action_hint_label.text = "Wrought Iron — soft, bends under load."
+		"medium":
+			action_hint_label.text = "Cast Iron — brittle. Failed steel attempt logged."
+		"waste":
+			if output_id == &"coke_slag":
+				action_hint_label.text = "Coke Slag — too much carbon. Logged as 'Unknown compound'."
+			else:
+				action_hint_label.text = "Slag — overburned. Try a lower temperature."
+		"danger":
+			action_hint_label.text = "EXPLOSION! You've been burned."
+		_:
+			action_hint_label.text = "Reaction evaluated."
 
 
 func _update_mode_state(is_carbonisation: bool) -> void:

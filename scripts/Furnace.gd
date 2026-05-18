@@ -134,6 +134,14 @@ func get_input(slot_name: StringName) -> Dictionary:
 	return _input_slots[slot_name].duplicate(true)
 
 
+## Clear an input slot entirely (called by FurnaceUI after smelting consumes inputs).
+func clear_input(slot_name: StringName) -> void:
+	if not _input_slots.has(slot_name):
+		return
+	_input_slots[slot_name] = {&"item_id": &"", &"quantity": 0}
+	_sync_ui()
+
+
 func get_fuel_state() -> Dictionary:
 	if not _has_active_fuel():
 		return {&"item_id": &"", &"quantity": 0}

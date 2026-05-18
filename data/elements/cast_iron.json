@@ -1,0 +1,20 @@
+{
+  "id": "cast_iron",
+  "symbol": "Fe+",
+  "display_name": "Cast Iron",
+  "category": "metal",
+  "weight": 3.2,
+  "stress_multiplier": 1.3,
+  "properties": {
+    "flammability": 0.0,
+    "toxicity": 0.0,
+    "reactivity": 0.25,
+    "melting_point": 1200.0,
+    "conductivity": 0.45,
+    "radiation": 0.0
+  },
+  "carrier_risk": "none",
+  "biome_spawn": [],
+  "environmental_hint": "Dense, brittle iron — cracks under sudden force.",
+  "primary_use": "Pots, frames, and low-stress structures. Logs failed steel attempt."
+}

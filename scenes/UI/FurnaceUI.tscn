@@ -1,12 +1,12 @@
-[gd_scene format=4 uid="uid://b7yay03kq2cde"]
+[gd_scene format=3 uid="uid://b7yay03kq2cde"]
 
-[ext_resource type="Script" path="res://scripts/FurnaceUI.gd" id="1_abc123"]
+[ext_resource type="Script" uid="uid://cs7fusvxb03kd" path="res://scripts/FurnaceUI.gd" id="1_abc123"]
 
-[node name="FurnaceUI" type="CanvasLayer"]
+[node name="FurnaceUI" type="CanvasLayer" unique_id=2132913568]
 layer = 11
 script = ExtResource("1_abc123")
 
-[node name="Root" type="Control" parent="."]
+[node name="Root" type="Control" parent="." unique_id=2027247790]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -15,7 +15,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Backdrop" type="ColorRect" parent="Root"]
+[node name="Backdrop" type="ColorRect" parent="Root" unique_id=1710379261]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -25,7 +25,7 @@ grow_vertical = 2
 mouse_filter = 2
 color = Color(0, 0, 0, 0.36)
 
-[node name="PanelContainer" type="PanelContainer" parent="Root"]
+[node name="PanelContainer" type="PanelContainer" parent="Root" unique_id=1538519946]
 custom_minimum_size = Vector2(960, 352)
 layout_mode = 1
 anchors_preset = 8
@@ -40,75 +40,75 @@ offset_bottom = 176.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer"]
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer" unique_id=340871106]
 layout_mode = 2
 theme_override_constants/margin_left = 18
 theme_override_constants/margin_top = 18
 theme_override_constants/margin_right = 18
 theme_override_constants/margin_bottom = 18
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer" unique_id=1755412035]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="HeaderRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+[node name="HeaderRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer" unique_id=1111157843]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="TitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+[node name="TitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow" unique_id=511696265]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Furnace"
 
-[node name="Spacer" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+[node name="Spacer" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow" unique_id=1767096156]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="SummaryLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+[node name="SummaryLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer" unique_id=1960660529]
 layout_mode = 2
 text = "Load two materials, feed wood, watch the heat, and preview the probable result."
 autowrap_mode = 3
 
-[node name="HSeparator" type="HSeparator" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+[node name="HSeparator" type="HSeparator" parent="Root/PanelContainer/MarginContainer/VBoxContainer" unique_id=1971462061]
 layout_mode = 2
 
-[node name="FurnaceRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+[node name="FurnaceRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer" unique_id=586200725]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 14
 
-[node name="InputSlotA" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow"]
+[node name="InputSlotA" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1837864569]
 custom_minimum_size = Vector2(130, 244)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA"]
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA" unique_id=704467313]
 layout_mode = 2
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer" unique_id=377349553]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer"]
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer" unique_id=1037105940]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "INPUT A"
 horizontal_alignment = 1
 
-[node name="IconHolder" type="CenterContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer"]
+[node name="IconHolder" type="CenterContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer" unique_id=1916924452]
 custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer/IconHolder"]
+[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer/IconHolder" unique_id=195837013]
 custom_minimum_size = Vector2(92, 92)
 layout_mode = 2
 
-[node name="ItemIcon" type="TextureRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer/IconHolder/SlotVisual"]
+[node name="ItemIcon" type="TextureRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer/IconHolder/SlotVisual" unique_id=1504263643]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -122,7 +122,7 @@ grow_vertical = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="QuantityLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer/IconHolder/SlotVisual"]
+[node name="QuantityLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer/IconHolder/SlotVisual" unique_id=901964846]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -136,44 +136,44 @@ grow_horizontal = 2
 grow_vertical = 0
 horizontal_alignment = 2
 
-[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer"]
+[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA/MarginContainer/VBoxContainer" unique_id=1796116353]
 layout_mode = 2
-autowrap_mode = 3
 horizontal_alignment = 1
 vertical_alignment = 1
+autowrap_mode = 3
 
-[node name="InputSlotB" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow"]
+[node name="InputSlotB" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1251842284]
 custom_minimum_size = Vector2(130, 244)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB"]
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB" unique_id=933415249]
 layout_mode = 2
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer" unique_id=1462863279]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer"]
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer" unique_id=205330315]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "INPUT B"
 horizontal_alignment = 1
 
-[node name="IconHolder" type="CenterContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer"]
+[node name="IconHolder" type="CenterContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer" unique_id=716259342]
 custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer/IconHolder"]
+[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer/IconHolder" unique_id=1075794910]
 custom_minimum_size = Vector2(92, 92)
 layout_mode = 2
 
-[node name="ItemIcon" type="TextureRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer/IconHolder/SlotVisual"]
+[node name="ItemIcon" type="TextureRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer/IconHolder/SlotVisual" unique_id=1134757195]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -187,7 +187,7 @@ grow_vertical = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="QuantityLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer/IconHolder/SlotVisual"]
+[node name="QuantityLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer/IconHolder/SlotVisual" unique_id=26163242]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -201,44 +201,44 @@ grow_horizontal = 2
 grow_vertical = 0
 horizontal_alignment = 2
 
-[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer"]
+[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB/MarginContainer/VBoxContainer" unique_id=1579753311]
 layout_mode = 2
-autowrap_mode = 3
 horizontal_alignment = 1
 vertical_alignment = 1
+autowrap_mode = 3
 
-[node name="FuelSlot" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow"]
+[node name="FuelSlot" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1864955365]
 custom_minimum_size = Vector2(130, 244)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot"]
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot" unique_id=1831631149]
 layout_mode = 2
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer" unique_id=168243278]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer"]
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer" unique_id=1928708260]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "FUEL"
 horizontal_alignment = 1
 
-[node name="IconHolder" type="CenterContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer"]
+[node name="IconHolder" type="CenterContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer" unique_id=1228058594]
 custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer/IconHolder"]
+[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer/IconHolder" unique_id=2012228046]
 custom_minimum_size = Vector2(92, 92)
 layout_mode = 2
 
-[node name="ItemIcon" type="TextureRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer/IconHolder/SlotVisual"]
+[node name="ItemIcon" type="TextureRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer/IconHolder/SlotVisual" unique_id=916800198]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -252,7 +252,7 @@ grow_vertical = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="QuantityLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer/IconHolder/SlotVisual"]
+[node name="QuantityLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer/IconHolder/SlotVisual" unique_id=27290564]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -266,41 +266,42 @@ grow_horizontal = 2
 grow_vertical = 0
 horizontal_alignment = 2
 
-[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer"]
+[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot/MarginContainer/VBoxContainer" unique_id=1359295198]
 layout_mode = 2
-autowrap_mode = 3
 horizontal_alignment = 1
 vertical_alignment = 1
+autowrap_mode = 3
 
-[node name="TemperatureColumn" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow"]
+[node name="TemperatureColumn" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1359798625]
 custom_minimum_size = Vector2(162, 244)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn"]
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn" unique_id=647855230]
 layout_mode = 2
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 12
 theme_override_constants/margin_bottom = 10
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer" unique_id=267814461]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer"]
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer" unique_id=1819071646]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "TEMPERATURE"
 horizontal_alignment = 1
 
-[node name="GaugeFrame" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer"]
+[node name="GaugeFrame" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer" unique_id=106390289]
 custom_minimum_size = Vector2(0, 148)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="DangerZone" type="ColorRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame"]
+[node name="DangerZone" type="ColorRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame" unique_id=36389220]
 layout_mode = 1
+anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 0.2
 offset_left = 28.0
@@ -310,7 +311,7 @@ offset_bottom = -2.0
 grow_horizontal = 2
 color = Color(0.89, 0.29, 0.24, 0.28)
 
-[node name="TemperatureGauge" type="ProgressBar" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame"]
+[node name="TemperatureGauge" type="ProgressBar" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame" unique_id=1039564183]
 custom_minimum_size = Vector2(54, 148)
 layout_mode = 1
 anchors_preset = 8
@@ -326,11 +327,12 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 max_value = 2000.0
-show_percentage = false
 fill_mode = 3
+show_percentage = false
 
-[node name="DangerLine" type="ColorRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame"]
+[node name="DangerLine" type="ColorRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame" unique_id=1175318711]
 layout_mode = 1
+anchors_preset = -1
 anchor_top = 0.2
 anchor_right = 1.0
 anchor_bottom = 0.2
@@ -342,50 +344,65 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(1, 0.55, 0.35, 0.7)
 
-[node name="TemperatureReadout" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer"]
+[node name="CarbonOptimalZone" type="ColorRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame" unique_id=1171402894]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.65
+anchor_right = 1.0
+anchor_bottom = 0.8
+offset_left = 28.0
+offset_top = 2.0
+offset_right = -28.0
+offset_bottom = -2.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.34, 0.82, 0.45, 0.28)
+
+[node name="TemperatureReadout" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer" unique_id=33485587]
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "0°C"
 horizontal_alignment = 1
 
-[node name="DangerLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer"]
+[node name="DangerLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer" unique_id=1067673826]
 visible = false
 layout_mode = 2
 text = "Danger above 1600°C"
 horizontal_alignment = 1
 
-[node name="OutputSlot" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow"]
+[node name="OutputSlot" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1521137346]
 custom_minimum_size = Vector2(130, 244)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot"]
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot" unique_id=340761798]
 layout_mode = 2
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer" unique_id=1042375475]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer"]
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer" unique_id=1024758252]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "OUTPUT"
 horizontal_alignment = 1
 
-[node name="IconHolder" type="CenterContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer"]
+[node name="IconHolder" type="CenterContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer" unique_id=703532402]
 custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer/IconHolder"]
+[node name="SlotVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer/IconHolder" unique_id=1851804547]
 custom_minimum_size = Vector2(92, 92)
 layout_mode = 2
 
-[node name="ItemIcon" type="TextureRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer/IconHolder/SlotVisual"]
+[node name="ItemIcon" type="TextureRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer/IconHolder/SlotVisual" unique_id=1854458719]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -399,7 +416,7 @@ grow_vertical = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="QuantityLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer/IconHolder/SlotVisual"]
+[node name="QuantityLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer/IconHolder/SlotVisual" unique_id=446455760]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -413,54 +430,54 @@ grow_horizontal = 2
 grow_vertical = 0
 horizontal_alignment = 2
 
-[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer"]
+[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot/MarginContainer/VBoxContainer" unique_id=2110880908]
 layout_mode = 2
-autowrap_mode = 3
 horizontal_alignment = 1
 vertical_alignment = 1
+autowrap_mode = 3
 
-[node name="ActionColumn" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow"]
+[node name="ActionColumn" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=493508307]
 custom_minimum_size = Vector2(180, 244)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn"]
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn" unique_id=1347664784]
 layout_mode = 2
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 12
 theme_override_constants/margin_bottom = 10
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer" unique_id=1480024385]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 10
 
-[node name="ActionLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+[node name="ActionLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=1225064234]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "CONTROL"
 horizontal_alignment = 1
 
-[node name="SpacerTop" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+[node name="SpacerTop" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=1889832332]
 custom_minimum_size = Vector2(0, 34)
 layout_mode = 2
 
-[node name="SmeltButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+[node name="SmeltButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=368564703]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "Smelt"
 
-[node name="ActionHintLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+[node name="ActionHintLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=542648246]
 layout_mode = 2
 text = "Burn wood to sustain heat. Output remains a preview until smelting logic lands."
 autowrap_mode = 3
 
-[node name="SpacerBottom" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+[node name="SpacerBottom" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=117979327]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="CloseButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+[node name="CloseButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=45284968]
 custom_minimum_size = Vector2(0, 38)
 layout_mode = 2
 text = "Close (E)"

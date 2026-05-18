@@ -25,6 +25,7 @@ func _ready() -> void:
 	database_ready.emit(elements.size())
 
 
+
 func has_element(element_id: StringName) -> bool:
 	return elements.has(element_id)
 
