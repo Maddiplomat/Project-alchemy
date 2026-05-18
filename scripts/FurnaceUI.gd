@@ -7,8 +7,6 @@ const MAX_TEMPERATURE := 2000.0
 const DANGER_TEMPERATURE := 1600.0
 const CARBONISATION_OPTIMAL_MIN := 400.0
 const CARBONISATION_OPTIMAL_MAX := 700.0
-const STEEL_TARGET_MIN_CARBON := 0.5
-const STEEL_TARGET_MAX_CARBON := 2.1
 const CARBON_RATIO_MIN := 0.0
 const CARBON_RATIO_MAX := 10.0
 const PANEL_BG_COLOR := Color(0.10, 0.11, 0.13, 0.96)
@@ -27,6 +25,8 @@ const SMELT_BUTTON_COLOR := Color(0.79, 0.47, 0.18, 1.0)
 const PANEL_VIEW_SCALE := 0.46
 const PANEL_MARGIN := Vector2(24.0, 24.0)
 const RATIO_GUIDE_BG_COLOR := Color(0.18, 0.20, 0.23, 0.82)
+const RATIO_IRON_FILL_COLOR := Color(0.34, 0.44, 0.52, 0.92)
+const RATIO_CARBON_FILL_COLOR := Color(0.54, 0.31, 0.12, 0.96)
 const RATIO_GUIDE_TARGET_COLOR := Color(0.34, 0.82, 0.45, 0.32)
 const RATIO_GUIDE_MARKER_COLOR := Color(0.97, 0.97, 0.97, 0.95)
 const RATIO_GUIDE_TOOLTIP_FALLBACK := "Load a carbon source into Input B for steel guidance."
@@ -59,6 +59,8 @@ var ratio_slider: HSlider
 var ratio_value_label: Label
 var ratio_graph_frame: Control
 var ratio_graph_background: ColorRect
+var ratio_iron_fill: ColorRect
+var ratio_carbon_fill: ColorRect
 var ratio_target_zone: ColorRect
 var ratio_current_marker: ColorRect
 var carbon_slag_zone: ColorRect
@@ -725,6 +727,26 @@ func _ensure_dynamic_ui_nodes() -> void:
 		ratio_graph_background.color = RATIO_GUIDE_BG_COLOR
 		ratio_graph_frame.add_child(ratio_graph_background)
 
+		ratio_iron_fill = ColorRect.new()
+		ratio_iron_fill.name = "RatioIronFill"
+		ratio_iron_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_iron_fill.anchor_top = 0.0
+		ratio_iron_fill.anchor_bottom = 1.0
+		ratio_iron_fill.offset_top = 2.0
+		ratio_iron_fill.offset_bottom = -2.0
+		ratio_iron_fill.color = RATIO_IRON_FILL_COLOR
+		ratio_graph_frame.add_child(ratio_iron_fill)
+
+		ratio_carbon_fill = ColorRect.new()
+		ratio_carbon_fill.name = "RatioCarbonFill"
+		ratio_carbon_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_carbon_fill.anchor_top = 0.0
+		ratio_carbon_fill.anchor_bottom = 1.0
+		ratio_carbon_fill.offset_top = 2.0
+		ratio_carbon_fill.offset_bottom = -2.0
+		ratio_carbon_fill.color = RATIO_CARBON_FILL_COLOR
+		ratio_graph_frame.add_child(ratio_carbon_fill)
+
 		ratio_target_zone = ColorRect.new()
 		ratio_target_zone.name = "RatioTargetZone"
 		ratio_target_zone.visible = false
@@ -766,6 +788,8 @@ func _ensure_dynamic_ui_nodes() -> void:
 	else:
 		ratio_graph_frame = ratio_container.get_node_or_null("RatioGraphFrame") as Control
 		ratio_graph_background = ratio_container.get_node_or_null("RatioGraphFrame/RatioGraphBackground") as ColorRect
+		ratio_iron_fill = ratio_container.get_node_or_null("RatioGraphFrame/RatioIronFill") as ColorRect
+		ratio_carbon_fill = ratio_container.get_node_or_null("RatioGraphFrame/RatioCarbonFill") as ColorRect
 		ratio_target_zone = ratio_container.get_node_or_null("RatioGraphFrame/RatioTargetZone") as ColorRect
 		ratio_current_marker = ratio_container.get_node_or_null("RatioGraphFrame/RatioCurrentMarker") as ColorRect
 		ratio_slider = ratio_container.get_node("RatioSlider") as HSlider
@@ -787,6 +811,26 @@ func _ensure_dynamic_ui_nodes() -> void:
 		ratio_graph_background.offset_bottom = -2.0
 		ratio_graph_background.color = RATIO_GUIDE_BG_COLOR
 		ratio_graph_frame.add_child(ratio_graph_background)
+
+		ratio_iron_fill = ColorRect.new()
+		ratio_iron_fill.name = "RatioIronFill"
+		ratio_iron_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_iron_fill.anchor_top = 0.0
+		ratio_iron_fill.anchor_bottom = 1.0
+		ratio_iron_fill.offset_top = 2.0
+		ratio_iron_fill.offset_bottom = -2.0
+		ratio_iron_fill.color = RATIO_IRON_FILL_COLOR
+		ratio_graph_frame.add_child(ratio_iron_fill)
+
+		ratio_carbon_fill = ColorRect.new()
+		ratio_carbon_fill.name = "RatioCarbonFill"
+		ratio_carbon_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_carbon_fill.anchor_top = 0.0
+		ratio_carbon_fill.anchor_bottom = 1.0
+		ratio_carbon_fill.offset_top = 2.0
+		ratio_carbon_fill.offset_bottom = -2.0
+		ratio_carbon_fill.color = RATIO_CARBON_FILL_COLOR
+		ratio_graph_frame.add_child(ratio_carbon_fill)
 
 		ratio_target_zone = ColorRect.new()
 		ratio_target_zone.name = "RatioTargetZone"
@@ -853,6 +897,13 @@ func _ensure_dynamic_ui_nodes() -> void:
 	gauge_frame.move_child(temperature_gauge, 3)
 	gauge_frame.move_child(danger_line, 4)
 
+	if ratio_graph_frame != null:
+		ratio_graph_frame.move_child(ratio_graph_background, 0)
+		ratio_graph_frame.move_child(ratio_iron_fill, 1)
+		ratio_graph_frame.move_child(ratio_carbon_fill, 2)
+		ratio_graph_frame.move_child(ratio_target_zone, 3)
+		ratio_graph_frame.move_child(ratio_current_marker, 4)
+
 
 func _update_ratio_guidance() -> void:
 	if ratio_slider == null or ratio_value_label == null:
@@ -877,7 +928,24 @@ func _update_ratio_guidance() -> void:
 			ratio_target_zone.offset_left = 0.0
 			ratio_target_zone.offset_right = 0.0
 
+	_update_ratio_bar_graph(ratio_slider.value)
 	_update_ratio_current_marker(ratio_slider.value)
+
+
+func _update_ratio_bar_graph(value: float) -> void:
+	if ratio_iron_fill == null or ratio_carbon_fill == null or ratio_slider == null:
+		return
+
+	var normalized := clampf(inverse_lerp(ratio_slider.min_value, ratio_slider.max_value, value), 0.0, 1.0)
+	ratio_iron_fill.anchor_left = 0.0
+	ratio_iron_fill.anchor_right = 1.0 - normalized
+	ratio_iron_fill.offset_left = 0.0
+	ratio_iron_fill.offset_right = 0.0
+
+	ratio_carbon_fill.anchor_left = 1.0 - normalized
+	ratio_carbon_fill.anchor_right = 1.0
+	ratio_carbon_fill.offset_left = 0.0
+	ratio_carbon_fill.offset_right = 0.0
 
 
 func _update_ratio_current_marker(value: float) -> void:
@@ -911,20 +979,28 @@ func _get_active_ratio_guidance() -> Dictionary:
 func _build_ratio_guidance(source_info: Dictionary) -> Dictionary:
 	var display_name := str(source_info.get("display_name", "Carbon source"))
 	var carbon_fraction := clampf(float(source_info.get("carbon_fraction", 0.0)), 0.0, 1.0)
+	var steel_window_min := float(source_info.get("steel_window_min_pct", 0.0))
+	var steel_window_max := float(source_info.get("steel_window_max_pct", 0.0))
 	if carbon_fraction <= 0.0:
 		return {
 			"has_window": false,
 			"tooltip": "%s: no carbon profile available." % display_name
 		}
 
+	if steel_window_max <= steel_window_min:
+		return {
+			"has_window": false,
+			"tooltip": "%s: steel window unavailable." % display_name
+		}
+
 	return {
 		"has_window": true,
-		"ratio_min": STEEL_TARGET_MIN_CARBON,
-		"ratio_max": STEEL_TARGET_MAX_CARBON,
+		"ratio_min": steel_window_min,
+		"ratio_max": steel_window_max,
 		"tooltip": "%s: steel at %s-%s%% carbon" % [
 			display_name,
-			_format_pct(STEEL_TARGET_MIN_CARBON),
-			_format_pct(STEEL_TARGET_MAX_CARBON)
+			_format_pct(steel_window_min),
+			_format_pct(steel_window_max)
 		]
 	}
 
@@ -962,7 +1038,9 @@ func _get_active_carbon_source_info() -> Dictionary:
 		"element_id": input_b_id,
 		"display_name": str(element_data.get(&"display_name", String(input_b_id).capitalize())),
 		"symbol": str(element_data.get(&"symbol", "C")),
-		"carbon_fraction": clampf(carbon_fraction, 0.0, 1.0)
+		"carbon_fraction": clampf(carbon_fraction, 0.0, 1.0),
+		"steel_window_min_pct": maxf(float(properties.get(&"steel_window_carbon_min_pct", 0.0)), 0.0),
+		"steel_window_max_pct": maxf(float(properties.get(&"steel_window_carbon_max_pct", 0.0)), 0.0)
 	}
 
 

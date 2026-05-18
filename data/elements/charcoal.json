@@ -10,6 +10,8 @@
     "toxicity": 0.05,
     "reactivity": 0.45,
     "carbon_percentage": 0.85,
+    "steel_window_carbon_min_pct": 0.6,
+    "steel_window_carbon_max_pct": 2.5,
     "fuel_value": 600
   },
   "carrier_risk": "low",

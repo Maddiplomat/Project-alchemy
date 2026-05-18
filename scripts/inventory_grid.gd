@@ -29,7 +29,7 @@ const RECIPE_ROW_BORDER_COLOR := Color(0.29, 0.31, 0.36, 1.0)
 const RECIPE_DURABILITY_COLOR := Color(0.75, 0.86, 0.43, 1.0)
 const ITEM_ICON_SIZE := Vector2(34, 34)
 const SELECT_KEYBIND_BASE_TEXT := "1-9: select active item"
-const DRAG_QUANTITY_HINT_TEXT := "Wheel while dragging: adjust qty"
+const DRAG_QUANTITY_HINT_TEXT := "Wheel or Up/Down or Q/E to adjust qty"
 
 var drag_origin_index := -1
 var drag_ghost: TextureRect = null
@@ -89,15 +89,26 @@ func _input(event):
 	if event.is_action_pressed("toggle_inventory"):
 		toggle_inventory()
 
-	if _is_dragging() and event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_adjust_drag_quantity(1 if not event.shift_pressed else 5)
-			get_viewport().set_input_as_handled()
-			return
-		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_adjust_drag_quantity(-1 if not event.shift_pressed else -5)
-			get_viewport().set_input_as_handled()
-			return
+	if _is_dragging():
+		if event is InputEventMouseButton and event.pressed:
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+				_adjust_drag_quantity(1 if not event.shift_pressed else 5)
+				get_viewport().set_input_as_handled()
+				return
+			if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				_adjust_drag_quantity(-1 if not event.shift_pressed else -5)
+				get_viewport().set_input_as_handled()
+				return
+
+		if event is InputEventKey and event.pressed:
+			if event.keycode == KEY_UP or event.keycode == KEY_E or event.keycode == KEY_W:
+				_adjust_drag_quantity(1 if not event.shift_pressed else 5)
+				get_viewport().set_input_as_handled()
+				return
+			if event.keycode == KEY_DOWN or event.keycode == KEY_Q or event.keycode == KEY_S:
+				_adjust_drag_quantity(-1 if not event.shift_pressed else -5)
+				get_viewport().set_input_as_handled()
+				return
 
 	# Hotkeys 1-9 for slots 0-8
 	for i in range(1, 10):
@@ -233,6 +244,7 @@ func _create_drag_ghost(source_slot) -> void:
 
 func _finish_drag(drop_slot_index: int) -> void:
 	var from_slot := drag_origin_index
+	var quantity_to_drop := drag_quantity
 	_clear_drag_ghost()
 	drag_origin_index = -1
 	drag_source_quantity = 0
@@ -253,7 +265,7 @@ func _finish_drag(drop_slot_index: int) -> void:
 	if dragged_item.is_empty():
 		return
 
-	_try_drop_to_furnace(dragged_item)
+	_try_drop_to_furnace(dragged_item, quantity_to_drop)
 
 func _get_slot_index_at_position(global_mouse_position: Vector2) -> int:
 	for i in range(grid.get_child_count()):
@@ -302,7 +314,7 @@ func _update_drag_hint_label() -> void:
 	)
 
 
-func _try_drop_to_furnace(dragged_item: Dictionary) -> bool:
+func _try_drop_to_furnace(dragged_item: Dictionary, initial_drag_quantity: int) -> bool:
 	var current_scene := get_tree().current_scene
 	if current_scene == null:
 		return false
@@ -314,7 +326,7 @@ func _try_drop_to_furnace(dragged_item: Dictionary) -> bool:
 		return false
 
 	var item_id := StringName(str(dragged_item.get("id", "")))
-	var quantity := mini(drag_quantity, int(dragged_item.get("quantity", 0)))
+	var quantity := mini(initial_drag_quantity, int(dragged_item.get("quantity", 0)))
 	if item_id.is_empty() or quantity <= 0:
 		return false
 

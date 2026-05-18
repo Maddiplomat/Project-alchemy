@@ -19,6 +19,8 @@ const SLOT_BG_DEFAULT := Color(0.18, 0.19, 0.22, 0.96)
 const SLOT_BORDER_DEFAULT := Color(0.32, 0.34, 0.38, 1.0)
 const SLOT_BG_CHARCOAL := Color(0.08, 0.08, 0.09, 0.98)
 const SLOT_BORDER_CHARCOAL := Color(0.20, 0.20, 0.22, 1.0)
+const QUANTITY_FONT_COLOR := Color(0.97, 0.97, 0.97, 1.0)
+const QUANTITY_OUTLINE_COLOR := Color(0.03, 0.04, 0.05, 0.95)
 
 var slot_index := -1
 var current_item_id := ""
@@ -39,6 +41,17 @@ func _ready() -> void:
 	durability_bar_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	durability_bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	quantity_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	quantity_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	quantity_label.offset_left = 6.0
+	quantity_label.offset_top = -22.0
+	quantity_label.offset_right = -6.0
+	quantity_label.offset_bottom = -4.0
+	quantity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	quantity_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	quantity_label.add_theme_color_override("font_color", QUANTITY_FONT_COLOR)
+	quantity_label.add_theme_color_override("font_outline_color", QUANTITY_OUTLINE_COLOR)
+	quantity_label.add_theme_constant_override("outline_size", 4)
+	quantity_label.add_theme_font_size_override("font_size", 13)
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 	resized.connect(_on_resized)
@@ -66,7 +79,7 @@ func update_slot(item_id: String, quantity: int, purity: float, durability = nul
 	if quantity > 0:
 		item_icon.texture = _get_placeholder_texture(item_id)
 		item_icon.modulate = _get_icon_color()
-		quantity_label.text = str(quantity)
+		quantity_label.text = "x%d" % quantity
 	else:
 		current_item_id = ""
 
@@ -101,7 +114,7 @@ func _apply_visual_state() -> void:
 	if has_stack:
 		item_icon.texture = _get_placeholder_texture(current_item_id)
 		item_icon.modulate = _get_icon_color()
-		quantity_label.text = str(current_quantity)
+		quantity_label.text = "x%d" % current_quantity
 	else:
 		item_icon.texture = null
 		quantity_label.text = ""
