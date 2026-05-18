@@ -7,6 +7,10 @@ const MAX_TEMPERATURE := 2000.0
 const DANGER_TEMPERATURE := 1600.0
 const CARBONISATION_OPTIMAL_MIN := 400.0
 const CARBONISATION_OPTIMAL_MAX := 700.0
+const STEEL_TARGET_MIN_CARBON := 0.5
+const STEEL_TARGET_MAX_CARBON := 2.1
+const CARBON_RATIO_MIN := 0.0
+const CARBON_RATIO_MAX := 10.0
 const PANEL_BG_COLOR := Color(0.10, 0.11, 0.13, 0.96)
 const PANEL_BORDER_COLOR := Color(0.28, 0.30, 0.34, 1.0)
 const SLOT_BG_COLOR := Color(0.14, 0.16, 0.19, 1.0)
@@ -22,6 +26,11 @@ const BUTTON_PRESSED_COLOR := Color(0.22, 0.24, 0.28, 1.0)
 const SMELT_BUTTON_COLOR := Color(0.79, 0.47, 0.18, 1.0)
 const PANEL_VIEW_SCALE := 0.46
 const PANEL_MARGIN := Vector2(24.0, 24.0)
+const RATIO_GUIDE_BG_COLOR := Color(0.18, 0.20, 0.23, 0.82)
+const RATIO_GUIDE_TARGET_COLOR := Color(0.34, 0.82, 0.45, 0.32)
+const RATIO_GUIDE_MARKER_COLOR := Color(0.97, 0.97, 0.97, 0.95)
+const RATIO_GUIDE_TOOLTIP_FALLBACK := "Load a carbon source into Input B for steel guidance."
+const OUTPUT_PREVIEW_COLOR := Color(0.58, 0.61, 0.66, 1.0)
 
 @onready var root: Control = $Root
 @onready var panel: PanelContainer = $Root/PanelContainer
@@ -48,6 +57,10 @@ var _placeholder_textures := {}
 var ratio_container: VBoxContainer
 var ratio_slider: HSlider
 var ratio_value_label: Label
+var ratio_graph_frame: Control
+var ratio_graph_background: ColorRect
+var ratio_target_zone: ColorRect
+var ratio_current_marker: ColorRect
 var carbon_slag_zone: ColorRect
 var carbon_optimal_zone: ColorRect
 var _slot_refs: Dictionary[StringName, Dictionary] = {}
@@ -76,6 +89,7 @@ func _ready() -> void:
 	_apply_theme()
 	_reset_slots()
 	_update_ratio_label(ratio_slider.value)
+	_update_ratio_guidance()
 	_update_mode_state(false)
 	_update_temperature_display(0.0)
 	_layout_panel()
@@ -211,6 +225,8 @@ func _on_smelt_pressed() -> void:
 
 func _on_ratio_slider_changed(value: float) -> void:
 	_update_ratio_label(value)
+	_update_ratio_guidance()
+	_refresh_probable_output()
 
 
 func _on_furnace_temp_changed(current_temp: float) -> void:
@@ -393,6 +409,9 @@ func _set_slot(slot_id: StringName, item_id: StringName, quantity: int, empty_la
 		&"quantity": clamped_quantity,
 	}
 	_apply_slot_visual(slot_id, item_id, clamped_quantity, empty_label)
+	if slot_id == &"input_b":
+		_update_ratio_label(ratio_slider.value)
+		_update_ratio_guidance()
 	if slot_id != &"output":
 		_refresh_probable_output()
 	_update_smelt_button_state()
@@ -418,21 +437,15 @@ func _apply_slot_visual(slot_id: StringName, item_id: StringName, quantity: int,
 func _refresh_probable_output() -> void:
 	var input_a: Dictionary = _slot_state.get(&"input_a", {})
 	var input_b: Dictionary = _slot_state.get(&"input_b", {})
-	var fuel: Dictionary = _slot_state.get(&"fuel", {})
 
 	var input_a_id: StringName = input_a.get(&"item_id", &"")
 	var input_b_id: StringName = input_b.get(&"item_id", &"")
 	var input_a_qty := int(input_a.get(&"quantity", 0))
 	var input_b_qty := int(input_b.get(&"quantity", 0))
-	var fuel_qty := int(fuel.get(&"quantity", 0))
 	_update_mode_state(_should_use_carbonisation_mode())
 
 	if input_a_qty <= 0 and input_b_qty <= 0:
 		show_output_placeholder("Awaiting recipe")
-		return
-
-	if fuel_qty <= 0:
-		show_output_placeholder("Load fuel")
 		return
 
 	if input_b_qty <= 0 and input_a_id == &"wood":
@@ -447,7 +460,16 @@ func _refresh_probable_output() -> void:
 		_apply_slot_visual(&"output", output_id, maxi(1, input_b_qty), "Awaiting recipe")
 		return
 
-	show_output_placeholder("Unknown output")
+	if carbonisation_mode:
+		show_output_placeholder("Awaiting heat")
+		return
+
+	if input_a_qty <= 0 or input_b_qty <= 0:
+		show_output_placeholder("Load two materials")
+		return
+
+	var prediction := _evaluate_alloy_prediction(input_a_id, input_b_id, _get_current_temperature())
+	_show_output_prediction(prediction)
 
 
 func _update_smelt_button_state() -> void:
@@ -502,8 +524,10 @@ func _get_drop_slot_id(global_mouse_position: Vector2) -> StringName:
 			continue
 
 		var slot_visual: Control = slot_ref.get(&"visual")
-		if slot_visual != null and slot_visual.get_global_rect().has_point(global_mouse_position):
-			return slot_id
+		if slot_visual != null:
+			var local_pos := slot_visual.make_canvas_position_local(global_mouse_position)
+			if Rect2(Vector2.ZERO, slot_visual.size).has_point(local_pos):
+				return slot_id
 
 	return &""
 
@@ -606,7 +630,7 @@ func _evaluate_smelt_request() -> void:
 	var alloy_result := ChemistryEngine.evaluate_reaction(
 		String(input_a_id),
 		String(input_b_id),
-		ratio_slider.value,
+		_get_effective_b_ratio_from_slider(_get_active_carbon_source_info()),
 		current_temp
 	)
 	_last_reaction_result = alloy_result
@@ -649,6 +673,8 @@ func _update_mode_state(is_carbonisation: bool) -> void:
 		if carbonisation_mode else
 		"Combine two inputs, adjust the B ratio, and smelt to evaluate the alloy result."
 	)
+	_update_ratio_label(ratio_slider.value)
+	_update_ratio_guidance()
 	_update_temperature_display(_get_current_temperature())
 
 
@@ -658,7 +684,9 @@ func _should_use_carbonisation_mode() -> bool:
 
 
 func _update_ratio_label(value: float) -> void:
-	ratio_value_label.text = "B Mix %d%%" % int(round(value))
+	var source_info := _get_active_carbon_source_info()
+	var source_symbol := str(source_info.get("symbol", "C"))
+	ratio_value_label.text = "%s: %s%%" % [source_symbol, _format_pct(value)]
 
 
 func _get_current_temperature() -> float:
@@ -681,25 +709,111 @@ func _ensure_dynamic_ui_nodes() -> void:
 		ratio_title.add_theme_font_size_override("font_size", 13)
 		ratio_container.add_child(ratio_title)
 
+		ratio_graph_frame = Control.new()
+		ratio_graph_frame.name = "RatioGraphFrame"
+		ratio_graph_frame.custom_minimum_size = Vector2(0.0, 14.0)
+		ratio_graph_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ratio_graph_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		ratio_graph_background = ColorRect.new()
+		ratio_graph_background.name = "RatioGraphBackground"
+		ratio_graph_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_graph_background.anchor_right = 1.0
+		ratio_graph_background.anchor_bottom = 1.0
+		ratio_graph_background.offset_top = 2.0
+		ratio_graph_background.offset_bottom = -2.0
+		ratio_graph_background.color = RATIO_GUIDE_BG_COLOR
+		ratio_graph_frame.add_child(ratio_graph_background)
+
+		ratio_target_zone = ColorRect.new()
+		ratio_target_zone.name = "RatioTargetZone"
+		ratio_target_zone.visible = false
+		ratio_target_zone.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_target_zone.anchor_top = 0.0
+		ratio_target_zone.anchor_bottom = 1.0
+		ratio_target_zone.offset_top = 1.0
+		ratio_target_zone.offset_bottom = -1.0
+		ratio_target_zone.color = RATIO_GUIDE_TARGET_COLOR
+		ratio_graph_frame.add_child(ratio_target_zone)
+
+		ratio_current_marker = ColorRect.new()
+		ratio_current_marker.name = "RatioCurrentMarker"
+		ratio_current_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_current_marker.anchor_top = 0.0
+		ratio_current_marker.anchor_bottom = 1.0
+		ratio_current_marker.offset_left = -1.0
+		ratio_current_marker.offset_right = 1.0
+		ratio_current_marker.color = RATIO_GUIDE_MARKER_COLOR
+		ratio_graph_frame.add_child(ratio_current_marker)
+		ratio_container.add_child(ratio_graph_frame)
+
 		ratio_slider = HSlider.new()
 		ratio_slider.name = "RatioSlider"
-		ratio_slider.min_value = 0.0
-		ratio_slider.max_value = 100.0
-		ratio_slider.step = 5.0
-		ratio_slider.value = 50.0
+		ratio_slider.min_value = CARBON_RATIO_MIN
+		ratio_slider.max_value = CARBON_RATIO_MAX
+		ratio_slider.step = 0.1
+		ratio_slider.value = 1.0
 		ratio_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		ratio_container.add_child(ratio_slider)
 
 		ratio_value_label = Label.new()
 		ratio_value_label.name = "RatioValueLabel"
-		ratio_value_label.text = "B Mix 50%"
+		ratio_value_label.text = "C: 1%"
 		ratio_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		ratio_container.add_child(ratio_value_label)
 
 		temperature_column_box.add_child(ratio_container)
 	else:
+		ratio_graph_frame = ratio_container.get_node_or_null("RatioGraphFrame") as Control
+		ratio_graph_background = ratio_container.get_node_or_null("RatioGraphFrame/RatioGraphBackground") as ColorRect
+		ratio_target_zone = ratio_container.get_node_or_null("RatioGraphFrame/RatioTargetZone") as ColorRect
+		ratio_current_marker = ratio_container.get_node_or_null("RatioGraphFrame/RatioCurrentMarker") as ColorRect
 		ratio_slider = ratio_container.get_node("RatioSlider") as HSlider
 		ratio_value_label = ratio_container.get_node("RatioValueLabel") as Label
+
+	if ratio_graph_frame == null:
+		ratio_graph_frame = Control.new()
+		ratio_graph_frame.name = "RatioGraphFrame"
+		ratio_graph_frame.custom_minimum_size = Vector2(0.0, 14.0)
+		ratio_graph_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ratio_graph_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		ratio_graph_background = ColorRect.new()
+		ratio_graph_background.name = "RatioGraphBackground"
+		ratio_graph_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_graph_background.anchor_right = 1.0
+		ratio_graph_background.anchor_bottom = 1.0
+		ratio_graph_background.offset_top = 2.0
+		ratio_graph_background.offset_bottom = -2.0
+		ratio_graph_background.color = RATIO_GUIDE_BG_COLOR
+		ratio_graph_frame.add_child(ratio_graph_background)
+
+		ratio_target_zone = ColorRect.new()
+		ratio_target_zone.name = "RatioTargetZone"
+		ratio_target_zone.visible = false
+		ratio_target_zone.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_target_zone.anchor_top = 0.0
+		ratio_target_zone.anchor_bottom = 1.0
+		ratio_target_zone.offset_top = 1.0
+		ratio_target_zone.offset_bottom = -1.0
+		ratio_target_zone.color = RATIO_GUIDE_TARGET_COLOR
+		ratio_graph_frame.add_child(ratio_target_zone)
+
+		ratio_current_marker = ColorRect.new()
+		ratio_current_marker.name = "RatioCurrentMarker"
+		ratio_current_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ratio_current_marker.anchor_top = 0.0
+		ratio_current_marker.anchor_bottom = 1.0
+		ratio_current_marker.offset_left = -1.0
+		ratio_current_marker.offset_right = 1.0
+		ratio_current_marker.color = RATIO_GUIDE_MARKER_COLOR
+		ratio_graph_frame.add_child(ratio_current_marker)
+		ratio_container.add_child(ratio_graph_frame)
+		ratio_container.move_child(ratio_graph_frame, 1)
+
+	ratio_slider.min_value = CARBON_RATIO_MIN
+	ratio_slider.max_value = CARBON_RATIO_MAX
+	ratio_slider.step = 0.1
 
 	carbon_slag_zone = gauge_frame.get_node_or_null("CarbonSlagZone") as ColorRect
 	if carbon_slag_zone == null:
@@ -738,3 +852,161 @@ func _ensure_dynamic_ui_nodes() -> void:
 	gauge_frame.move_child(carbon_optimal_zone, 2)
 	gauge_frame.move_child(temperature_gauge, 3)
 	gauge_frame.move_child(danger_line, 4)
+
+
+func _update_ratio_guidance() -> void:
+	if ratio_slider == null or ratio_value_label == null:
+		return
+
+	var guidance := _get_active_ratio_guidance()
+	var tooltip := str(guidance.get("tooltip", RATIO_GUIDE_TOOLTIP_FALLBACK))
+	ratio_container.tooltip_text = tooltip
+	ratio_slider.tooltip_text = tooltip
+	ratio_value_label.tooltip_text = tooltip
+
+	var has_window := bool(guidance.get("has_window", false)) and not carbonisation_mode
+	if ratio_target_zone != null:
+		ratio_target_zone.visible = has_window
+		if has_window:
+			var ratio_min := float(guidance.get("ratio_min", 0.0))
+			var ratio_max := float(guidance.get("ratio_max", 0.0))
+			var min_anchor := inverse_lerp(ratio_slider.min_value, ratio_slider.max_value, ratio_min)
+			var max_anchor := inverse_lerp(ratio_slider.min_value, ratio_slider.max_value, ratio_max)
+			ratio_target_zone.anchor_left = clampf(min_anchor, 0.0, 1.0)
+			ratio_target_zone.anchor_right = clampf(max_anchor, 0.0, 1.0)
+			ratio_target_zone.offset_left = 0.0
+			ratio_target_zone.offset_right = 0.0
+
+	_update_ratio_current_marker(ratio_slider.value)
+
+
+func _update_ratio_current_marker(value: float) -> void:
+	if ratio_current_marker == null or ratio_slider == null:
+		return
+
+	var normalized := clampf(inverse_lerp(ratio_slider.min_value, ratio_slider.max_value, value), 0.0, 1.0)
+	ratio_current_marker.anchor_left = normalized
+	ratio_current_marker.anchor_right = normalized
+	ratio_current_marker.offset_left = -1.0
+	ratio_current_marker.offset_right = 1.0
+
+
+func _get_active_ratio_guidance() -> Dictionary:
+	if carbonisation_mode:
+		return {
+			"has_window": false,
+			"tooltip": "Carbonisation mode: Slot B is empty."
+		}
+
+	var source_info := _get_active_carbon_source_info()
+	if source_info.is_empty():
+		return {
+			"has_window": false,
+			"tooltip": RATIO_GUIDE_TOOLTIP_FALLBACK
+		}
+
+	return _build_ratio_guidance(source_info)
+
+
+func _build_ratio_guidance(source_info: Dictionary) -> Dictionary:
+	var display_name := str(source_info.get("display_name", "Carbon source"))
+	var carbon_fraction := clampf(float(source_info.get("carbon_fraction", 0.0)), 0.0, 1.0)
+	if carbon_fraction <= 0.0:
+		return {
+			"has_window": false,
+			"tooltip": "%s: no carbon profile available." % display_name
+		}
+
+	return {
+		"has_window": true,
+		"ratio_min": STEEL_TARGET_MIN_CARBON,
+		"ratio_max": STEEL_TARGET_MAX_CARBON,
+		"tooltip": "%s: steel at %s-%s%% carbon" % [
+			display_name,
+			_format_pct(STEEL_TARGET_MIN_CARBON),
+			_format_pct(STEEL_TARGET_MAX_CARBON)
+		]
+	}
+
+
+func _format_pct(value: float) -> String:
+	var rounded_value := snappedf(value, 0.1)
+	if is_equal_approx(rounded_value, roundf(rounded_value)):
+		return str(int(round(rounded_value)))
+	return "%.1f" % rounded_value
+
+
+func _get_active_carbon_source_info() -> Dictionary:
+	if carbonisation_mode:
+		return {}
+
+	var input_b: Dictionary = _slot_state.get(&"input_b", {})
+	var input_b_id: StringName = input_b.get(&"item_id", &"")
+	if input_b_id.is_empty():
+		return {}
+
+	var element_data := ElementDatabase.get_element(input_b_id)
+	if element_data.is_empty():
+		return {}
+
+	var properties: Dictionary = element_data.get(&"properties", {})
+	var carbon_fraction := 0.0
+	if properties.has(&"carbon_pct_when_burned"):
+		carbon_fraction = float(properties.get(&"carbon_pct_when_burned", 0.0))
+	elif properties.has(&"carbon_percentage"):
+		carbon_fraction = float(properties.get(&"carbon_percentage", 0.0))
+	else:
+		return {}
+
+	return {
+		"element_id": input_b_id,
+		"display_name": str(element_data.get(&"display_name", String(input_b_id).capitalize())),
+		"symbol": str(element_data.get(&"symbol", "C")),
+		"carbon_fraction": clampf(carbon_fraction, 0.0, 1.0)
+	}
+
+
+func _get_effective_b_ratio_from_slider(source_info: Dictionary) -> float:
+	var carbon_fraction := clampf(float(source_info.get("carbon_fraction", 0.0)), 0.0, 1.0)
+	if carbon_fraction <= 0.0:
+		return 0.0
+	return clampf(ratio_slider.value / carbon_fraction, 0.0, 100.0)
+
+
+func _evaluate_alloy_prediction(input_a_id: StringName, input_b_id: StringName, current_temp: float) -> Dictionary:
+	var source_info := _get_active_carbon_source_info()
+	if source_info.is_empty():
+		return {
+			"output_id": null,
+			"quality": 0.0,
+			"tier": "unknown",
+			"notes": "No carbon source profile"
+		}
+
+	return ChemistryEngine.evaluate_reaction(
+		String(input_a_id),
+		String(input_b_id),
+		_get_effective_b_ratio_from_slider(source_info),
+		current_temp
+	)
+
+
+func _show_output_prediction(result: Dictionary) -> void:
+	var refs: Dictionary = _slot_refs.get(&"output", {})
+	if refs.is_empty():
+		return
+
+	var output_id := StringName(str(result.get("output_id", "")))
+	var notes := str(result.get("notes", ""))
+	var prediction_text := notes if not notes.is_empty() else "No predicted output"
+	if not output_id.is_empty():
+		prediction_text = "Predicted: %s" % _get_item_label(output_id)
+
+	var icon: TextureRect = refs[&"icon"]
+	var quantity_label: Label = refs[&"quantity"]
+	var name_label: Label = refs[&"name"]
+	icon.texture = null
+	icon.modulate = SLOT_EMPTY_COLOR
+	quantity_label.text = ""
+	name_label.text = prediction_text
+	name_label.modulate = OUTPUT_PREVIEW_COLOR
