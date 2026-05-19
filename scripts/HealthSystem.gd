@@ -8,11 +8,13 @@ const DAMAGE_TYPE_PHYSICAL := &"physical"
 const DAMAGE_TYPE_BURN := &"burn"
 const DAMAGE_TYPE_TOXIC := &"toxic"
 const DAMAGE_TYPE_RADIATION := &"radiation"
+const DAMAGE_TYPE_EXPLOSION := &"explosion"
 const VALID_DAMAGE_TYPES: Array[StringName] = [
 	DAMAGE_TYPE_PHYSICAL,
 	DAMAGE_TYPE_BURN,
 	DAMAGE_TYPE_TOXIC,
 	DAMAGE_TYPE_RADIATION,
+	DAMAGE_TYPE_EXPLOSION,
 ]
 
 @export var max_health: int = 100
@@ -39,11 +41,14 @@ func take_damage(amount: int, type: StringName = DAMAGE_TYPE_PHYSICAL) -> void:
 
 	var damage_type := _normalize_damage_type(type)
 	match damage_type:
-		DAMAGE_TYPE_PHYSICAL, DAMAGE_TYPE_BURN, DAMAGE_TYPE_TOXIC, DAMAGE_TYPE_RADIATION:
+		DAMAGE_TYPE_PHYSICAL, DAMAGE_TYPE_BURN, DAMAGE_TYPE_TOXIC, DAMAGE_TYPE_RADIATION, DAMAGE_TYPE_EXPLOSION:
 			current_health = clampi(current_health - amount, 0, max_health)
 
 	if current_health <= 0:
-		die(damage_type)
+		var cause_of_death := damage_type
+		if damage_type == DAMAGE_TYPE_EXPLOSION:
+			cause_of_death = StringName("Furnace overheated")
+		die(cause_of_death)
 		return
 
 	health_changed.emit(current_health, max_health)

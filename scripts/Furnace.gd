@@ -142,6 +142,20 @@ func clear_input(slot_name: StringName) -> void:
 	_sync_ui()
 
 
+func reset_after_explosion() -> void:
+	_input_slots[&"input_a"] = {&"item_id": &"", &"quantity": 0}
+	_input_slots[&"input_b"] = {&"item_id": &"", &"quantity": 0}
+	_remaining_heat_potential = 0.0
+	_remaining_burn_time = 0.0
+	current_temp = 0.0
+	target_temp = 0.0
+	fuel_level = 0.0
+	fuel_rate = 0.0
+	_sync_heat_state()
+	_sync_ui()
+	temp_changed.emit(current_temp)
+
+
 func get_fuel_state() -> Dictionary:
 	if not _has_active_fuel():
 		return {&"item_id": &"", &"quantity": 0}

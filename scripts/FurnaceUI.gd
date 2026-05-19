@@ -31,6 +31,13 @@ const RATIO_GUIDE_TARGET_COLOR := Color(0.34, 0.82, 0.45, 0.32)
 const RATIO_GUIDE_MARKER_COLOR := Color(0.97, 0.97, 0.97, 0.95)
 const RATIO_GUIDE_TOOLTIP_FALLBACK := "Load a carbon source into Input B for steel guidance."
 const OUTPUT_PREVIEW_COLOR := Color(0.58, 0.61, 0.66, 1.0)
+const FURNACE_EXPLOSION_RADIUS := 32.0
+const FURNACE_EXPLOSION_DAMAGE := 35
+const FURNACE_EXPLOSION_SHAKE_STRENGTH := 1.2
+const FURNACE_EXPLOSION_SHAKE_DURATION := 0.6
+const FURNACE_EXPLOSION_SPARK_COUNT := 80
+const FURNACE_EXPLOSION_SPARK_LIFETIME := 0.4
+const FURNACE_EXPLOSION_SLOT_LOSS_CHANCE := 0.5
 
 @onready var root: Control = $Root
 @onready var panel: PanelContainer = $Root/PanelContainer
@@ -65,6 +72,7 @@ var ratio_target_zone: ColorRect
 var ratio_current_marker: ColorRect
 var carbon_slag_zone: ColorRect
 var carbon_optimal_zone: ColorRect
+var _explosion_spark_texture: Texture2D
 var _slot_refs: Dictionary[StringName, Dictionary] = {}
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
@@ -507,7 +515,7 @@ func _update_temperature_display(current_temp: float) -> void:
 			fill_color = CARBONISATION_GOOD_COLOR
 		fill_style.bg_color = fill_color
 		temp_readout_label.add_theme_color_override("font_color", fill_color)
-		danger_label.text = "400-700°C makes Charcoal | >700°C makes Slag"
+		danger_label.text = "400-700°C makes Charcoal | >700°C overheats the furnace"
 		danger_label.visible = true
 	else:
 		var is_danger := clamped_temp >= DANGER_TEMPERATURE
@@ -624,7 +632,17 @@ func _evaluate_smelt_request() -> void:
 		# Validate temperature range 400–700°C
 		if current_temp < CARBONISATION_OPTIMAL_MIN:
 			show_output_placeholder("Heat too low")
-			action_hint_label.text = "Need 400–700°C for charcoal, >700°C gives Slag."
+			action_hint_label.text = "Need 400–700°C for charcoal."
+			return
+
+		if current_temp > CARBONISATION_OPTIMAL_MAX:
+			var carbonisation_explosion := _build_explosion_result(
+				"Temperature exceeded 700°C during carbonisation. Furnace overheated."
+			)
+			_last_reaction_result = carbonisation_explosion
+			var carbonisation_inputs_log := [{"item_id": input_a_id, "quantity": input_a_qty}]
+			_consume_furnace_slot(&"input_a", input_a_id, input_a_qty)
+			_apply_reaction_result(carbonisation_explosion, 0, carbonisation_inputs_log, current_temp)
 			return
 
 		var carb_result := ChemistryEngine.evaluate_reaction("wood", null, 0.0, current_temp)
@@ -645,12 +663,9 @@ func _evaluate_smelt_request() -> void:
 
 	# Temperature >1600°C → explosion regardless of inputs
 	if current_temp > DANGER_TEMPERATURE:
-		var explosion_result := {
-			"output_id": "explosion",
-			"quality": 0.0,
-			"tier": "danger",
-			"notes": "Temperature exceeded 1600°C — EXPLOSION! Radius 2 tiles.",
-		}
+		var explosion_result := _build_explosion_result(
+			"Temperature exceeded 1600°C during smelting. Furnace overheated."
+		)
 		_last_reaction_result = explosion_result
 		var inputs_log := [
 			{"item_id": input_a_id, "quantity": input_a_qty},
@@ -781,46 +796,160 @@ func _deliver_output_to_inventory(output_id: StringName, quantity: int) -> void:
 		print("[FurnaceUI] Could not add %s x%d to inventory — capacity reached." % [output_id, quantity])
 
 
-## Trigger an explosion: camera shake, burn damage, clear furnace, log discovery.
-func _trigger_explosion(notes: String, inputs_log: Array, temp: float) -> void:
-	print("[FurnaceUI] EXPLOSION triggered at %d°C" % int(temp))
-
-	# Camera shake — signal on CameraShake autoload
-	if has_node("/root/CameraShake"):
-		get_node("/root/CameraShake").shake.emit(28.0, 0.9)
-
-	# Deal burn damage to the player via HealthSystem
-	var health_nodes := get_tree().get_nodes_in_group("health_system")
-	if health_nodes.is_empty():
-		# Fallback: find the player's HealthSystem directly
-		var player := get_tree().current_scene.find_child("Player", true, false)
-		if is_instance_valid(player):
-			var hs := player.find_child("HealthSystem", true, false)
-			if is_instance_valid(hs) and hs.has_method("take_damage"):
-				hs.take_damage(40, &"burn")
-	else:
-		for hs in health_nodes:
-			if hs.has_method("take_damage"):
-				hs.take_damage(40, &"burn")
-
-	# Clear all furnace inputs and reset output slot
-	_slot_state[&"input_a"] = {&"item_id": &"", &"quantity": 0}
-	_slot_state[&"input_b"] = {&"item_id": &"", &"quantity": 0}
-	_slot_state[&"output"] = {&"item_id": &"", &"quantity": 0}
-	_apply_slot_visual(&"input_a", &"", 0, "No material")
-	_apply_slot_visual(&"input_b", &"", 0, "No material")
-	_apply_slot_visual(&"output", &"", 0, "EXPLOSION!")
-
-	action_hint_label.text = notes if not notes.is_empty() else "EXPLOSION! Temperature exceeded 1600°C."
-
-	# Log the explosion to DiscoveryLog
-	var explosion_result := {
+func _build_explosion_result(notes: String) -> Dictionary:
+	return {
 		"output_id": "explosion",
 		"quality": 0.0,
 		"tier": "danger",
 		"notes": notes,
 	}
+
+
+## Trigger an explosion: shake, burst sparks, damage nearby bodies, and reset the furnace.
+func _trigger_explosion(notes: String, inputs_log: Array, temp: float) -> void:
+	print("[FurnaceUI] EXPLOSION triggered at %d°C" % int(temp))
+
+	if has_node("/root/CameraShake"):
+		get_node("/root/CameraShake").shake.emit(
+			FURNACE_EXPLOSION_SHAKE_STRENGTH,
+			FURNACE_EXPLOSION_SHAKE_DURATION
+		)
+
+	_spawn_explosion_particles()
+
+	for health_system in _get_overlapping_health_systems():
+		health_system.take_damage(FURNACE_EXPLOSION_DAMAGE, &"explosion")
+
+	var inventory_loss_text := ""
+	if randf() < FURNACE_EXPLOSION_SLOT_LOSS_CHANCE:
+		var destroyed_slot := InventoryManager.destroy_random_occupied_slot()
+		if not destroyed_slot.is_empty():
+			inventory_loss_text = " Lost slot %d: %s x%d." % [
+				int(destroyed_slot.get("slot_index", 0)) + 1,
+				_get_item_label(StringName(destroyed_slot.get("item_id", &""))),
+				int(destroyed_slot.get("quantity", 0))
+			]
+
+	_reset_furnace_after_explosion()
+	_slot_state[&"output"] = {&"item_id": &"", &"quantity": 0}
+	_apply_slot_visual(&"output", &"", 0, "EXPLOSION!")
+
+	action_hint_label.text = (
+		notes if not notes.is_empty() else "Furnace overheated."
+	) + inventory_loss_text
+
+	var explosion_result := _build_explosion_result(action_hint_label.text)
 	_log_to_discovery(explosion_result, inputs_log, temp)
+
+
+func _spawn_explosion_particles() -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return
+
+	var particles := GPUParticles2D.new()
+	particles.amount = FURNACE_EXPLOSION_SPARK_COUNT
+	particles.one_shot = true
+	particles.explosiveness = 1.0
+	particles.lifetime = FURNACE_EXPLOSION_SPARK_LIFETIME
+	particles.local_coords = false
+	particles.texture = _get_explosion_spark_texture()
+	particles.global_position = _get_furnace_world_position()
+
+	var process_material := ParticleProcessMaterial.new()
+	process_material.direction = Vector3(1.0, 0.0, 0.0)
+	process_material.spread = 180.0
+	process_material.initial_velocity_min = 90.0
+	process_material.initial_velocity_max = 180.0
+	process_material.gravity = Vector3.ZERO
+	process_material.scale_min = 0.6
+	process_material.scale_max = 1.3
+	process_material.angular_velocity_min = -360.0
+	process_material.angular_velocity_max = 360.0
+	particles.process_material = process_material
+
+	current_scene.add_child(particles)
+	particles.global_position = _get_furnace_world_position()
+	particles.emitting = true
+	get_tree().create_timer(FURNACE_EXPLOSION_SPARK_LIFETIME + 0.2).timeout.connect(particles.queue_free)
+
+
+func _get_overlapping_health_systems() -> Array:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return []
+
+	var world := current_scene.get_world_2d()
+	if world == null:
+		return []
+
+	var circle_shape := CircleShape2D.new()
+	circle_shape.radius = FURNACE_EXPLOSION_RADIUS
+
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = circle_shape
+	query.transform = Transform2D(0.0, _get_furnace_world_position())
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+
+	var results := world.direct_space_state.intersect_shape(query, 16)
+	var health_systems: Array = []
+	var seen := {}
+	for result in results:
+		var collider = result.get("collider")
+		if not (collider is Node):
+			continue
+
+		var collider_node := collider as Node
+		var health_system := collider_node.get_node_or_null("HealthSystem")
+		if health_system == null:
+			health_system = collider_node.find_child("HealthSystem", true, false)
+		if health_system == null or not health_system.has_method("take_damage"):
+			continue
+
+		var instance_id := health_system.get_instance_id()
+		if seen.has(instance_id):
+			continue
+
+		seen[instance_id] = true
+		health_systems.append(health_system)
+
+	return health_systems
+
+
+func _reset_furnace_after_explosion() -> void:
+	if is_instance_valid(_bound_furnace) and _bound_furnace.has_method("reset_after_explosion"):
+		_bound_furnace.reset_after_explosion()
+	else:
+		_slot_state[&"input_a"] = {&"item_id": &"", &"quantity": 0}
+		_slot_state[&"input_b"] = {&"item_id": &"", &"quantity": 0}
+		_slot_state[&"fuel"] = {&"item_id": &"", &"quantity": 0}
+		_apply_slot_visual(&"input_a", &"", 0, "No material")
+		_apply_slot_visual(&"input_b", &"", 0, "No material")
+		_apply_slot_visual(&"fuel", &"", 0, "Fuel item")
+		_update_temperature_display(0.0)
+
+
+func _get_furnace_world_position() -> Vector2:
+	if is_instance_valid(_bound_furnace) and _bound_furnace is Node2D:
+		return (_bound_furnace as Node2D).global_position
+	return Vector2.ZERO
+
+
+func _get_explosion_spark_texture() -> Texture2D:
+	if _explosion_spark_texture != null:
+		return _explosion_spark_texture
+
+	var image := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0.0, 0.0, 0.0, 0.0))
+	for y in range(4):
+		for x in range(4):
+			var is_core := x >= 1 and x <= 2 and y >= 1 and y <= 2
+			var spark_color := Color8(255, 230, 160) if is_core else Color8(255, 140, 40, 180)
+			image.set_pixel(x, y, spark_color)
+
+	_explosion_spark_texture = ImageTexture.create_from_image(image)
+	return _explosion_spark_texture
 
 
 func _log_to_discovery(result: Dictionary, inputs: Array, temp: float) -> void:
@@ -869,7 +998,7 @@ func _update_mode_state(is_carbonisation: bool) -> void:
 	carbon_slag_zone.visible = carbonisation_mode
 	carbon_optimal_zone.visible = carbonisation_mode
 	summary_label.text = (
-		"Single-input wood carbonisation. Hold 400-700°C for charcoal; above 700°C burns into slag."
+		"Single-input wood carbonisation. Hold 400-700°C for charcoal; above 700°C overheats the furnace."
 		if carbonisation_mode else
 		"Load two materials, tune the B ratio, feed fuel, and watch the heat to preview the probable result."
 	)

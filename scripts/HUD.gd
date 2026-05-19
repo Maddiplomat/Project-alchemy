@@ -113,6 +113,10 @@ func _format_cause_of_death(cause_of_death: StringName) -> String:
 			return "Physical damage"
 		&"burn":
 			return "Burn damage"
+		&"explosion":
+			return "Explosion damage"
+		&"Furnace overheated":
+			return "Furnace overheated"
 		&"toxic":
 			return "Toxic exposure"
 		&"radiation":

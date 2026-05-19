@@ -182,6 +182,36 @@ func lose_random_item() -> bool:
 	return remove_item(random_id, 1)
 
 
+func destroy_random_occupied_slot() -> Dictionary:
+	_ensure_slot_count(DEFAULT_SLOT_COUNT)
+
+	var occupied_slots: Array[int] = []
+	for slot_index in range(slot_order.size()):
+		var item_id: StringName = slot_order[slot_index]
+		if item_id.is_empty() or not items.has(item_id):
+			continue
+		occupied_slots.append(slot_index)
+
+	if occupied_slots.is_empty():
+		return {}
+
+	var destroyed_slot_index := occupied_slots[randi() % occupied_slots.size()]
+	var destroyed_item_id: StringName = slot_order[destroyed_slot_index]
+	var destroyed_item: Dictionary = items.get(destroyed_item_id, {})
+	var destroyed_quantity := int(destroyed_item.get(&"quantity", 0))
+	if destroyed_quantity <= 0:
+		return {}
+
+	if not remove_item(destroyed_item_id, destroyed_quantity):
+		return {}
+
+	return {
+		"slot_index": destroyed_slot_index,
+		"item_id": destroyed_item_id,
+		"quantity": destroyed_quantity,
+	}
+
+
 func set_held_item(item_id: StringName, manual: bool = false) -> bool:
 	if item_id == held_item_id:
 		manual_selection = manual or manual_selection
