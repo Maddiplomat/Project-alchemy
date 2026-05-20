@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://dmw6mqmrjlwmh"]
+
+[ext_resource type="Script" uid="uid://chwfs7pdkjpxv" path="res://scripts/TestFurnaceWarnings.gd" id="1_x3spm"]
+[ext_resource type="PackedScene" uid="uid://c26h5x2dn8bef" path="res://scenes/Furnace.tscn" id="2_5jf0k"]
+
+[node name="TestFurnaceWarnings" type="Node2D" unique_id=392180502]
+script = ExtResource("1_x3spm")
+
+[node name="Furnace" parent="." unique_id=1093476520 instance=ExtResource("2_5jf0k")]
+position = Vector2(160, 120)

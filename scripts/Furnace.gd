@@ -44,7 +44,7 @@ func _ready() -> void:
 	_unlit_texture = _build_placeholder_texture(false)
 	_lit_texture = _build_placeholder_texture(true)
 	_update_sprite()
-	_ensure_ui()
+	call_deferred("_ensure_ui")
 	interaction_area.body_entered.connect(_on_body_entered)
 	interaction_area.body_exited.connect(_on_body_exited)
 	_hide_prompt()

@@ -38,6 +38,13 @@ const FURNACE_EXPLOSION_SHAKE_DURATION := 0.6
 const FURNACE_EXPLOSION_SPARK_COUNT := 80
 const FURNACE_EXPLOSION_SPARK_LIFETIME := 0.4
 const FURNACE_EXPLOSION_SLOT_LOSS_CHANCE := 0.5
+const SMELTING_FLASH_TEMPERATURE := 1500.0
+const SMELTING_SFX_TEMPERATURE := 1580.0
+const SMELTING_EXPLOSION_TEMPERATURE := 1600.0
+const CARBONISATION_FLASH_TEMPERATURE := 650.0
+const CARBONISATION_SFX_TEMPERATURE := 680.0
+const CARBONISATION_SLAG_TEMPERATURE := 700.0
+const WARNING_FLASH_SPEED := 0.014
 
 @onready var root: Control = $Root
 @onready var panel: PanelContainer = $Root/PanelContainer
@@ -73,6 +80,17 @@ var ratio_current_marker: ColorRect
 var carbon_slag_zone: ColorRect
 var carbon_optimal_zone: ColorRect
 var _explosion_spark_texture: Texture2D
+var _warning_audio_player: AudioStreamPlayer
+var _warning_audio_stream: AudioStreamWAV
+var warning_mode := ""
+var warning_flash_active := false
+var warning_sfx_fired := false
+var warning_flash_threshold := 0.0
+var warning_sfx_threshold := 0.0
+var warning_result_threshold := 0.0
+var warning_audio_play_count := 0
+var warning_last_audio_temp := -1.0
+var warning_display_text := ""
 var _slot_refs: Dictionary[StringName, Dictionary] = {}
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
@@ -98,6 +116,7 @@ func _ready() -> void:
 
 	_apply_theme()
 	_reset_slots()
+	_ensure_warning_audio_player()
 	_update_ratio_label(ratio_slider.value)
 	_update_ratio_guidance()
 	_update_mode_state(false)
@@ -503,28 +522,135 @@ func _update_temperature_display(current_temp: float) -> void:
 	var clamped_temp := clampf(current_temp, 0.0, MAX_TEMPERATURE)
 	temperature_gauge.value = clamped_temp
 	temp_readout_label.text = "%d°C" % int(round(clamped_temp))
+	_update_warning_state(clamped_temp)
 
 	var fill_style: StyleBoxFlat = temperature_gauge.get_theme_stylebox("fill").duplicate()
 	if carbonisation_mode:
-		var is_slag := clamped_temp > CARBONISATION_OPTIMAL_MAX
-		var is_optimal := clamped_temp >= CARBONISATION_OPTIMAL_MIN and clamped_temp <= CARBONISATION_OPTIMAL_MAX
+		var is_slag := clamped_temp >= CARBONISATION_SLAG_TEMPERATURE
+		var is_optimal := clamped_temp >= CARBONISATION_OPTIMAL_MIN and clamped_temp < CARBONISATION_SLAG_TEMPERATURE
 		var fill_color := GAUGE_NORMAL_COLOR
 		if is_slag:
 			fill_color = CARBONISATION_SLAG_COLOR
 		elif is_optimal:
 			fill_color = CARBONISATION_GOOD_COLOR
-		fill_style.bg_color = fill_color
+		fill_style.bg_color = _get_warning_fill_color(fill_color, Color(1.0, 0.92, 0.72, 1.0))
 		temp_readout_label.add_theme_color_override("font_color", fill_color)
-		danger_label.text = "400-700°C makes Charcoal | >700°C overheats the furnace"
+		danger_label.text = warning_display_text if not warning_display_text.is_empty() else "400-699°C makes Charcoal | 700°C makes Slag"
 		danger_label.visible = true
 	else:
-		var is_danger := clamped_temp >= DANGER_TEMPERATURE
-		fill_style.bg_color = GAUGE_DANGER_COLOR if is_danger else GAUGE_NORMAL_COLOR
-		temp_readout_label.add_theme_color_override("font_color", GAUGE_DANGER_COLOR if is_danger else GAUGE_NORMAL_COLOR)
-		danger_label.text = "Danger above 1600°C"
-		danger_label.visible = is_danger
+		var is_danger := clamped_temp >= SMELTING_EXPLOSION_TEMPERATURE
+		var base_color := GAUGE_DANGER_COLOR if is_danger else GAUGE_NORMAL_COLOR
+		fill_style.bg_color = _get_warning_fill_color(base_color, Color(1.0, 0.88, 0.74, 1.0))
+		temp_readout_label.add_theme_color_override("font_color", base_color)
+		danger_label.text = warning_display_text if not warning_display_text.is_empty() else "Overheat warning from 1500°C | Explosion at 1600°C"
+		danger_label.visible = warning_flash_active or is_danger
 
 	temperature_gauge.add_theme_stylebox_override("fill", fill_style)
+
+
+func _update_warning_state(current_temp: float) -> void:
+	var next_mode := "carbonisation" if carbonisation_mode else "smelting"
+	var next_flash_threshold := CARBONISATION_FLASH_TEMPERATURE if carbonisation_mode else SMELTING_FLASH_TEMPERATURE
+	var next_sfx_threshold := CARBONISATION_SFX_TEMPERATURE if carbonisation_mode else SMELTING_SFX_TEMPERATURE
+	var next_result_threshold := CARBONISATION_SLAG_TEMPERATURE if carbonisation_mode else SMELTING_EXPLOSION_TEMPERATURE
+
+	if warning_mode != next_mode:
+		warning_sfx_fired = false
+		warning_last_audio_temp = -1.0
+
+	warning_mode = next_mode
+	warning_flash_threshold = next_flash_threshold
+	warning_sfx_threshold = next_sfx_threshold
+	warning_result_threshold = next_result_threshold
+	warning_flash_active = current_temp >= warning_flash_threshold
+
+	if not warning_flash_active:
+		warning_sfx_fired = false
+		warning_last_audio_temp = -1.0
+
+	if current_temp >= warning_sfx_threshold and not warning_sfx_fired:
+		_play_warning_audio(current_temp)
+		warning_sfx_fired = true
+	elif current_temp < warning_flash_threshold:
+		warning_sfx_fired = false
+
+	if carbonisation_mode:
+		if current_temp >= CARBONISATION_SLAG_TEMPERATURE:
+			warning_display_text = "Overburn warning: 700°C wastes the wood into Slag"
+		elif current_temp >= CARBONISATION_SFX_TEMPERATURE:
+			warning_display_text = "Critical warning: audio cue at 680°C, Slag at 700°C"
+		elif current_temp >= CARBONISATION_FLASH_TEMPERATURE:
+			warning_display_text = "Overburn warning: gauge flashes from 650°C"
+		else:
+			warning_display_text = "400-699°C makes Charcoal | 700°C makes Slag"
+		return
+
+	if current_temp >= SMELTING_EXPLOSION_TEMPERATURE:
+		warning_display_text = "Critical warning: furnace explodes at 1600°C"
+	elif current_temp >= SMELTING_SFX_TEMPERATURE:
+		warning_display_text = "Critical warning: audio cue at 1580°C, explosion at 1600°C"
+	elif current_temp >= SMELTING_FLASH_TEMPERATURE:
+		warning_display_text = "Overheat warning: gauge flashes from 1500°C"
+	else:
+		warning_display_text = "Overheat warning from 1500°C | Explosion at 1600°C"
+
+
+func _get_warning_fill_color(base_color: Color, flash_color: Color) -> Color:
+	if not warning_flash_active:
+		return base_color
+
+	var flash_phase := 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) * WARNING_FLASH_SPEED)
+	return base_color.lerp(flash_color, flash_phase * 0.7)
+
+
+func _ensure_warning_audio_player() -> void:
+	if _warning_audio_player != null:
+		return
+
+	_warning_audio_player = AudioStreamPlayer.new()
+	_warning_audio_player.name = "WarningAudioPlayer"
+	_warning_audio_player.bus = &"Master"
+	_warning_audio_player.volume_db = -9.0
+	_warning_audio_player.stream = _build_warning_audio_stream()
+	add_child(_warning_audio_player)
+
+
+func _build_warning_audio_stream() -> AudioStreamWAV:
+	if _warning_audio_stream != null:
+		return _warning_audio_stream
+
+	var mix_rate := 22050
+	var duration_seconds := 0.12
+	var sample_count := int(float(mix_rate) * duration_seconds)
+	var pcm_bytes := PackedByteArray()
+	pcm_bytes.resize(sample_count * 2)
+	var frequency := 1240.0
+
+	for sample_index in range(sample_count):
+		var envelope := 1.0 - (float(sample_index) / float(sample_count))
+		var sample_value := sin(TAU * frequency * (float(sample_index) / float(mix_rate))) * envelope
+		var pcm_value := int(clampi(int(round(sample_value * 12000.0)), -32768, 32767))
+		var encoded_value := pcm_value if pcm_value >= 0 else 65536 + pcm_value
+		pcm_bytes[sample_index * 2] = encoded_value & 0xff
+		pcm_bytes[sample_index * 2 + 1] = (encoded_value >> 8) & 0xff
+
+	_warning_audio_stream = AudioStreamWAV.new()
+	_warning_audio_stream.mix_rate = mix_rate
+	_warning_audio_stream.format = AudioStreamWAV.FORMAT_16_BITS
+	_warning_audio_stream.stereo = false
+	_warning_audio_stream.data = pcm_bytes
+	return _warning_audio_stream
+
+
+func _play_warning_audio(current_temp: float) -> void:
+	_ensure_warning_audio_player()
+	if _warning_audio_player == null:
+		return
+
+	_warning_audio_player.stop()
+	_warning_audio_player.play()
+	warning_audio_play_count += 1
+	warning_last_audio_temp = current_temp
 
 
 func _get_drop_slot_id(global_mouse_position: Vector2) -> StringName:
@@ -635,14 +761,12 @@ func _evaluate_smelt_request() -> void:
 			action_hint_label.text = "Need 400–700°C for charcoal."
 			return
 
-		if current_temp > CARBONISATION_OPTIMAL_MAX:
-			var carbonisation_explosion := _build_explosion_result(
-				"Temperature exceeded 700°C during carbonisation. Furnace overheated."
-			)
-			_last_reaction_result = carbonisation_explosion
-			var carbonisation_inputs_log := [{"item_id": input_a_id, "quantity": input_a_qty}]
-			_consume_furnace_slot(&"input_a", input_a_id, input_a_qty)
-			_apply_reaction_result(carbonisation_explosion, 0, carbonisation_inputs_log, current_temp)
+		if current_temp >= CARBONISATION_SLAG_TEMPERATURE:
+			var slag_result := ChemistryEngine.evaluate_reaction("wood", null, 0.0, current_temp)
+			_last_reaction_result = slag_result
+			var slag_inputs_log := [{"item_id": input_a_id, "quantity": input_a_qty}]
+			var slag_quantity := _consume_furnace_slot(&"input_a", input_a_id, input_a_qty)
+			_apply_reaction_result(slag_result, slag_quantity, slag_inputs_log, current_temp)
 			return
 
 		var carb_result := ChemistryEngine.evaluate_reaction("wood", null, 0.0, current_temp)
@@ -662,7 +786,7 @@ func _evaluate_smelt_request() -> void:
 		return
 
 	# Temperature >1600°C → explosion regardless of inputs
-	if current_temp > DANGER_TEMPERATURE:
+	if current_temp >= DANGER_TEMPERATURE:
 		var explosion_result := _build_explosion_result(
 			"Temperature exceeded 1600°C during smelting. Furnace overheated."
 		)
@@ -879,7 +1003,7 @@ func _get_overlapping_health_systems() -> Array:
 	if current_scene == null:
 		return []
 
-	var world := current_scene.get_world_2d()
+	var world: World2D = current_scene.get_world_2d()
 	if world == null:
 		return []
 
@@ -892,7 +1016,7 @@ func _get_overlapping_health_systems() -> Array:
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 
-	var results := world.direct_space_state.intersect_shape(query, 16)
+	var results: Array = world.direct_space_state.intersect_shape(query, 16)
 	var health_systems: Array = []
 	var seen := {}
 	for result in results:
@@ -998,7 +1122,7 @@ func _update_mode_state(is_carbonisation: bool) -> void:
 	carbon_slag_zone.visible = carbonisation_mode
 	carbon_optimal_zone.visible = carbonisation_mode
 	summary_label.text = (
-		"Single-input wood carbonisation. Hold 400-700°C for charcoal; above 700°C overheats the furnace."
+		"Single-input wood carbonisation. Hold 400-699°C for charcoal; at 700°C the wood burns into Slag."
 		if carbonisation_mode else
 		"Load two materials, tune the B ratio, feed fuel, and watch the heat to preview the probable result."
 	)

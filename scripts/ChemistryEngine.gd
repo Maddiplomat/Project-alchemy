@@ -41,7 +41,7 @@ func evaluate_reaction(element_a, element_b, ratio_b_pct: float, temp: float) ->
 		# Use carbon_ratio for the rest of the logic
 		var ratio := carbon_ratio
 		# TEMPERATURE OVERRIDE: Explosion
-		if temp > 1600.0:
+		if temp >= 1600.0:
 			result.output_id = "explosion"
 			result.quality = 0.0
 			result.tier = "danger"
@@ -150,7 +150,7 @@ func _evaluate_carbonisation(temp: float) -> Dictionary:
 
 	if temp < 400.0:
 		result.notes = "Heat too low for carbonisation (400°C-700°C for charcoal)"
-	elif temp <= 700.0:
+	elif temp < 700.0:
 		result.output_id = "charcoal"
 		result.quality = 1.0
 		result.tier = "optimal"
