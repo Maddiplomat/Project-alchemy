@@ -3,6 +3,7 @@ extends CanvasLayer
 const WORLD_SCENE_PATH := "res://scenes/World.tscn"
 const MAIN_MENU_SCENE_PATH := "res://scenes/MainMenu.tscn"
 const DEATH_OVERLAY_FADE_SECONDS := 1.0
+const DISCOVERY_JOURNAL_SCENE := preload("res://scenes/UI/DiscoveryJournal.tscn")
 
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var health_label: Label = $HealthBar/HealthLabel
@@ -18,8 +19,15 @@ const CARRY_VIGNETTE_MAX_ALPHA := 0.35
 const CARRY_VIGNETTE_START_RATIO := 0.9
 const CARRY_VIGNETTE_END_RATIO := 1.0
 
+@export var debug_seed_journal_entries := 0
+@export var debug_open_journal_on_ready := false
+@export var debug_report_journal_layout := false
+
 var _placeholder_textures := {}
 var _death_overlay_tween: Tween = null
+var _journal_panel: Panel = null
+var _journal_open := false
+var _paused_player: Node = null
 
 func _ready() -> void:
 	GameManager.player_health_changed.connect(_update_health)
@@ -34,6 +42,30 @@ func _ready() -> void:
 	_refresh_held_item()
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	_hide_death_overlay()
+	_setup_discovery_journal()
+
+	if debug_seed_journal_entries > 0:
+		DiscoveryLog.seed_debug_entries(debug_seed_journal_entries, true)
+
+	if debug_open_journal_on_ready:
+		call_deferred("_open_debug_journal")
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if death_overlay.visible:
+		return
+
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE and _journal_open:
+		_close_journal()
+		get_viewport().set_input_as_handled()
+		return
+
+	if event.is_action_pressed("toggle_journal"):
+		if _journal_open:
+			_close_journal()
+		else:
+			_open_journal()
+		get_viewport().set_input_as_handled()
 
 func _update_health(current_health: int, max_health: int) -> void:
 	health_bar.max_value = max_health
@@ -105,6 +137,59 @@ func _on_retry_button_pressed() -> void:
 func _on_quit_button_pressed() -> void:
 	GameManager.set_game_state(GameManager.GameState.MAIN_MENU)
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
+
+
+func _setup_discovery_journal() -> void:
+	_journal_panel = DISCOVERY_JOURNAL_SCENE.instantiate()
+	add_child(_journal_panel)
+	if _journal_panel.has_signal("close_requested"):
+		_journal_panel.close_requested.connect(_close_journal)
+	if _journal_panel.has_method("hide_panel"):
+		_journal_panel.hide_panel()
+
+
+func _open_journal() -> void:
+	if _journal_panel == null or _journal_open:
+		return
+
+	_pause_player_input()
+	_journal_open = true
+	_journal_panel.show_panel()
+
+
+func _close_journal() -> void:
+	if _journal_panel == null or not _journal_open:
+		return
+
+	_journal_open = false
+	_journal_panel.hide_panel()
+	_resume_player_input()
+
+
+func _pause_player_input() -> void:
+	var player := get_tree().current_scene.find_child("Player", true, false)
+	if player == null or not player.has_method("pause_input"):
+		return
+
+	_paused_player = player
+	player.pause_input()
+
+
+func _resume_player_input() -> void:
+	if _paused_player == null or not is_instance_valid(_paused_player):
+		_paused_player = null
+		return
+	if _paused_player.has_method("resume_input"):
+		_paused_player.resume_input()
+	_paused_player = null
+
+
+func _open_debug_journal() -> void:
+	_open_journal()
+	if debug_report_journal_layout and _journal_panel != null and _journal_panel.has_method("debug_report_layout"):
+		await get_tree().process_frame
+		await get_tree().process_frame
+		_journal_panel.debug_report_layout()
 
 
 func _format_cause_of_death(cause_of_death: StringName) -> String:
