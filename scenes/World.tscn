@@ -41,7 +41,7 @@ position = Vector2(560, 512)
 position = Vector2(464, 512)
 
 [node name="CharcoalPileProp" parent="." instance=ExtResource("8_cp1v9")]
-position = Vector2(500, 520)
+position = Vector2(490, 518)
 
 [node name="HUD" parent="." unique_id=1866474338 instance=ExtResource("4_hud")]
 
