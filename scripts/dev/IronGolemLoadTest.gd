@@ -26,6 +26,7 @@ func _run_test() -> void:
 	_assert(is_equal_approx(golem.detection_radius, 180.0), "Expected detection radius to default to 180.")
 	_assert(is_equal_approx(golem.attack_range, 48.0), "Expected attack range to default to 48.")
 	_assert(is_equal_approx(golem.move_speed, 60.0), "Expected move speed to default to 60.")
+	_assert(golem.current_state == golem.State.PATROL, "Expected IronGolem to default to PATROL state.")
 	_assert(is_equal_approx(float(resistances.get(&"oxidation", 0.0)), 3.0), "Expected oxidation multiplier 3.0.")
 	_assert(is_equal_approx(float(resistances.get(&"physical_blunt", -1.0)), 0.0), "Expected blunt immunity multiplier 0.0.")
 	_assert(scan_data.get(&"weaknesses", []).has(&"oxidation"), "Expected oxidation in weaknesses.")

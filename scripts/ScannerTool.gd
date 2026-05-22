@@ -3,6 +3,8 @@ extends Node2D
 ## ScannerTool — attached to the Player node.
 ## Press and hold Q to reveal floating info panels for nearby pickups and enemies.
 
+signal scan_started(origin: Vector2)
+
 const ELEMENT_SCAN_RADIUS: float = 80.0
 const ENEMY_SCAN_RADIUS: float = 120.0
 const ELEMENT_AUTO_DISMISS: float = 3.0
@@ -51,6 +53,7 @@ var _space_state: PhysicsDirectSpaceState2D
 
 
 func _ready() -> void:
+	add_to_group(&"scanner_tool")
 	_space_state = get_world_2d().direct_space_state
 	_setup_animations()
 
@@ -116,6 +119,7 @@ func _begin_scan() -> void:
 		return
 
 	var player_pos := player.global_position
+	scan_started.emit(player_pos)
 	_anim.play("scan")
 	_scan_elements(player_pos)
 	_scan_enemies(player_pos)
