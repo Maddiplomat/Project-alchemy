@@ -45,3 +45,25 @@
 - At what inventory threshold does the player start making different choices instead of simply tolerating slowdown?
 - Do players understand that held items plus the crafting panel imply combination mechanics?
 - Once chemistry explosions arrive, does death feel fair, legible, and fast to recover from?
+
+# Prototype 3 Additions
+
+## Changes & Additions
+
+### 1. Discovery Unlock Notification (UI & Feedback)
+- **New Signal**: Added `new_discovery` signal to `DiscoveryLog.gd` to broadcast successful and failed experiments, with tracking for first-time discoveries.
+- **Toast UI**: Created `NotificationToast` scene and script. This panel slides in from the top-centre when a discovery is made.
+- **Dynamic Messaging**: 
+  - Successfully making Steel triggers: `[DISCOVERY UNLOCKED] Steel Alloy`.
+  - Carbonising wood for the first time triggers: `[DISCOVERY UNLOCKED] Charcoal — a purer carbon source`.
+  - Failed attempts display a quieter `Experiment logged`.
+- **Audio Feedback**: Only successful paths play a resonant ding sound effect.
+
+### 2. Lore & Puzzle Hints
+- **Blacksmith's Burned Note**: Created a new lore item (`data/lore/blacksmith_note.json`) found in the Blacksmith ruins.
+- **Hint Content**: *"…iron holds at twelve hundred…carbon no more than two…the black stone burns cleaner than wood…"*
+- **Purpose**: Explicitly guides players on the minimum temperature (1200°C) and carbon ratio (no more than 2) required for the steel reaction. It subtly points toward the necessity of charcoal over standard wood.
+
+### 3. Environmental Storytelling
+- **Charcoal Pile Prop**: Created `CharcoalPileProp.tscn`, a non-interactive decoration sprite to be placed near furnace spawn points.
+- **Purpose**: Visually signals that charcoal belongs near furnaces, seeding the idea of carbonisation in the player's mind before they've formally discovered the mechanic.

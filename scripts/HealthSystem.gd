@@ -20,6 +20,7 @@ const VALID_DAMAGE_TYPES: Array[StringName] = [
 @export var max_health: int = 100
 @export var current_health: int = 100
 @export var over_capacity_damage_multiplier: float = 1.5
+@export var resistances: Dictionary = {}
 
 var status_effects: Array[StringName] = []
 var _is_dead := false
@@ -36,13 +37,19 @@ func take_damage(amount: int, type: StringName = DAMAGE_TYPE_PHYSICAL) -> void:
 	if amount <= 0 or _is_dead:
 		return
 
+	# Calculate final damage through the DamageCalculator using our resistances
+	var final_amount: int = int(DamageCalculator.calculate(float(amount), String(type), self))
+	
+	if final_amount <= 0:
+		return
+
 	if InventoryManager.is_over_capacity():
-		amount = int(float(amount) * over_capacity_damage_multiplier)
+		final_amount = int(float(final_amount) * over_capacity_damage_multiplier)
 
 	var damage_type := _normalize_damage_type(type)
 	match damage_type:
 		DAMAGE_TYPE_PHYSICAL, DAMAGE_TYPE_BURN, DAMAGE_TYPE_TOXIC, DAMAGE_TYPE_RADIATION, DAMAGE_TYPE_EXPLOSION:
-			current_health = clampi(current_health - amount, 0, max_health)
+			current_health = clampi(current_health - final_amount, 0, max_health)
 
 	if current_health <= 0:
 		var cause_of_death := damage_type
