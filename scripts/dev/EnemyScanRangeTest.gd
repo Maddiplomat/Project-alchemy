@@ -35,8 +35,13 @@ func _run_test() -> void:
 	var canvas := get_node_or_null("ScannerCanvas") as CanvasLayer
 	_assert(canvas != null, "Expected ScannerCanvas to be created for scan overlay.")
 	if canvas != null:
-		_assert(canvas.get_node_or_null("ScanOverlay_Enemy119") != null, "Expected composition overlay for 119px enemy.")
+		var overlay := canvas.get_node_or_null("ScanOverlay_Enemy119") as PanelContainer
+		_assert(overlay != null, "Expected composition overlay for 119px enemy.")
 		_assert(canvas.get_node_or_null("ScanOverlay_Enemy121") == null, "Expected no overlay for 121px enemy.")
+		if overlay != null:
+			_assert(overlay.get_node_or_null("MarginContainer/VBoxContainer/CompositionBar") != null, "Expected composition bar in enemy scan overlay.")
+			_assert(overlay.get_node_or_null("MarginContainer/VBoxContainer/WeaknessesRow/Badges") != null, "Expected weakness badges row in enemy scan overlay.")
+			_assert(overlay.get_node_or_null("MarginContainer/VBoxContainer/ImmunitiesRow/Badges") != null, "Expected immunity badges row in enemy scan overlay.")
 
 	if _failures == 0:
 		print("EnemyScanRangeTest passed.")

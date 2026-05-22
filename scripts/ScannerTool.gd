@@ -5,7 +5,8 @@ extends Node2D
 
 const ELEMENT_SCAN_RADIUS: float = 80.0
 const ENEMY_SCAN_RADIUS: float = 120.0
-const AUTO_DISMISS: float = 3.0
+const ELEMENT_AUTO_DISMISS: float = 3.0
+const ENEMY_AUTO_DISMISS: float = 4.0
 const ELEMENT_SCAN_DURATION: float = 0.4
 const ENEMY_SCAN_DURATION: float = 1.2
 
@@ -14,9 +15,10 @@ const ELEMENT_PANEL_WIDTH: float = 140.0
 const ELEMENT_PANEL_HEIGHT: float = 76.0
 const ELEMENT_PANEL_OFFSET: Vector2 = Vector2(12.0, -64.0)
 const ENEMY_PANEL_WIDTH: float = 220.0
-const ENEMY_PANEL_HEIGHT: float = 148.0
-const ENEMY_PANEL_OFFSET: Vector2 = Vector2(-88.0, -132.0)
+const ENEMY_PANEL_HEIGHT: float = 126.0
+const ENEMY_PANEL_OFFSET: Vector2 = Vector2(-110.0, -64.0)
 const ENEMY_PANEL_ACCENT: Color = Color(0.36, 0.96, 1.0, 1.0)
+const IMMUNITY_ACCENT: Color = Color(1.0, 0.35, 0.35, 1.0)
 
 const CATEGORY_COLOURS: Dictionary = {
 	"organic": Color(0.45, 0.80, 0.30, 1.0),
@@ -28,6 +30,14 @@ const CATEGORY_COLOURS: Dictionary = {
 	"catalyst": Color(1.00, 0.85, 0.20, 1.0),
 }
 const FALLBACK_COLOUR: Color = Color(0.85, 0.85, 0.85, 1.0)
+const DAMAGE_TYPE_COLOURS: Dictionary = {
+	"oxidation": Color(1.00, 0.55, 0.15, 1.0),
+	"electrical": Color(0.40, 0.95, 1.0, 1.0),
+	"chemical": Color(0.42, 0.90, 0.35, 1.0),
+	"radiation": Color(0.65, 1.00, 0.20, 1.0),
+	"physical_blunt": Color(0.60, 0.46, 0.30, 1.0),
+	"physical_sharp": Color(0.85, 0.88, 0.93, 1.0),
+}
 const ENEMY_QUERY_MASK := 0x7fffffff
 
 var _active_panels: Dictionary = {}
@@ -205,22 +215,22 @@ func _play_enemy_scan_sweep(enemy: Node2D) -> void:
 func _spawn_element_panel(pickup: Node2D, data: Dictionary) -> void:
 	var panel := _build_element_panel(data)
 	panel.name = "ScanOverlay_" + pickup.name
-	_add_panel(pickup, panel, ELEMENT_PANEL_OFFSET)
+	_add_panel(pickup, panel, ELEMENT_PANEL_OFFSET, ELEMENT_AUTO_DISMISS)
 
 
 func _spawn_enemy_panel(enemy: Node2D, scan_data: Dictionary) -> void:
 	var panel := _build_enemy_panel(enemy, scan_data)
 	panel.name = "ScanOverlay_" + enemy.name
-	_add_panel(enemy, panel, ENEMY_PANEL_OFFSET)
+	_add_panel(enemy, panel, ENEMY_PANEL_OFFSET, ENEMY_AUTO_DISMISS)
 
 
-func _add_panel(target: Node2D, panel: Control, offset: Vector2) -> void:
+func _add_panel(target: Node2D, panel: Control, offset: Vector2, dismiss_after: float) -> void:
 	var canvas := _get_or_create_canvas()
 	canvas.add_child(panel)
 	_panel_offsets[target] = offset
 	_update_panel_position(panel, target)
 	_active_panels[target] = panel
-	_timers[target] = AUTO_DISMISS
+	_timers[target] = dismiss_after
 
 	panel.modulate.a = 0.0
 	var tween := create_tween()
@@ -340,6 +350,7 @@ func _build_enemy_panel(enemy: Node2D, scan_data: Dictionary) -> PanelContainer:
 	panel.add_theme_stylebox_override("panel", _build_panel_style(ENEMY_PANEL_ACCENT, 0.94))
 
 	var margin := MarginContainer.new()
+	margin.name = "MarginContainer"
 	margin.add_theme_constant_override("margin_left", 10)
 	margin.add_theme_constant_override("margin_top", 8)
 	margin.add_theme_constant_override("margin_right", 10)
@@ -347,6 +358,7 @@ func _build_enemy_panel(enemy: Node2D, scan_data: Dictionary) -> PanelContainer:
 	panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
+	vbox.name = "VBoxContainer"
 	vbox.add_theme_constant_override("separation", 4)
 	margin.add_child(vbox)
 
@@ -356,38 +368,148 @@ func _build_enemy_panel(enemy: Node2D, scan_data: Dictionary) -> PanelContainer:
 	title.add_theme_color_override("font_color", Color(0.96, 0.99, 1.0, 1.0))
 	vbox.add_child(title)
 
-	var subtitle := Label.new()
-	subtitle.text = "Complex composition profile"
-	subtitle.add_theme_font_size_override("font_size", 10)
-	subtitle.add_theme_color_override("font_color", Color(0.56, 0.88, 1.0, 0.92))
-	vbox.add_child(subtitle)
-
 	vbox.add_child(_build_separator(ENEMY_PANEL_ACCENT))
-	vbox.add_child(_build_enemy_section("Composition", _format_composition(scan_data.get(&"composition", []))))
-	vbox.add_child(_build_enemy_section("Weaknesses", _format_damage_tags(scan_data.get(&"weaknesses", []))))
-	vbox.add_child(_build_enemy_section("Immunities", _format_damage_tags(scan_data.get(&"immunities", []))))
+
+	var composition_label := Label.new()
+	composition_label.name = "CompositionLabel"
+	composition_label.text = "Composition"
+	composition_label.add_theme_font_size_override("font_size", 10)
+	composition_label.add_theme_color_override("font_color", Color(0.56, 0.88, 1.0, 0.92))
+	vbox.add_child(composition_label)
+
+	var composition_bar := _build_composition_bar(scan_data.get(&"composition", []))
+	composition_bar.name = "CompositionBar"
+	vbox.add_child(composition_bar)
+
+	var weakness_row := _build_tag_row(
+		"Weaknesses",
+		scan_data.get(&"weaknesses", []),
+		false
+	)
+	weakness_row.name = "WeaknessesRow"
+	vbox.add_child(weakness_row)
+
+	var immunity_row := _build_tag_row(
+		"Immunities",
+		scan_data.get(&"immunities", []),
+		true
+	)
+	immunity_row.name = "ImmunitiesRow"
+	vbox.add_child(immunity_row)
 
 	return panel
 
 
-func _build_enemy_section(title: String, body: String) -> VBoxContainer:
-	var section := VBoxContainer.new()
-	section.add_theme_constant_override("separation", 1)
+func _build_composition_bar(composition: Variant) -> Control:
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 4)
+
+	var bar_frame := PanelContainer.new()
+	bar_frame.custom_minimum_size = Vector2(0.0, 18.0)
+	bar_frame.add_theme_stylebox_override("panel", _build_panel_style(Color(0.22, 0.28, 0.34, 1.0), 0.40))
+	root.add_child(bar_frame)
+
+	var bar := HBoxContainer.new()
+	bar.name = "CompositionSegments"
+	bar.add_theme_constant_override("separation", 0)
+	bar_frame.add_child(bar)
+
+	var legend := HBoxContainer.new()
+	legend.name = "CompositionLegend"
+	legend.add_theme_constant_override("separation", 6)
+	root.add_child(legend)
+
+	if not (composition is Array) or composition.is_empty():
+		var unknown := Label.new()
+		unknown.text = "Unknown"
+		unknown.add_theme_font_size_override("font_size", 10)
+		unknown.add_theme_color_override("font_color", Color(0.76, 0.82, 0.88, 1.0))
+		legend.add_child(unknown)
+		return root
+
+	for entry in composition:
+		if not (entry is Dictionary):
+			continue
+
+		var element_id := StringName(entry.get(&"element_id", &""))
+		var pct := float(entry.get(&"pct", 0.0))
+		var normalized_pct := clampf(pct if pct <= 1.0 else pct / 100.0, 0.0, 1.0)
+		if is_zero_approx(normalized_pct):
+			continue
+
+		var element_data := ElementDatabase.get_element(element_id)
+		var segment_color := _get_element_scan_colour(element_id, element_data)
+
+		var segment := ColorRect.new()
+		segment.custom_minimum_size = Vector2(maxf(16.0, normalized_pct * 160.0), 14.0)
+		segment.color = segment_color
+		segment.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		segment.tooltip_text = _format_composition_tooltip(element_id, normalized_pct, element_data)
+		bar.add_child(segment)
+
+		var legend_chip := ColorRect.new()
+		legend_chip.custom_minimum_size = Vector2(8.0, 8.0)
+		legend_chip.color = segment_color
+
+		var legend_text := Label.new()
+		legend_text.text = _get_element_scan_name(element_id, element_data)
+		legend_text.add_theme_font_size_override("font_size", 9)
+		legend_text.add_theme_color_override("font_color", Color(0.76, 0.82, 0.88, 1.0))
+
+		var legend_item := HBoxContainer.new()
+		legend_item.add_theme_constant_override("separation", 4)
+		legend_item.add_child(legend_chip)
+		legend_item.add_child(legend_text)
+		legend.add_child(legend_item)
+
+	return root
+
+
+func _build_tag_row(title: String, values: Variant, is_immunity: bool) -> VBoxContainer:
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
 
 	var title_label := Label.new()
 	title_label.text = title
 	title_label.add_theme_font_size_override("font_size", 10)
-	title_label.add_theme_color_override("font_color", Color(0.56, 0.88, 1.0, 0.92))
-	section.add_child(title_label)
+	title_label.add_theme_color_override(
+		"font_color",
+		IMMUNITY_ACCENT if is_immunity else Color(0.56, 0.88, 1.0, 0.92)
+	)
+	row.add_child(title_label)
 
-	var body_label := Label.new()
-	body_label.text = body
-	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body_label.add_theme_font_size_override("font_size", 10)
-	body_label.add_theme_color_override("font_color", Color(0.90, 0.96, 1.0, 1.0))
-	section.add_child(body_label)
+	var badges := HBoxContainer.new()
+	badges.name = "Badges"
+	badges.add_theme_constant_override("separation", 6)
+	row.add_child(badges)
 
-	return section
+	if not (values is Array) or values.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "None"
+		empty_label.add_theme_font_size_override("font_size", 10)
+		empty_label.add_theme_color_override("font_color", Color(0.76, 0.82, 0.88, 0.85))
+		badges.add_child(empty_label)
+		return row
+
+	for value in values:
+		var damage_type := String(value)
+		badges.add_child(_build_damage_badge(damage_type, is_immunity))
+
+	return row
+
+
+func _build_damage_badge(damage_type: String, is_immunity: bool) -> PanelContainer:
+	var accent := IMMUNITY_ACCENT if is_immunity else _get_damage_type_colour(damage_type)
+
+	var badge := PanelContainer.new()
+	badge.add_theme_stylebox_override("panel", _build_badge_style(accent, is_immunity))
+
+	var label := Label.new()
+	label.text = _format_damage_badge_text(damage_type, is_immunity)
+	label.add_theme_font_size_override("font_size", 9)
+	label.add_theme_color_override("font_color", Color(1.0, 0.97, 0.97, 1.0) if is_immunity else Color(0.08, 0.10, 0.13, 1.0))
+	badge.add_child(label)
+	return badge
 
 
 func _build_panel_style(accent: Color, alpha: float) -> StyleBoxFlat:
@@ -404,6 +526,25 @@ func _build_panel_style(accent: Color, alpha: float) -> StyleBoxFlat:
 	style.corner_radius_bottom_right = 6
 	style.shadow_color = Color(0, 0, 0, 0.55)
 	style.shadow_size = 4
+	return style
+
+
+func _build_badge_style(accent: Color, is_immunity: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(accent.r, accent.g, accent.b, 0.24) if is_immunity else accent
+	style.border_color = accent
+	style.border_width_left = 1
+	style.border_width_right = 1
+	style.border_width_top = 1
+	style.border_width_bottom = 1
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_left = 4
+	style.corner_radius_bottom_right = 4
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
 	return style
 
 
@@ -444,44 +585,42 @@ func _resolve_element_id(pickup: Node) -> StringName:
 	return element_id
 
 
-func _format_composition(composition: Variant) -> String:
-	if not (composition is Array) or composition.is_empty():
-		return "Unknown"
-
-	var lines: PackedStringArray = []
-	for entry in composition:
-		if not (entry is Dictionary):
-			continue
-
-		var element_id := StringName(entry.get(&"element_id", &""))
-		var pct := float(entry.get(&"pct", 0.0))
-		if pct <= 1.0:
-			pct *= 100.0
-
-		var element_data := ElementDatabase.get_element(element_id)
-		var display_name := str(element_data.get(&"display_name", _humanize_identifier(String(element_id))))
-		var symbol := str(element_data.get(&"symbol", ""))
-		var label := display_name if symbol.is_empty() else "%s %s" % [symbol, display_name]
-		lines.append("%s %.0f%%" % [label, pct])
-
-	return "\n".join(lines)
-
-
-func _format_damage_tags(values: Variant) -> String:
-	if not (values is Array) or values.is_empty():
-		return "None"
-
-	var tags: PackedStringArray = []
-	for value in values:
-		tags.append(_humanize_identifier(String(value)))
-	return ", ".join(tags)
-
-
 func _humanize_identifier(value: String) -> String:
 	var words := value.replace("_", " ").split(" ", false)
 	for index in range(words.size()):
 		words[index] = words[index].capitalize()
 	return " ".join(words)
+
+
+func _get_damage_type_colour(damage_type: String) -> Color:
+	return DAMAGE_TYPE_COLOURS.get(damage_type, Color(0.72, 0.82, 0.94, 1.0))
+
+
+func _get_element_scan_colour(element_id: StringName, element_data: Dictionary) -> Color:
+	var category := str(element_data.get(&"category", "")).to_lower()
+	if CATEGORY_COLOURS.has(category):
+		return CATEGORY_COLOURS[category]
+	if String(element_id) == "charcoal":
+		return Color(0.30, 0.30, 0.34, 1.0)
+	return FALLBACK_COLOUR
+
+
+func _get_element_scan_name(element_id: StringName, element_data: Dictionary) -> String:
+	var display_name := str(element_data.get(&"display_name", ""))
+	if not display_name.is_empty():
+		return display_name
+	return _humanize_identifier(String(element_id))
+
+
+func _format_composition_tooltip(element_id: StringName, pct: float, element_data: Dictionary) -> String:
+	return "%s %.0f%%" % [_get_element_scan_name(element_id, element_data), pct * 100.0]
+
+
+func _format_damage_badge_text(damage_type: String, is_immunity: bool) -> String:
+	var label := _humanize_identifier(damage_type)
+	if is_immunity:
+		return "⊘ %s" % label
+	return label
 
 
 func _get_or_create_canvas() -> CanvasLayer:
