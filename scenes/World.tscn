@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" path="res://scenes/TestHazard.tscn" id="6_30o7v"]
 [ext_resource type="PackedScene" path="res://scenes/Furnace.tscn" id="7_ot3xq"]
 [ext_resource type="PackedScene" path="res://scenes/CharcoalPileProp.tscn" id="8_cp1v9"]
+[ext_resource type="PackedScene" path="res://scenes/ChemBench.tscn" id="9_cbnch"]
 
 [node name="World" type="Node2D" unique_id=1488050509]
 script = ExtResource("2_nvi4h")
@@ -42,6 +43,9 @@ position = Vector2(464, 512)
 
 [node name="CharcoalPileProp" parent="." instance=ExtResource("8_cp1v9")]
 position = Vector2(490, 518)
+
+[node name="ChemBench" parent="." instance=ExtResource("9_cbnch")]
+position = Vector2(720, 448)
 
 [node name="HUD" parent="." unique_id=1866474338 instance=ExtResource("4_hud")]
 

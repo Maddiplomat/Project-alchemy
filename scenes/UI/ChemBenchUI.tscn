@@ -1,0 +1,290 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ChemBenchUI.gd" id="1_cbui1"]
+
+[node name="ChemBenchUI" type="CanvasLayer"]
+layer = 11
+script = ExtResource("1_cbui1")
+
+[node name="Root" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Backdrop" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.36)
+
+[node name="PanelContainer" type="PanelContainer" parent="Root"]
+custom_minimum_size = Vector2(920, 336)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -460.0
+offset_top = -168.0
+offset_right = 460.0
+offset_bottom = 168.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="HeaderRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "ChemBench Prototype4"
+
+[node name="Spacer" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+layout_mode = 2
+text = "Prototype4 Shell"
+
+[node name="SummaryLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "A darker bench for controlled reagent work. Prototype4 only exposes the Rust Bolt line; later channels remain mechanically locked."
+autowrap_mode = 3
+
+[node name="RecipePlate" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="RecipeLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/RecipePlate"]
+layout_mode = 2
+text = "ACTIVE RECIPE: Rust Bolt"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="InstrumentRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+
+[node name="InputVialA" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
+custom_minimum_size = Vector2(150, 180)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialA"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialA/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialA/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "INPUT VIAL A"
+horizontal_alignment = 1
+
+[node name="VialVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialA/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 108)
+layout_mode = 2
+
+[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialA/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Iron filings"
+horizontal_alignment = 1
+
+[node name="InputVialB" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
+custom_minimum_size = Vector2(150, 180)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialB"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialB/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialB/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "INPUT VIAL B"
+horizontal_alignment = 1
+
+[node name="VialVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialB/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 108)
+layout_mode = 2
+
+[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialB/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Oxide wash"
+horizontal_alignment = 1
+
+[node name="ControlColumn" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
+custom_minimum_size = Vector2(250, 180)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="ActionLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "RATIO CONTROL"
+horizontal_alignment = 1
+
+[node name="RatioSlider" type="HSlider" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
+layout_mode = 2
+min_value = 1.0
+max_value = 5.0
+step = 1.0
+value = 2.0
+
+[node name="RatioValueLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Reagent Ratio: 2 / 5"
+horizontal_alignment = 1
+
+[node name="SpacerTop" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ReactButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+text = "React"
+
+[node name="ActionHintLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Prototype4 shell only. Rust Bolt is the only live channel."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="OutputFlask" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
+custom_minimum_size = Vector2(150, 180)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "OUTPUT FLASK"
+horizontal_alignment = 1
+
+[node name="FlaskVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 108)
+layout_mode = 2
+
+[node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Rust Bolt"
+horizontal_alignment = 1
+
+[node name="LockedRack" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
+custom_minimum_size = Vector2(170, 180)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "PROTOTYPE5 CHANNELS"
+horizontal_alignment = 1
+
+[node name="LockedSlotA" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+
+[node name="LockLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer/LockedSlotA"]
+layout_mode = 2
+text = "LOCK  Catalyst vial"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="LockedSlotB" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+
+[node name="LockLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer/LockedSlotB"]
+layout_mode = 2
+text = "LOCK  Auxiliary flask"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="FooterRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="FooterLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Other recipe channels remain locked until Prototype5."
+
+[node name="CloseButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow"]
+layout_mode = 2
+text = "Close"
