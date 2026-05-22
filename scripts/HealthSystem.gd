@@ -37,19 +37,21 @@ func take_damage(amount: int, type: StringName = DAMAGE_TYPE_PHYSICAL) -> void:
 	if amount <= 0 or _is_dead:
 		return
 
-	# Calculate final damage through the DamageCalculator using our resistances
-	var final_amount: int = int(DamageCalculator.calculate(float(amount), String(type), self))
-	
+	var damage_type := _normalize_damage_type(type)
+	var damage_multiplier := DamageCalculator.get_multiplier(damage_type, self)
+	var final_amount: int = int(DamageCalculator.calculate(float(amount), damage_type, self))
+	print(
+		"HealthSystem damage multiplier: type=%s base=%d multiplier=%.2f effective=%d"
+		% [String(damage_type), amount, damage_multiplier, final_amount]
+	)
+
 	if final_amount <= 0:
 		return
 
 	if InventoryManager.is_over_capacity():
 		final_amount = int(float(final_amount) * over_capacity_damage_multiplier)
 
-	var damage_type := _normalize_damage_type(type)
-	match damage_type:
-		DAMAGE_TYPE_PHYSICAL, DAMAGE_TYPE_BURN, DAMAGE_TYPE_TOXIC, DAMAGE_TYPE_RADIATION, DAMAGE_TYPE_EXPLOSION:
-			current_health = clampi(current_health - final_amount, 0, max_health)
+	current_health = clampi(current_health - final_amount, 0, max_health)
 
 	if current_health <= 0:
 		var cause_of_death := damage_type
@@ -127,6 +129,6 @@ func _emit_state() -> void:
 
 
 func _normalize_damage_type(type: StringName) -> StringName:
-	if VALID_DAMAGE_TYPES.has(type):
-		return type
-	return DAMAGE_TYPE_PHYSICAL
+	if type.is_empty():
+		return DAMAGE_TYPE_PHYSICAL
+	return type
