@@ -46,6 +46,8 @@ var _current_patrol_index := 0
 var _patrol_wait_timer := 0.0
 var _chase_repath_timer := 0.0
 var _player_target: CharacterBody2D = null
+var _attack_cooldown_timer := 0.0
+var _hit_timer := 0.0
 
 
 func _ready() -> void:
@@ -68,6 +70,8 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _attack_cooldown_timer > 0.0:
+		_attack_cooldown_timer -= delta
 	_step_state(delta)
 	move_and_slide()
 
@@ -87,7 +91,11 @@ func _step_state(delta: float) -> void:
 			_update_alert_state(delta)
 		State.CHASE:
 			_update_chase_velocity(delta)
-		State.ATTACK, State.HIT, State.DEAD:
+		State.ATTACK:
+			_update_attack_state(delta)
+		State.HIT:
+			_update_hit_state(delta)
+		State.DEAD:
 			velocity = Vector2.ZERO
 
 
@@ -104,6 +112,10 @@ func set_state(new_state: State) -> void:
 		_chase_repath_timer = CHASE_REPATH_INTERVAL
 	elif current_state == State.CHASE:
 		_chase_repath_timer = 0.0
+	elif current_state == State.ATTACK:
+		velocity = Vector2.ZERO
+	elif current_state == State.HIT:
+		pass
 
 
 func set_patrol_target(world_position: Vector2) -> void:
@@ -167,6 +179,84 @@ func _update_chase_velocity(delta: float) -> void:
 
 	var next_position := _get_navigation_step(target_position)
 	velocity = global_position.direction_to(next_position) * move_speed
+
+
+func _update_attack_state(_delta: float) -> void:
+	if _attack_cooldown_timer <= 0.0:
+		_perform_ground_slam()
+		_attack_cooldown_timer = 0.8
+	
+	if not is_instance_valid(_player_target) or global_position.distance_to(_player_target.global_position) > attack_range:
+		set_state(State.CHASE)
+
+
+func _perform_ground_slam() -> void:
+	var space_state = get_world_2d().direct_space_state
+	var shape = CircleShape2D.new()
+	shape.radius = attack_range
+	var query = PhysicsShapeQueryParameters2D.new()
+	query.shape = shape
+	query.transform = Transform2D(0, global_position)
+	query.collision_mask = 1
+	var results = space_state.intersect_shape(query)
+	for res in results:
+		var col = res.collider
+		if col.name == "Player":
+			if col.has_node("HealthSystem"):
+				col.get_node("HealthSystem").take_damage(12, "physical_blunt")
+			elif col.has_method("take_damage"):
+				col.take_damage(12, "physical_blunt")
+
+
+func _update_hit_state(delta: float) -> void:
+	_hit_timer -= delta
+	velocity = velocity.move_toward(Vector2.ZERO, delta * 300)
+	if _hit_timer <= 0.0:
+		set_state(State.CHASE)
+
+
+func take_damage(amount: int, damage_type: String = "physical_blunt", attacker_pos: Vector2 = Vector2.ZERO) -> void:
+	if current_state == State.DEAD:
+		return
+		
+	var final_damage = int(DamageCalculator.calculate(float(amount), damage_type, self)) if ClassDB.class_exists("DamageCalculator") else amount
+	if final_damage <= 0:
+		return
+		
+	health -= final_damage
+	if health <= 0:
+		die()
+	else:
+		set_state(State.HIT)
+		_hit_timer = 0.3
+		sprite.modulate = Color(10, 10, 10, 1)
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+		if attacker_pos != Vector2.ZERO:
+			velocity = attacker_pos.direction_to(global_position) * (32.0 / 0.3)
+
+
+func die() -> void:
+	set_state(State.DEAD)
+	
+	var rect = ColorRect.new()
+	rect.color = Color("8b4513")
+	rect.size = sprite.texture.get_size() if sprite.texture else Vector2(32, 32)
+	rect.position = -rect.size / 2.0
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(rect)
+	
+	var tween = create_tween()
+	tween.tween_property(sprite, "modulate:a", 0.0, 1.5)
+	tween.parallel().tween_property(rect, "modulate:a", 0.0, 1.5)
+	
+	if randf() <= 0.8:
+		InventoryManager.add_element("iron", 3, 1.0)
+	if randf() <= 0.4:
+		InventoryManager.add_element("water", 1, 1.0)
+		
+	await get_tree().create_timer(1.5).timeout
+	queue_free()
 
 
 func _set_patrol_destination(index: int) -> void:
