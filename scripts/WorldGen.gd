@@ -140,7 +140,7 @@ func _spawn_water_pickups(world_seed: int) -> void:
 	var shuffled := _river_tile_coords.duplicate()
 	for i in range(shuffled.size() - 1, 0, -1):
 		var j := rng.randi_range(0, i)
-		var tmp := shuffled[i]
+		var tmp: Vector2i = shuffled[i]
 		shuffled[i] = shuffled[j]
 		shuffled[j] = tmp
 	for i in range(mini(count, shuffled.size())):
@@ -156,7 +156,7 @@ func _spawn_water_pickups_fallback(world_seed: int) -> void:
 	var shuffled := _river_tile_coords.duplicate()
 	for i in range(shuffled.size() - 1, 0, -1):
 		var j := rng.randi_range(0, i)
-		var tmp := shuffled[i]
+		var tmp: Vector2i = shuffled[i]
 		shuffled[i] = shuffled[j]
 		shuffled[j] = tmp
 	var pickup_scene: PackedScene = load("res://scenes/ElementPickup.tscn")
