@@ -351,8 +351,9 @@ func _normalize_item_data(item_data: Dictionary, quantity: int) -> Dictionary:
 
 	var category: int = normalized.get(&"category", InventoryItemCategory.GENERIC)
 	var is_raw_element := category == InventoryItemCategory.ELEMENT
+	var is_consumable := category == InventoryItemCategory.CONSUMABLE
 	var max_durability = normalized.get(&"max_durability")
-	if is_raw_element:
+	if is_raw_element or is_consumable:
 		normalized[&"durability"] = null
 		normalized[&"max_durability"] = null
 	else:

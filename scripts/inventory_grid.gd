@@ -265,7 +265,7 @@ func _finish_drag(drop_slot_index: int) -> void:
 	if dragged_item.is_empty():
 		return
 
-	_try_drop_to_furnace(dragged_item, quantity_to_drop)
+	_try_drop_to_station_ui(dragged_item, quantity_to_drop)
 
 func _get_slot_index_at_position(global_mouse_position: Vector2) -> int:
 	for i in range(grid.get_child_count()):
@@ -314,15 +314,9 @@ func _update_drag_hint_label() -> void:
 	)
 
 
-func _try_drop_to_furnace(dragged_item: Dictionary, initial_drag_quantity: int) -> bool:
+func _try_drop_to_station_ui(dragged_item: Dictionary, initial_drag_quantity: int) -> bool:
 	var current_scene := get_tree().current_scene
 	if current_scene == null:
-		return false
-
-	var furnace_ui := current_scene.find_child("FurnaceUI", true, false)
-	if furnace_ui == null:
-		return false
-	if not furnace_ui.has_method("handle_inventory_drop"):
 		return false
 
 	var item_id := StringName(str(dragged_item.get("id", "")))
@@ -331,10 +325,15 @@ func _try_drop_to_furnace(dragged_item: Dictionary, initial_drag_quantity: int) 
 		return false
 
 	var mouse_position := get_viewport().get_mouse_position()
-	if not furnace_ui.handle_inventory_drop(mouse_position, item_id, quantity):
-		return false
+	for ui_name: String in ["FurnaceUI", "ChemBenchUI"]:
+		var station_ui := current_scene.find_child(ui_name, true, false)
+		if station_ui == null or not station_ui.has_method("handle_inventory_drop"):
+			continue
+		if not station_ui.handle_inventory_drop(mouse_position, item_id, quantity):
+			continue
+		return InventoryManager.remove_item(item_id, quantity)
 
-	return InventoryManager.remove_item(item_id, quantity)
+	return false
 
 func _on_slot_hover_started(slot_index: int) -> void:
 	if _is_dragging():
