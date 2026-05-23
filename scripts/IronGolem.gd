@@ -48,9 +48,12 @@ var _chase_repath_timer := 0.0
 var _player_target: CharacterBody2D = null
 var _attack_cooldown_timer := 0.0
 var _hit_timer := 0.0
+var _leash_timer := 0.0
+var _max_health: int = 120
 
 
 func _ready() -> void:
+	_max_health = health
 	add_to_group(&"enemy")
 	spawn_position = global_position
 	target_position = global_position
@@ -166,7 +169,16 @@ func _update_chase_velocity(delta: float) -> void:
 		set_state(State.PATROL)
 		return
 
-	if global_position.distance_to(_player_target.global_position) <= attack_range:
+	var dist = global_position.distance_to(_player_target.global_position)
+	if dist > detection_radius * 1.5:
+		_leash_timer += delta
+		if _leash_timer >= 10.0:
+			_retreat()
+			return
+	else:
+		_leash_timer = 0.0
+
+	if dist <= attack_range:
 		set_state(State.ATTACK)
 		velocity = Vector2.ZERO
 		return
@@ -179,6 +191,27 @@ func _update_chase_velocity(delta: float) -> void:
 
 	var next_position := _get_navigation_step(target_position)
 	velocity = global_position.direction_to(next_position) * move_speed
+
+
+func _retreat() -> void:
+	set_state(State.PATROL)
+	_leash_timer = 0.0
+	health = _max_health
+	
+	if alert_audio_player:
+		alert_audio_player.pitch_scale = 0.7
+		alert_audio_player.play()
+		
+	var label = Label.new()
+	label.text = "<Retreated>"
+	label.position = Vector2(-40, -40)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(label)
+	
+	var tween = create_tween()
+	tween.tween_property(label, "position:y", label.position.y - 30, 1.5)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.5)
+	tween.tween_callback(label.queue_free)
 
 
 func _update_attack_state(_delta: float) -> void:
@@ -326,6 +359,7 @@ func _play_alert_sfx() -> void:
 	if alert_audio_player.stream == null:
 		return
 	alert_audio_player.stop()
+	alert_audio_player.pitch_scale = 1.0
 	alert_audio_player.play()
 
 
