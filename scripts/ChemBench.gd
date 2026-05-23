@@ -66,11 +66,16 @@ func close_ui() -> void:
 
 
 func get_active_recipe() -> Dictionary:
-	return {
-		&"recipe_id": &"rust_bolt",
-		&"display_name": "Rust Bolt",
-		&"summary": "Oxidized iron shavings compacted into a sacrificial fastener.",
-	}
+	var recipe := RecipeDatabase.get_recipe(&"rust_bolt")
+	if recipe.is_empty():
+		return {
+			&"id": &"rust_bolt",
+			&"display_name": "Rust Bolt",
+			&"summary": "Oxidized iron shavings compacted into a sacrificial fastener.",
+		}
+	recipe[&"display_name"] = "Rust Bolt"
+	recipe[&"summary"] = "Oxidized iron shavings compacted into a sacrificial fastener."
+	return recipe
 
 
 func _start_interaction() -> void:

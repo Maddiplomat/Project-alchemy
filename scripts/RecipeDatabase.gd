@@ -3,7 +3,7 @@ extends Node
 signal recipe_registered(recipe_id: StringName)
 signal database_ready(recipe_count: int)
 
-const RECIPE_DATA_PATH := "res://data/recipes/p2_recipes.json"
+const RECIPE_DATA_DIR := "res://data/recipes"
 
 var recipes: Dictionary[StringName, Dictionary] = {}
 
@@ -45,25 +45,37 @@ func get_recipes_for_output(item_id: StringName) -> Array[Dictionary]:
 
 func _load_recipes() -> void:
 	recipes.clear()
+	var dir := DirAccess.open(RECIPE_DATA_DIR)
+	if dir == null:
+		push_warning("Unable to open recipe data directory: %s" % RECIPE_DATA_DIR)
+		return
+	var file_names := dir.get_files()
+	file_names.sort()
+	for file_name: String in file_names:
+		if not file_name.ends_with(".json"):
+			continue
+		_load_recipe_file("%s/%s" % [RECIPE_DATA_DIR, file_name])
 
-	var file := FileAccess.open(RECIPE_DATA_PATH, FileAccess.READ)
+
+func _load_recipe_file(file_path: String) -> void:
+	var file := FileAccess.open(file_path, FileAccess.READ)
 	if file == null:
-		push_warning("Unable to open recipe data file: %s" % RECIPE_DATA_PATH)
+		push_warning("Unable to open recipe data file: %s" % file_path)
 		return
 
 	var parsed = JSON.parse_string(file.get_as_text())
 	if not parsed is Array:
-		push_warning("Skipping invalid recipe data file: %s" % RECIPE_DATA_PATH)
+		push_warning("Skipping invalid recipe data file: %s" % file_path)
 		return
 
 	for raw_recipe in parsed:
 		if not raw_recipe is Dictionary:
-			push_warning("Skipping malformed recipe entry in %s" % RECIPE_DATA_PATH)
+			push_warning("Skipping malformed recipe entry in %s" % file_path)
 			continue
 
 		var recipe := _normalize_recipe(raw_recipe)
 		if recipe.is_empty():
-			push_warning("Skipping incomplete recipe entry in %s" % RECIPE_DATA_PATH)
+			push_warning("Skipping incomplete recipe entry in %s" % file_path)
 			continue
 
 		var recipe_id: StringName = recipe.get(&"id", &"")
@@ -107,9 +119,24 @@ func _normalize_recipe(raw_recipe: Dictionary) -> Dictionary:
 	if output_qty <= 0:
 		return {}
 
-	var requires_station = raw_recipe.get(&"requires_station")
-	if requires_station != null:
-		requires_station = StringName(str(requires_station))
+	var station_value = raw_recipe.get(&"station", raw_recipe.get(&"requires_station"))
+	var station: Variant = null
+	if station_value != null:
+		station = StringName(str(station_value))
+
+	var ratio: Dictionary[StringName, float] = {}
+	var raw_ratio = raw_recipe.get(&"ratio", {})
+	if raw_ratio is Dictionary:
+		for ratio_key in raw_ratio.keys():
+			ratio[StringName(str(ratio_key))] = float(raw_ratio[ratio_key])
+
+	var durability: Variant = null
+	if raw_recipe.has(&"durability"):
+		var raw_durability = raw_recipe.get(&"durability")
+		if raw_durability != null:
+			durability = clampf(float(raw_durability), 0.0, 1.0)
+	else:
+		durability = 1.0
 
 	return {
 		&"id": StringName(str(raw_recipe.get(&"id"))),
@@ -118,6 +145,10 @@ func _normalize_recipe(raw_recipe: Dictionary) -> Dictionary:
 			&"item_id": StringName(str(raw_output.get(&"item_id"))),
 			&"qty": output_qty,
 		},
-		&"durability": clampf(float(raw_recipe.get(&"durability", 1.0)), 0.0, 1.0),
-		&"requires_station": requires_station,
+		&"durability": durability,
+		&"station": station,
+		&"requires_station": station,
+		&"ratio": ratio,
+		&"required_temp": raw_recipe.get(&"required_temp"),
+		&"reaction_type": StringName(str(raw_recipe.get(&"reaction_type", ""))),
 	}

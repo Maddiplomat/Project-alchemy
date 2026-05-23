@@ -109,6 +109,14 @@ func _pick_weighted_element(rng: RandomNumberGenerator, spawn_counts: Dictionary
 
 
 func _spawn_element(element_id: StringName, coords: Vector2i, ground_layer: TileMapLayer) -> void:
+	spawn_element_at(element_id, coords, ground_layer)
+
+
+func spawn_element_at(element_id: StringName, coords: Vector2i, ground_layer: TileMapLayer) -> Node2D:
+	var existing_pickup := get_pickup_at_tile(coords)
+	if existing_pickup != null:
+		return existing_pickup
+
 	var pickup := ELEMENT_PICKUP_SCENE.instantiate()
 	pickup.name = "%s_%d_%d" % [element_id, coords.x, coords.y]
 	pickup.set(&"element_id", element_id)
@@ -116,6 +124,16 @@ func _spawn_element(element_id: StringName, coords: Vector2i, ground_layer: Tile
 	pickup.set_meta(&"tile_coords", coords)
 	add_child(pickup)
 	pickup.global_position = ground_layer.to_global(ground_layer.map_to_local(coords))
+	return pickup
+
+
+func get_pickup_at_tile(coords: Vector2i) -> Node2D:
+	for child in get_children():
+		if not child.has_meta(&"tile_coords"):
+			continue
+		if child.get_meta(&"tile_coords") == coords:
+			return child as Node2D
+	return null
 
 
 func _are_all_caps_reached(spawn_counts: Dictionary[StringName, int]) -> bool:

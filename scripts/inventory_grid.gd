@@ -529,21 +529,26 @@ func _build_recipe_rows() -> void:
 
 		var durability_label := Label.new()
 		durability_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		durability_label.text = "Durability"
-		durability_box.add_child(durability_label)
+		var durability = recipe.get(&"durability")
+		if durability == null:
+			durability_label.text = "Consumable"
+			durability_box.add_child(durability_label)
+		else:
+			durability_label.text = "Durability"
+			durability_box.add_child(durability_label)
 
-		var durability_bar := ProgressBar.new()
-		durability_bar.custom_minimum_size = Vector2(72, 10)
-		durability_bar.max_value = 1.0
-		durability_bar.show_percentage = false
-		durability_bar.value = float(recipe.get(&"durability", 1.0))
-		durability_bar.modulate = RECIPE_DURABILITY_COLOR
-		durability_box.add_child(durability_bar)
+			var durability_bar := ProgressBar.new()
+			durability_bar.custom_minimum_size = Vector2(72, 10)
+			durability_bar.max_value = 1.0
+			durability_bar.show_percentage = false
+			durability_bar.value = float(durability)
+			durability_bar.modulate = RECIPE_DURABILITY_COLOR
+			durability_box.add_child(durability_bar)
 
-		var durability_value := Label.new()
-		durability_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		durability_value.text = "%d%%" % int(round(float(recipe.get(&"durability", 1.0)) * 100.0))
-		durability_box.add_child(durability_value)
+			var durability_value := Label.new()
+			durability_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			durability_value.text = "%d%%" % int(round(float(durability) * 100.0))
+			durability_box.add_child(durability_value)
 
 		var craft_button := Button.new()
 		craft_button.custom_minimum_size = Vector2(82, 32)

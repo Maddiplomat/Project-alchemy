@@ -10,8 +10,10 @@ const WATER_TILE := Vector2i(3, 0)
 const SPARSE_TREE_MIN := 0.3
 const DENSE_TREE_MIN := 0.6
 const ELEMENT_SPAWN_SYSTEM_SCRIPT := preload("res://scripts/ElementSpawn.gd")
+const WATER_RESPAWN_SECONDS := 120.0
 
 var _river_tile_coords: Array[Vector2i] = []
+var _world_generation_id := 0
 
 @export var generate_on_ready := true
 @export var noise_frequency := 0.08
@@ -31,6 +33,7 @@ func _ready() -> void:
 
 
 func generate_world(world_seed: int) -> void:
+	_world_generation_id += 1
 	_set_world_seed(world_seed)
 	_clear_layers()
 
@@ -83,16 +86,22 @@ func _place_river_cluster(world_seed: int) -> void:
 		rng.randi_range(MAP_SIZE.y / 2, MAP_SIZE.y - 10)
 	)
 
-	# Carve a short river-edge strip of 10 water tiles in a loose horizontal band
-	for i in range(10):
-		var offset := Vector2i(i * 2, rng.randi_range(-1, 1))
-		var coords := anchor + offset
-		if _is_edge(coords):
-			continue
-		# Water goes on the ground layer; clear any object tile above it
-		ground_layer.set_cell(coords, SOURCE_ID, WATER_TILE, 0)
-		objects_layer.erase_cell(coords)
-		_river_tile_coords.append(coords)
+	var current := anchor
+	var river_length := rng.randi_range(12, 16)
+	for _step in range(river_length):
+		_paint_river_tile(current)
+
+		if rng.randf() < 0.35:
+			var bank_offset := Vector2i(0, 1 if rng.randf() < 0.5 else -1)
+			_paint_river_tile(current + bank_offset)
+
+		var vertical_shift := 0
+		if rng.randf() < 0.55:
+			vertical_shift = rng.randi_range(-1, 1)
+		var next := current + Vector2i(1, vertical_shift)
+		next.x = clampi(next.x, 1, MAP_SIZE.x - 2)
+		next.y = clampi(next.y, 1, MAP_SIZE.y - 2)
+		current = next
 
 
 func _is_edge(coords: Vector2i) -> bool:
@@ -144,7 +153,7 @@ func _spawn_water_pickups(world_seed: int) -> void:
 		shuffled[i] = shuffled[j]
 		shuffled[j] = tmp
 	for i in range(mini(count, shuffled.size())):
-		element_spawn_system.spawn_element_at(&"water", shuffled[i], ground_layer)
+		_spawn_water_pickup_at(shuffled[i], _world_generation_id)
 
 
 func _spawn_water_pickups_fallback(world_seed: int) -> void:
@@ -159,18 +168,54 @@ func _spawn_water_pickups_fallback(world_seed: int) -> void:
 		var tmp: Vector2i = shuffled[i]
 		shuffled[i] = shuffled[j]
 		shuffled[j] = tmp
-	var pickup_scene: PackedScene = load("res://scenes/ElementPickup.tscn")
-	if pickup_scene == null:
-		return
 	for i in range(mini(count, shuffled.size())):
-		var coords: Vector2i = shuffled[i]
-		var pickup := pickup_scene.instantiate()
-		pickup.name = "water_%d_%d" % [coords.x, coords.y]
-		pickup.set(&"element_id", &"water")
-		pickup.set_meta(&"element_id", &"water")
-		pickup.set_meta(&"tile_coords", coords)
-		element_spawn_system.add_child(pickup)
-		pickup.global_position = ground_layer.to_global(ground_layer.map_to_local(coords))
+		_spawn_water_pickup_at(shuffled[i], _world_generation_id)
+
+
+func _paint_river_tile(coords: Vector2i) -> void:
+	if _is_edge(coords):
+		return
+	ground_layer.set_cell(coords, SOURCE_ID, WATER_TILE, 0)
+	objects_layer.erase_cell(coords)
+	if not _river_tile_coords.has(coords):
+		_river_tile_coords.append(coords)
+
+
+func _spawn_water_pickup_at(coords: Vector2i, generation_id: int) -> void:
+	if element_spawn_system == null:
+		return
+	if element_spawn_system.has_method("get_pickup_at_tile"):
+		var existing_pickup = element_spawn_system.get_pickup_at_tile(coords)
+		if existing_pickup != null:
+			return
+	if not element_spawn_system.has_method("spawn_element_at"):
+		return
+	var pickup: Node2D = element_spawn_system.spawn_element_at(&"water", coords, ground_layer)
+	if pickup == null:
+		return
+	if pickup.has_signal("picked_up"):
+		var callback := Callable(self, "_on_water_pickup_collected").bind(coords, generation_id)
+		if not pickup.is_connected("picked_up", callback):
+			pickup.connect("picked_up", callback, CONNECT_ONE_SHOT)
+
+
+func _on_water_pickup_collected(_item_data: Dictionary, _quantity: int, coords: Vector2i, generation_id: int) -> void:
+	_schedule_water_respawn(coords, generation_id)
+
+
+func _schedule_water_respawn(coords: Vector2i, generation_id: int) -> void:
+	var timer := get_tree().create_timer(WATER_RESPAWN_SECONDS)
+	timer.timeout.connect(_respawn_water_pickup.bind(coords, generation_id), CONNECT_ONE_SHOT)
+
+
+func _respawn_water_pickup(coords: Vector2i, generation_id: int) -> void:
+	if generation_id != _world_generation_id:
+		return
+	if not _river_tile_coords.has(coords):
+		return
+	if ground_layer.get_cell_source_id(coords) == -1:
+		return
+	_spawn_water_pickup_at(coords, generation_id)
 
 
 func _get_world_seed() -> int:

@@ -60,14 +60,17 @@ func _build_output_item_data(recipe: Dictionary) -> Dictionary:
 	if item_id.is_empty():
 		return {}
 
-	var durability := clampf(float(recipe.get(&"durability", 1.0)), 0.0, 1.0)
-	return {
+	var item_data := {
 		&"id": item_id,
 		&"display_name": _format_item_name(item_id),
 		&"category": InventoryManager.InventoryItemCategory.CRAFTED,
-		&"durability": durability,
-		&"max_durability": durability,
 	}
+	var durability = recipe.get(&"durability")
+	if durability != null:
+		var normalized_durability := clampf(float(durability), 0.0, 1.0)
+		item_data[&"durability"] = normalized_durability
+		item_data[&"max_durability"] = normalized_durability
+	return item_data
 
 
 func _format_item_name(item_id: StringName) -> String:
