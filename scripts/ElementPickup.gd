@@ -138,6 +138,22 @@ func _setup_animations() -> void:
 	anim_charcoal.track_insert_key(track_charcoal, 2.5, Color(1.0, 0.46, 0.18, 0.6))
 	lib.add_animation("idle_charcoal", anim_charcoal)
 
+	# Water: subtle bob and shimmer.
+	var anim_water := Animation.new()
+	anim_water.length = 1.8
+	anim_water.loop_mode = Animation.LOOP_LINEAR
+	var track_water_position := anim_water.add_track(Animation.TYPE_VALUE)
+	anim_water.track_set_path(track_water_position, "Sprite2D:position")
+	anim_water.track_insert_key(track_water_position, 0.0, Vector2.ZERO)
+	anim_water.track_insert_key(track_water_position, 0.9, Vector2(0.0, -1.0))
+	anim_water.track_insert_key(track_water_position, 1.8, Vector2.ZERO)
+	var track_water_modulate := anim_water.add_track(Animation.TYPE_VALUE)
+	anim_water.track_set_path(track_water_modulate, "Sprite2D:modulate")
+	anim_water.track_insert_key(track_water_modulate, 0.0, Color(1.0, 1.0, 1.0, 0.95))
+	anim_water.track_insert_key(track_water_modulate, 0.9, Color(0.92, 0.98, 1.0, 1.0))
+	anim_water.track_insert_key(track_water_modulate, 1.8, Color(1.0, 1.0, 1.0, 0.95))
+	lib.add_animation("idle_water", anim_water)
+
 	anim_player.add_animation_library("", lib)
 
 
@@ -193,6 +209,8 @@ func _get_pickup_texture(element_key: String) -> Texture2D:
 			_build_stone_texture(image)
 		"iron":
 			_build_iron_texture(image)
+		"water":
+			_build_water_texture(image)
 		"charcoal":
 			_build_charcoal_texture(image)
 		_:
@@ -291,3 +309,25 @@ func _build_charcoal_texture(image: Image) -> void:
 
 	for pixel: Vector2i in [Vector2i(7, 5), Vector2i(8, 6), Vector2i(6, 7)]:
 		image.set_pixel(pixel.x, pixel.y, ember)
+
+
+func _build_water_texture(image: Image) -> void:
+	var deep := Color(0.13, 0.40, 0.67, 1.0)
+	var mid := Color(0.22, 0.58, 0.84, 1.0)
+	var light := Color(0.58, 0.84, 0.96, 1.0)
+	var foam := Color(0.88, 0.98, 1.0, 1.0)
+
+	for y in range(3, 13):
+		for x in range(3, 13):
+			image.set_pixel(x, y, mid)
+
+	for y in range(4, 12):
+		image.set_pixel(3, y, deep)
+		image.set_pixel(12, y, deep)
+
+	for x in range(5, 11):
+		image.set_pixel(x, 5, light)
+		image.set_pixel(x - 1, 9, light)
+
+	for pixel: Vector2i in [Vector2i(5, 4), Vector2i(10, 6), Vector2i(7, 8), Vector2i(9, 10)]:
+		image.set_pixel(pixel.x, pixel.y, foam)
