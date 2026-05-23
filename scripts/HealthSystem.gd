@@ -64,6 +64,27 @@ func take_damage(amount: int, type: StringName = DAMAGE_TYPE_PHYSICAL) -> void:
 	GameManager.mark_dirty()
 
 
+func take_resolved_damage(amount: int, type: StringName = DAMAGE_TYPE_PHYSICAL) -> void:
+	if amount <= 0 or _is_dead:
+		return
+
+	var damage_type := _normalize_damage_type(type)
+	var final_amount := amount
+	if InventoryManager.is_over_capacity():
+		final_amount = int(float(final_amount) * over_capacity_damage_multiplier)
+
+	current_health = clampi(current_health - final_amount, 0, max_health)
+	if current_health <= 0:
+		var cause_of_death := damage_type
+		if damage_type == DAMAGE_TYPE_EXPLOSION:
+			cause_of_death = StringName("Furnace overheated")
+		die(cause_of_death)
+		return
+
+	health_changed.emit(current_health, max_health)
+	GameManager.mark_dirty()
+
+
 func heal(amount: int) -> void:
 	if amount <= 0 or _is_dead:
 		return

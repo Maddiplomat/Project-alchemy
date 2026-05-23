@@ -1,5 +1,7 @@
 extends CharacterBody2D
 
+const RUST_BOLT_SCRIPT := preload("res://scripts/RustBolt.gd")
+
 @export var max_speed: float = 200.0
 @export var acceleration: float = 600.0
 @export var friction: float = 1200.0
@@ -24,6 +26,14 @@ func _ready() -> void:
 	drop_item.connect(_on_drop_item)
 	InventoryManager.weight_changed.connect(_on_weight_changed)
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _input_paused:
+		return
+	if event.is_action_pressed("fire_projectile"):
+		_fire_held_projectile()
+		get_viewport().set_input_as_handled()
 
 func _physics_process(delta: float) -> void:
 	if _input_paused:
@@ -89,3 +99,26 @@ func resume_input() -> void:
 
 func is_input_paused() -> bool:
 	return _input_paused
+
+
+func _fire_held_projectile() -> void:
+	if InventoryManager.get_held_item_id() != "rust_bolt":
+		return
+	if not InventoryManager.remove_item(&"rust_bolt", 1):
+		return
+
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		InventoryManager.add_item({
+			&"id": &"rust_bolt",
+			&"display_name": "Rust Bolt",
+			&"category": InventoryManager.InventoryItemCategory.CONSUMABLE,
+		}, 1)
+		return
+
+	var aim_target := get_global_mouse_position()
+	var direction := global_position.direction_to(aim_target)
+	if direction == Vector2.ZERO:
+		direction = Vector2.RIGHT
+	var spawn_origin := global_position + direction * 10.0
+	RUST_BOLT_SCRIPT.spawn(current_scene, spawn_origin, aim_target)

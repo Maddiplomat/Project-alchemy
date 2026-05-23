@@ -269,6 +269,23 @@ func take_damage(amount: int, damage_type: String = "physical_blunt", attacker_p
 			velocity = attacker_pos.direction_to(global_position) * (32.0 / 0.3)
 
 
+func take_resolved_damage(amount: int, damage_type: String = "physical_blunt", attacker_pos: Vector2 = Vector2.ZERO) -> void:
+	if current_state == State.DEAD or amount <= 0:
+		return
+
+	health -= amount
+	if health <= 0:
+		die()
+	else:
+		set_state(State.HIT)
+		_hit_timer = 0.3
+		sprite.modulate = Color(10, 10, 10, 1)
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+		if attacker_pos != Vector2.ZERO:
+			velocity = attacker_pos.direction_to(global_position) * (32.0 / 0.3)
+
+
 func die() -> void:
 	set_state(State.DEAD)
 	
