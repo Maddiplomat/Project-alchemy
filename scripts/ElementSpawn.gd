@@ -17,6 +17,13 @@ const ELEMENT_SPAWN_TABLE: Array[Dictionary] = [
 		&"weight": 20,
 		&"max_count": 8,
 	},
+	{
+		# Water is river-only — spawned by WorldGen._spawn_water_pickups(), not the weighted picker.
+		# Weight 0 keeps it out of random placement while still letting spawn_counts track it.
+		&"id": &"water",
+		&"weight": 0,
+		&"max_count": 6,
+	},
 ]
 
 

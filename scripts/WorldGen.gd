@@ -6,9 +6,12 @@ const SOURCE_ID := 0
 const GRASS_TILE := Vector2i(0, 0)
 const TREE_TILE := Vector2i(1, 1)
 const ROCK_TILE := Vector2i(2, 1)
+const WATER_TILE := Vector2i(3, 0)
 const SPARSE_TREE_MIN := 0.3
 const DENSE_TREE_MIN := 0.6
 const ELEMENT_SPAWN_SYSTEM_SCRIPT := preload("res://scripts/ElementSpawn.gd")
+
+var _river_tile_coords: Array[Vector2i] = []
 
 @export var generate_on_ready := true
 @export var noise_frequency := 0.08
@@ -53,7 +56,9 @@ func generate_world(world_seed: int) -> void:
 			elif noise_value >= SPARSE_TREE_MIN and _passes_sparse_tree_roll(world_seed, coords):
 				objects_layer.set_cell(coords, SOURCE_ID, TREE_TILE, 0)
 
+	_place_river_cluster(world_seed)
 	_spawn_elements(world_seed)
+	_spawn_water_pickups(world_seed)
 
 
 func regenerate_with_seed(world_seed: int) -> void:
@@ -64,6 +69,30 @@ func _clear_layers() -> void:
 	ground_layer.clear()
 	decor_layer.clear()
 	objects_layer.clear()
+	_river_tile_coords.clear()
+
+
+func _place_river_cluster(world_seed: int) -> void:
+	_river_tile_coords.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = world_seed + 3571
+
+	# Anchor the river to the lower-left quadrant, away from spawn centre
+	var anchor := Vector2i(
+		rng.randi_range(8, MAP_SIZE.x / 4),
+		rng.randi_range(MAP_SIZE.y / 2, MAP_SIZE.y - 10)
+	)
+
+	# Carve a short river-edge strip of 10 water tiles in a loose horizontal band
+	for i in range(10):
+		var offset := Vector2i(i * 2, rng.randi_range(-1, 1))
+		var coords := anchor + offset
+		if _is_edge(coords):
+			continue
+		# Water goes on the ground layer; clear any object tile above it
+		ground_layer.set_cell(coords, SOURCE_ID, WATER_TILE, 0)
+		objects_layer.erase_cell(coords)
+		_river_tile_coords.append(coords)
 
 
 func _is_edge(coords: Vector2i) -> bool:
@@ -96,6 +125,52 @@ func _spawn_elements(world_seed: int) -> void:
 	_prepare_element_spawn_system()
 	if element_spawn_system != null and element_spawn_system.has_method("spawn_elements"):
 		element_spawn_system.spawn_elements(ground_layer, objects_layer, world_seed)
+
+
+func _spawn_water_pickups(world_seed: int) -> void:
+	if _river_tile_coords.is_empty():
+		return
+	_prepare_element_spawn_system()
+	if element_spawn_system == null or not element_spawn_system.has_method("spawn_element_at"):
+		_spawn_water_pickups_fallback(world_seed)
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = world_seed + 4201
+	var count := rng.randi_range(4, 6)
+	var shuffled := _river_tile_coords.duplicate()
+	for i in range(shuffled.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp := shuffled[i]
+		shuffled[i] = shuffled[j]
+		shuffled[j] = tmp
+	for i in range(mini(count, shuffled.size())):
+		element_spawn_system.spawn_element_at(&"water", shuffled[i], ground_layer)
+
+
+func _spawn_water_pickups_fallback(world_seed: int) -> void:
+	if element_spawn_system == null:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = world_seed + 4201
+	var count := rng.randi_range(4, 6)
+	var shuffled := _river_tile_coords.duplicate()
+	for i in range(shuffled.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp := shuffled[i]
+		shuffled[i] = shuffled[j]
+		shuffled[j] = tmp
+	var pickup_scene: PackedScene = load("res://scenes/ElementPickup.tscn")
+	if pickup_scene == null:
+		return
+	for i in range(mini(count, shuffled.size())):
+		var coords := shuffled[i]
+		var pickup := pickup_scene.instantiate()
+		pickup.name = "water_%d_%d" % [coords.x, coords.y]
+		pickup.set(&"element_id", &"water")
+		pickup.set_meta(&"element_id", &"water")
+		pickup.set_meta(&"tile_coords", coords)
+		element_spawn_system.add_child(pickup)
+		pickup.global_position = ground_layer.to_global(ground_layer.map_to_local(coords))
 
 
 func _get_world_seed() -> int:
