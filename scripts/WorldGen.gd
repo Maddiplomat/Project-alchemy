@@ -163,7 +163,7 @@ func _spawn_water_pickups_fallback(world_seed: int) -> void:
 	if pickup_scene == null:
 		return
 	for i in range(mini(count, shuffled.size())):
-		var coords := shuffled[i]
+		var coords: Vector2i = shuffled[i]
 		var pickup := pickup_scene.instantiate()
 		pickup.name = "water_%d_%d" % [coords.x, coords.y]
 		pickup.set(&"element_id", &"water")
