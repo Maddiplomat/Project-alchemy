@@ -70,7 +70,6 @@ func _ready():
 	InventoryManager.inventory_changed.connect(refresh_grid)
 	InventoryManager.held_item_changed.connect(func(_id): refresh_grid())
 	InventoryManager.weight_changed.connect(_on_weight_changed)
-	CraftingManager.crafted.connect(_on_item_crafted)
 	_setup_crafting_pulse_animation()
 	_build_recipe_rows()
 	refresh_grid()
@@ -549,14 +548,15 @@ func _build_recipe_rows() -> void:
 			durability_value.text = "%d%%" % int(round(float(durability) * 100.0))
 			durability_box.add_child(durability_value)
 
-		var craft_button := Button.new()
-		craft_button.custom_minimum_size = Vector2(82, 32)
-		craft_button.text = "Craft"
-		craft_button.pressed.connect(_on_craft_pressed.bind(recipe_id))
-		row_box.add_child(craft_button)
+		var availability_label := Label.new()
+		availability_label.custom_minimum_size = Vector2(96, 32)
+		availability_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		availability_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		availability_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row_box.add_child(availability_label)
 
 		recipe_row_refs[recipe_id] = {
-			"button": craft_button,
+			"availability_label": availability_label,
 			"style": row_style,
 		}
 
@@ -593,19 +593,12 @@ func _create_separator_label(text: String) -> Label:
 func _refresh_recipe_states() -> void:
 	for recipe_id: StringName in recipe_row_refs:
 		var row_ref: Dictionary = recipe_row_refs[recipe_id]
-		var craft_button: Button = row_ref.get("button")
+		var availability_label: Label = row_ref.get("availability_label")
 		var row_style: StyleBoxFlat = row_ref.get("style")
 		var can_craft_now := CraftingManager.can_craft(recipe_id)
-		craft_button.disabled = not can_craft_now
-		craft_button.modulate = CRAFT_READY_COLOR if can_craft_now else CRAFT_LOCKED_COLOR
+		availability_label.text = "Materials\nReady" if can_craft_now else "Materials\nMissing"
+		availability_label.modulate = CRAFT_READY_COLOR if can_craft_now else CRAFT_LOCKED_COLOR
 		row_style.border_color = CRAFT_READY_COLOR if can_craft_now else RECIPE_ROW_BORDER_COLOR
-
-func _on_craft_pressed(recipe_id: StringName) -> void:
-	CraftingManager.craft(recipe_id)
-
-func _on_item_crafted(_recipe_id: StringName) -> void:
-	refresh_grid()
-	_update_crafting_highlight()
 
 
 func _update_crafting_highlight() -> void:
