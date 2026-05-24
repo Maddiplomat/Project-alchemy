@@ -29,7 +29,7 @@ static func _spawn_damage_number(amount: float, damage_type: StringName, target:
 	if tree == null or tree.current_scene == null or DAMAGE_NUMBER_SCENE == null:
 		return
 
-	var spawn_position := _resolve_spawn_position(target, impact_position)
+	var spawn_position: Variant = _resolve_spawn_position(target, impact_position)
 	if spawn_position == null:
 		return
 
@@ -43,7 +43,7 @@ static func _spawn_damage_number(amount: float, damage_type: StringName, target:
 		damage_number.setup(amount, damage_type if amount > 0.0 else &"immune")
 
 
-static func _resolve_spawn_position(target: Node, impact_position):
+static func _resolve_spawn_position(target: Node, impact_position) -> Variant:
 	if impact_position is Vector2:
 		return impact_position + Vector2(0.0, -16.0)
 

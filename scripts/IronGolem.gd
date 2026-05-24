@@ -2,6 +2,7 @@ extends CharacterBody2D
 
 signal patrol_waypoint_reached(waypoint_index: int)
 signal alert_triggered(reason: StringName)
+signal died(golem: CharacterBody2D)
 
 enum State {
 	IDLE,
@@ -303,6 +304,7 @@ func take_resolved_damage(amount: int, damage_type: String = "physical_blunt", a
 func die() -> void:
 	set_state(State.DEAD)
 	enemy_health_bar.visible = false
+	died.emit(self)
 	
 	var rect = ColorRect.new()
 	rect.color = Color("8b4513")
