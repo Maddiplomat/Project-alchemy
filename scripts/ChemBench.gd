@@ -1,6 +1,7 @@
 extends StaticBody2D
 
 const CHEM_BENCH_UI_SCENE := preload("res://scenes/UI/ChemBenchUI.tscn")
+const CHEM_BENCH_STATION_ID := &"chem_bench"
 
 signal player_entered_range
 signal player_exited_range
@@ -65,17 +66,20 @@ func close_ui() -> void:
 	interaction_ended.emit()
 
 
+func get_available_recipes() -> Array[Dictionary]:
+	var results: Array[Dictionary] = []
+	for recipe_id: StringName in RecipeDatabase.get_all_recipes().keys():
+		var recipe := RecipeDatabase.get_recipe(recipe_id)
+		if recipe.get(&"station", null) != CHEM_BENCH_STATION_ID:
+			continue
+		_apply_recipe_metadata(recipe)
+		results.append(recipe)
+	return results
+
+
 func get_active_recipe() -> Dictionary:
-	var recipe := RecipeDatabase.get_recipe(&"rust_bolt")
-	if recipe.is_empty():
-		return {
-			&"id": &"rust_bolt",
-			&"display_name": "Rust Bolt",
-			&"summary": "Oxidized iron shavings compacted into a sacrificial fastener.",
-		}
-	recipe[&"display_name"] = "Rust Bolt"
-	recipe[&"summary"] = "Oxidized iron shavings compacted into a sacrificial fastener."
-	return recipe
+	var recipes := get_available_recipes()
+	return recipes[0] if not recipes.is_empty() else {}
 
 
 func _start_interaction() -> void:
@@ -135,6 +139,17 @@ func _on_ui_closed() -> void:
 
 func _apply_visual_identity() -> void:
 	sprite.offset = Vector2(0.0, -4.0)
+
+
+func _apply_recipe_metadata(recipe: Dictionary) -> void:
+	var recipe_id: StringName = recipe.get(&"id", &"")
+	match recipe_id:
+		&"rust_bolt":
+			recipe[&"display_name"] = "Rust Bolt"
+			recipe[&"summary"] = "Oxidize iron with water to produce throwable rust bolts."
+		&"iron_sword":
+			recipe[&"display_name"] = "Iron Sword"
+			recipe[&"summary"] = "Forge an iron blade with a simple wooden grip."
 
 
 func _build_placeholder_texture() -> Texture2D:

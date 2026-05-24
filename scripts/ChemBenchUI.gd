@@ -3,9 +3,9 @@ extends CanvasLayer
 signal ui_closed
 
 const SLOT_EMPTY_TEXT := {
-	&"input_a": "Iron filings",
-	&"input_b": "Oxide wash",
-	&"output": "Rust Bolt",
+	&"input_a": "Input A",
+	&"input_b": "Input B",
+	&"output": "Output",
 }
 const SLOT_PANEL_COLOR := Color(0.18, 0.19, 0.22, 1.0)
 const SLOT_FILLED_COLOR := Color(0.24, 0.31, 0.36, 1.0)
@@ -26,9 +26,12 @@ const SLOT_OUTPUT_READY_COLOR := Color(0.34, 0.28, 0.15, 1.0)
 @onready var ratio_slider: HSlider = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/RatioSlider
 @onready var ratio_value_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/RatioValueLabel
 @onready var react_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/ReactButton
+@onready var action_hint_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/ActionHintLabel
 @onready var close_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/CloseButton
 
 var _chem_bench: Node = null
+var _bench_recipes: Array[Dictionary] = []
+var _active_recipe: Dictionary = {}
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
 	&"input_b": {&"item_id": &"", &"quantity": 0},
@@ -56,9 +59,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func bind_chem_bench(chem_bench: Node) -> void:
 	_chem_bench = chem_bench
-	if _chem_bench != null and _chem_bench.has_method("get_active_recipe"):
-		var recipe: Dictionary = _chem_bench.get_active_recipe()
-		recipe_label.text = "ACTIVE RECIPE: %s" % str(recipe.get(&"display_name", "Rust Bolt"))
+	if _chem_bench != null and _chem_bench.has_method("get_available_recipes"):
+		_bench_recipes = _chem_bench.get_available_recipes()
+	elif _chem_bench != null and _chem_bench.has_method("get_active_recipe"):
+		var fallback_recipe: Dictionary = _chem_bench.get_active_recipe()
+		_bench_recipes = [fallback_recipe] if not fallback_recipe.is_empty() else []
+	_sync_active_recipe()
+	_refresh_recipe_copy()
+	_refresh_slot_visuals()
 
 
 func open_ui() -> void:
@@ -77,22 +85,22 @@ func _on_ratio_slider_changed(value: float) -> void:
 
 func _on_react_button_pressed() -> void:
 	if not _can_craft_active_recipe():
-		react_button.text = "Need 2 Iron + 1 Water"
+		react_button.text = _get_missing_materials_text()
 		return
 
-	var output_item := {
-		&"id": &"rust_bolt",
-		&"display_name": "Rust Bolt",
-		&"category": InventoryManager.InventoryItemCategory.CONSUMABLE,
-	}
-	if not InventoryManager.add_item(output_item, 8):
+	var output_item := _build_output_item()
+	var output_quantity := int(_active_recipe.get(&"output", {}).get(&"qty", 0))
+	if output_item.is_empty() or output_quantity <= 0:
+		react_button.text = "Invalid Recipe"
+		return
+	if not InventoryManager.add_item(output_item, output_quantity):
 		react_button.text = "Inventory Full"
 		return
 
 	_clear_inputs()
-	output_name_label.text = "Rust Bolt x8"
+	output_name_label.text = "%s x%d" % [str(output_item.get(&"display_name", "Output")), output_quantity]
 	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_READY_COLOR)
-	react_button.text = "Rust Bolt Crafted"
+	react_button.text = "%s Crafted" % str(output_item.get(&"display_name", "Item"))
 
 
 func _on_close_button_pressed() -> void:
@@ -122,13 +130,15 @@ func handle_inventory_drop(global_mouse_position: Vector2, item_id: StringName, 
 		&"item_id": item_id,
 		&"quantity": qty,
 	}
+	_sync_active_recipe()
+	_refresh_recipe_copy()
 	_refresh_slot_visuals()
-	react_button.text = "React"
+	react_button.text = _get_action_verb()
 	return true
 
 
 func _update_ratio_label(value: float) -> void:
-	ratio_value_label.text = "Reagent Ratio: %.0f / %.0f" % [value, ratio_slider.max_value]
+	ratio_value_label.text = "Bench Ratio: %.0f / %.0f" % [value, ratio_slider.max_value]
 
 
 func _apply_theme() -> void:
@@ -184,38 +194,37 @@ func _can_accept_drop_to_slot(slot_id: StringName, item_id: StringName, qty: int
 	if qty <= 0 or item_id.is_empty():
 		return false
 
-	match slot_id:
-		&"input_a":
-			if item_id != &"iron" or qty > 2:
-				return false
-		&"input_b":
-			if item_id != &"water" or qty > 1:
-				return false
-		_:
-			return false
-
 	var existing: Dictionary = _slot_state.get(slot_id, {})
 	var current_item_id: StringName = existing.get(&"item_id", &"")
-	return current_item_id.is_empty() or current_item_id == item_id
+	if not current_item_id.is_empty() and current_item_id != item_id:
+		return false
+
+	var test_state := _slot_state.duplicate(true)
+	test_state[slot_id] = {
+		&"item_id": item_id,
+		&"quantity": qty,
+	}
+	return not _get_matching_recipes(test_state, false).is_empty()
 
 
 func _can_craft_active_recipe() -> bool:
-	var input_a: Dictionary = _slot_state.get(&"input_a", {})
-	var input_b: Dictionary = _slot_state.get(&"input_b", {})
-	return input_a.get(&"item_id", &"") == &"iron" and int(input_a.get(&"quantity", 0)) == 2 and input_b.get(&"item_id", &"") == &"water" and int(input_b.get(&"quantity", 0)) == 1
+	return not _active_recipe.is_empty() and _recipe_matches_state(_active_recipe, _slot_state, true)
 
 
 func _clear_inputs() -> void:
 	_slot_state[&"input_a"] = {&"item_id": &"", &"quantity": 0}
 	_slot_state[&"input_b"] = {&"item_id": &"", &"quantity": 0}
+	_sync_active_recipe()
+	_refresh_recipe_copy()
 	_refresh_slot_visuals()
+	react_button.text = _get_action_verb()
 
 
 func _refresh_slot_visuals() -> void:
 	_apply_slot_state(&"input_a", input_a_name_label, input_a_visual)
 	_apply_slot_state(&"input_b", input_b_name_label, input_b_visual)
 	if not _can_craft_active_recipe():
-		output_name_label.text = SLOT_EMPTY_TEXT[&"output"]
+		output_name_label.text = _get_output_placeholder_text()
 		_apply_slot_panel_style(output_visual, SLOT_PANEL_COLOR)
 
 
@@ -224,7 +233,7 @@ func _apply_slot_state(slot_id: StringName, label: Label, visual: Panel) -> void
 	var item_id: StringName = slot_state.get(&"item_id", &"")
 	var quantity := int(slot_state.get(&"quantity", 0))
 	if item_id.is_empty() or quantity <= 0:
-		label.text = SLOT_EMPTY_TEXT[slot_id]
+		label.text = _get_input_placeholder_text(slot_id)
 		_apply_slot_panel_style(visual, SLOT_PANEL_COLOR)
 		return
 	label.text = "%s x%d" % [_get_item_name(item_id), quantity]
@@ -260,3 +269,134 @@ func _get_item_name(item_id: StringName) -> String:
 	if not element_data.is_empty():
 		return str(element_data.get(&"display_name", item_id))
 	return String(item_id).replace("_", " ").capitalize()
+
+
+func _get_recipe_input_for_slot(slot_id: StringName) -> Dictionary:
+	var inputs: Array = _active_recipe.get(&"inputs", [])
+	var input_index := 0 if slot_id == &"input_a" else 1
+	if input_index < 0 or input_index >= inputs.size():
+		return {}
+	return inputs[input_index]
+
+
+func _get_input_placeholder_text(slot_id: StringName) -> String:
+	var input_data := _get_recipe_input_for_slot(slot_id)
+	if input_data.is_empty():
+		return SLOT_EMPTY_TEXT[slot_id]
+	return _get_item_name(input_data.get(&"element_id", &""))
+
+
+func _get_output_placeholder_text() -> String:
+	var output: Dictionary = _active_recipe.get(&"output", {})
+	var output_id: StringName = output.get(&"item_id", &"")
+	if output_id.is_empty():
+		return SLOT_EMPTY_TEXT[&"output"]
+	return _get_item_name(output_id)
+
+
+func _get_missing_materials_text() -> String:
+	var parts: Array[String] = []
+	for input_data: Dictionary in _active_recipe.get(&"inputs", []):
+		parts.append("%d %s" % [
+			int(input_data.get(&"qty", 0)),
+			_get_item_name(input_data.get(&"element_id", &"")),
+		])
+	return "Need %s" % " + ".join(parts)
+
+
+func _build_output_item() -> Dictionary:
+	var output: Dictionary = _active_recipe.get(&"output", {})
+	var output_id: StringName = output.get(&"item_id", &"")
+	if output_id.is_empty():
+		return {}
+
+	var category := InventoryManager.InventoryItemCategory.CRAFTED
+	if _active_recipe.get(&"durability") == null:
+		category = InventoryManager.InventoryItemCategory.CONSUMABLE
+
+	var item_data := {
+		&"id": output_id,
+		&"display_name": _get_item_name(output_id),
+		&"category": category,
+	}
+	var durability = _active_recipe.get(&"durability")
+	if durability != null:
+		var normalized_durability := clampf(float(durability), 0.0, 1.0)
+		item_data[&"durability"] = normalized_durability
+		item_data[&"max_durability"] = normalized_durability
+	return item_data
+
+
+func _get_action_verb() -> String:
+	var reaction_type := String(_active_recipe.get(&"reaction_type", "")).to_lower()
+	match reaction_type:
+		"forging":
+			return "Forge"
+		_:
+			return "React"
+
+
+func _sync_active_recipe() -> void:
+	var exact_matches := _get_matching_recipes(_slot_state, true)
+	if exact_matches.size() == 1:
+		_active_recipe = exact_matches[0]
+		return
+
+	var partial_matches := _get_matching_recipes(_slot_state, false)
+	if partial_matches.size() == 1:
+		_active_recipe = partial_matches[0]
+		return
+
+	_active_recipe = {}
+
+
+func _refresh_recipe_copy() -> void:
+	if _active_recipe.is_empty():
+		recipe_label.text = "ACTIVE RECIPE: Awaiting Valid Inputs"
+		summary_label.text = "Load a matching material pair to reveal the bench recipe."
+		action_hint_label.text = "Supported pairs: Iron + Water, or Iron + Wood."
+		react_button.text = "React"
+		return
+
+	var recipe_name := str(_active_recipe.get(&"display_name", "Unknown Recipe"))
+	recipe_label.text = "ACTIVE RECIPE: %s" % recipe_name
+	summary_label.text = str(_active_recipe.get(&"summary", ""))
+	action_hint_label.text = "Load both required materials, then %s." % _get_action_verb().to_lower()
+	react_button.text = _get_action_verb()
+
+
+func _get_matching_recipes(slot_state: Dictionary, require_exact_quantities: bool) -> Array[Dictionary]:
+	var matches: Array[Dictionary] = []
+	for recipe: Dictionary in _bench_recipes:
+		if _recipe_matches_state(recipe, slot_state, require_exact_quantities):
+			matches.append(recipe)
+	return matches
+
+
+func _recipe_matches_state(recipe: Dictionary, slot_state: Dictionary, require_exact_quantities: bool) -> bool:
+	var inputs: Array = recipe.get(&"inputs", [])
+	if inputs.size() < 2:
+		return false
+
+	for i in range(2):
+		var slot_id: StringName = &"input_a" if i == 0 else &"input_b"
+		var expected_input: Dictionary = inputs[i]
+		var expected_item_id: StringName = expected_input.get(&"element_id", &"")
+		var expected_qty := int(expected_input.get(&"qty", 0))
+		var actual_input: Dictionary = slot_state.get(slot_id, {})
+		var actual_item_id: StringName = actual_input.get(&"item_id", &"")
+		var actual_qty := int(actual_input.get(&"quantity", 0))
+
+		if actual_item_id.is_empty() or actual_qty <= 0:
+			if require_exact_quantities:
+				return false
+			continue
+		if actual_item_id != expected_item_id:
+			return false
+		if require_exact_quantities:
+			if actual_qty != expected_qty:
+				return false
+		elif actual_qty > expected_qty:
+			return false
+
+	return true
