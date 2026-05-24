@@ -214,7 +214,7 @@ func _apply_melee_hit_to_body(body: Node, weapon_profile: Dictionary) -> void:
 
 	var damage_type := StringName(str(weapon_profile.get("damage_type", STEEL_SWORD_DAMAGE_TYPE)))
 	var base_damage := float(weapon_profile.get("base_damage", STEEL_SWORD_DAMAGE))
-	var final_damage := DamageCalculator.calculate(base_damage, damage_type, body)
+	var final_damage := DamageCalculator.calculate(base_damage, damage_type, body, body.global_position)
 	var resolved_damage := int(final_damage)
 	if resolved_damage <= 0:
 		return

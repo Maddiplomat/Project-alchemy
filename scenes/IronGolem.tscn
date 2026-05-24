@@ -16,6 +16,14 @@ script = ExtResource("1_golem")
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture_filter = 1
 
+[node name="EnemyHealthBar" type="ProgressBar" parent="."]
+visible = false
+offset_left = -20.0
+offset_top = -22.0
+offset_right = 20.0
+offset_bottom = -18.0
+show_percentage = false
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(0, 2)
 shape = SubResource("RectangleShape2D_body")

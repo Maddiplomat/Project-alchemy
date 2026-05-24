@@ -25,7 +25,7 @@ func _on_body_entered(body: Node) -> void:
 	if not body.is_in_group(&"enemy"):
 		return
 
-	var final_damage := DamageCalculator.calculate(damage, damage_type, body)
+	var final_damage := DamageCalculator.calculate(damage, damage_type, body, global_position)
 	var resolved_damage := int(final_damage)
 	if resolved_damage <= 0:
 		if not pierce:

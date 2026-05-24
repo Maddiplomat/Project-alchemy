@@ -16,6 +16,10 @@ enum State {
 const PATROL_WAIT_SECONDS := 1.5
 const SCANNER_ALERT_RADIUS := 150.0
 const CHASE_REPATH_INTERVAL := 0.3
+const HEALTH_BAR_HIDE_DELAY := 3.0
+const HEALTH_BAR_FULL_COLOR := Color(0.31, 0.82, 0.38, 1.0)
+const HEALTH_BAR_MID_COLOR := Color(0.91, 0.79, 0.23, 1.0)
+const HEALTH_BAR_LOW_COLOR := Color(0.86, 0.24, 0.22, 1.0)
 
 @export var patrol_radius: float = 96.0
 @export var detection_radius: float = 180.0
@@ -34,6 +38,7 @@ const CHASE_REPATH_INTERVAL := 0.3
 
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
 @onready var sprite: Sprite2D = $Sprite2D
+@onready var enemy_health_bar: ProgressBar = $EnemyHealthBar
 @onready var detection_area: Area2D = $DetectionArea
 @onready var detection_shape: CollisionShape2D = $DetectionArea/CollisionShape2D
 @onready var alert_audio_player: AudioStreamPlayer2D = $AlertAudioPlayer2D
@@ -50,6 +55,7 @@ var _attack_cooldown_timer := 0.0
 var _hit_timer := 0.0
 var _leash_timer := 0.0
 var _max_health: int = 120
+var _health_bar_hide_timer := 0.0
 
 
 func _ready() -> void:
@@ -69,6 +75,7 @@ func _ready() -> void:
 	detection_area.body_exited.connect(_on_detection_body_exited)
 	_connect_scanner_tools()
 	_build_alert_audio_stream()
+	_setup_health_bar()
 	_set_patrol_destination(_current_patrol_index)
 
 
@@ -76,6 +83,7 @@ func _physics_process(delta: float) -> void:
 	if _attack_cooldown_timer > 0.0:
 		_attack_cooldown_timer -= delta
 	_step_state(delta)
+	_update_health_bar_visibility(delta)
 	move_and_slide()
 
 
@@ -197,6 +205,7 @@ func _retreat() -> void:
 	set_state(State.PATROL)
 	_leash_timer = 0.0
 	health = _max_health
+	_refresh_health_bar()
 	
 	if alert_audio_player:
 		alert_audio_player.pitch_scale = 0.7
@@ -252,11 +261,14 @@ func take_damage(amount: int, damage_type: String = "physical_blunt", attacker_p
 	if current_state == State.DEAD:
 		return
 		
-	var final_damage = int(DamageCalculator.calculate(float(amount), damage_type, self)) if ClassDB.class_exists("DamageCalculator") else amount
+	var final_damage = int(DamageCalculator.calculate(float(amount), damage_type, self, global_position)) if ClassDB.class_exists("DamageCalculator") else amount
+	_show_health_bar_from_combat()
 	if final_damage <= 0:
+		_refresh_health_bar()
 		return
 		
 	health -= final_damage
+	_refresh_health_bar()
 	if health <= 0:
 		die()
 	else:
@@ -273,7 +285,9 @@ func take_resolved_damage(amount: int, damage_type: String = "physical_blunt", a
 	if current_state == State.DEAD or amount <= 0:
 		return
 
+	_show_health_bar_from_combat()
 	health -= amount
+	_refresh_health_bar()
 	if health <= 0:
 		die()
 	else:
@@ -288,6 +302,7 @@ func take_resolved_damage(amount: int, damage_type: String = "physical_blunt", a
 
 func die() -> void:
 	set_state(State.DEAD)
+	enemy_health_bar.visible = false
 	
 	var rect = ColorRect.new()
 	rect.color = Color("8b4513")
@@ -454,3 +469,82 @@ func _build_placeholder_texture() -> Texture2D:
 		image.set_pixel(x, 10, Color(0.88, 0.73, 0.34, 1.0))
 
 	return ImageTexture.create_from_image(image)
+
+
+func _setup_health_bar() -> void:
+	if enemy_health_bar == null:
+		return
+
+	enemy_health_bar.min_value = 0.0
+	enemy_health_bar.max_value = float(_max_health)
+	enemy_health_bar.value = float(health)
+	enemy_health_bar.show_percentage = false
+	enemy_health_bar.visible = false
+
+	var background_style := StyleBoxFlat.new()
+	background_style.bg_color = Color(0.08, 0.08, 0.08, 0.9)
+	background_style.corner_radius_top_left = 2
+	background_style.corner_radius_top_right = 2
+	background_style.corner_radius_bottom_left = 2
+	background_style.corner_radius_bottom_right = 2
+	enemy_health_bar.add_theme_stylebox_override("background", background_style)
+	enemy_health_bar.add_theme_stylebox_override("fill", _build_health_bar_fill_style(1.0))
+
+
+func _show_health_bar_from_combat() -> void:
+	if enemy_health_bar == null:
+		return
+	if current_state == State.IDLE or current_state == State.PATROL:
+		enemy_health_bar.visible = true
+	else:
+		enemy_health_bar.visible = true
+	_health_bar_hide_timer = HEALTH_BAR_HIDE_DELAY
+
+
+func _refresh_health_bar() -> void:
+	if enemy_health_bar == null:
+		return
+
+	var health_ratio := clampf(float(health) / float(maxi(_max_health, 1)), 0.0, 1.0)
+	enemy_health_bar.max_value = float(_max_health)
+	enemy_health_bar.value = float(maxi(health, 0))
+	enemy_health_bar.add_theme_stylebox_override("fill", _build_health_bar_fill_style(health_ratio))
+
+
+func _update_health_bar_visibility(delta: float) -> void:
+	if enemy_health_bar == null or not enemy_health_bar.visible:
+		return
+	if current_state == State.DEAD:
+		enemy_health_bar.visible = false
+		return
+	if _is_in_active_combat_state():
+		_health_bar_hide_timer = HEALTH_BAR_HIDE_DELAY
+		return
+
+	_health_bar_hide_timer = maxf(0.0, _health_bar_hide_timer - delta)
+	if _health_bar_hide_timer <= 0.0:
+		enemy_health_bar.visible = false
+
+
+func _is_in_active_combat_state() -> bool:
+	return current_state == State.ALERT or current_state == State.CHASE or current_state == State.ATTACK or current_state == State.HIT
+
+
+func _build_health_bar_fill_style(health_ratio: float) -> StyleBoxFlat:
+	var fill_style := StyleBoxFlat.new()
+	fill_style.bg_color = _get_health_bar_color(health_ratio)
+	fill_style.corner_radius_top_left = 2
+	fill_style.corner_radius_top_right = 2
+	fill_style.corner_radius_bottom_left = 2
+	fill_style.corner_radius_bottom_right = 2
+	return fill_style
+
+
+func _get_health_bar_color(health_ratio: float) -> Color:
+	if health_ratio <= 0.2:
+		return HEALTH_BAR_LOW_COLOR
+	if health_ratio <= 0.5:
+		var mid_ratio := inverse_lerp(0.2, 0.5, health_ratio)
+		return HEALTH_BAR_LOW_COLOR.lerp(HEALTH_BAR_MID_COLOR, mid_ratio)
+	var high_ratio := inverse_lerp(0.5, 1.0, health_ratio)
+	return HEALTH_BAR_MID_COLOR.lerp(HEALTH_BAR_FULL_COLOR, high_ratio)
