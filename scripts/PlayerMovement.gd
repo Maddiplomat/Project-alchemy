@@ -1,10 +1,10 @@
 extends CharacterBody2D
 
 const RUST_BOLT_SCRIPT := preload("res://scripts/RustBolt.gd")
-const IRON_SWORD_DAMAGE := 10.0
-const IRON_SWORD_DAMAGE_TYPE := &"physical_sharp"
-const IRON_SWORD_COOLDOWN := 0.3
-const IRON_SWORD_SWING_DURATION := 0.2
+const STEEL_SWORD_DAMAGE := 10.0
+const STEEL_SWORD_DAMAGE_TYPE := &"physical_sharp"
+const STEEL_SWORD_COOLDOWN := 0.3
+const STEEL_SWORD_SWING_DURATION := 0.2
 
 @export var max_speed: float = 200.0
 @export var acceleration: float = 600.0
@@ -165,7 +165,7 @@ func _fire_ranged_weapon(weapon_profile: Dictionary) -> void:
 
 
 func _swing_melee_weapon(weapon_profile: Dictionary) -> void:
-	_attack_cooldown_remaining = maxf(IRON_SWORD_COOLDOWN, float(weapon_profile.get("attack_cooldown", IRON_SWORD_COOLDOWN)))
+	_attack_cooldown_remaining = maxf(STEEL_SWORD_COOLDOWN, float(weapon_profile.get("attack_cooldown", STEEL_SWORD_COOLDOWN)))
 	var aim_direction := global_position.direction_to(get_global_mouse_position())
 	if aim_direction == Vector2.ZERO:
 		aim_direction = Vector2.RIGHT
@@ -175,10 +175,10 @@ func _swing_melee_weapon(weapon_profile: Dictionary) -> void:
 	melee_hitbox_shape.disabled = false
 	_melee_swing_active = true
 	_melee_hit_targets.clear()
-	melee_animation_player.play("iron_sword_swing")
+	melee_animation_player.play("steel_sword_swing")
 	_apply_melee_hits(weapon_profile)
 
-	var swing_timer := get_tree().create_timer(IRON_SWORD_SWING_DURATION)
+	var swing_timer := get_tree().create_timer(STEEL_SWORD_SWING_DURATION)
 	swing_timer.timeout.connect(_finish_melee_swing)
 
 
@@ -212,8 +212,8 @@ func _apply_melee_hit_to_body(body: Node, weapon_profile: Dictionary) -> void:
 		return
 	_melee_hit_targets[instance_id] = true
 
-	var damage_type := StringName(str(weapon_profile.get("damage_type", IRON_SWORD_DAMAGE_TYPE)))
-	var base_damage := float(weapon_profile.get("base_damage", IRON_SWORD_DAMAGE))
+	var damage_type := StringName(str(weapon_profile.get("damage_type", STEEL_SWORD_DAMAGE_TYPE)))
+	var base_damage := float(weapon_profile.get("base_damage", STEEL_SWORD_DAMAGE))
 	var final_damage := DamageCalculator.calculate(base_damage, damage_type, body)
 	var resolved_damage := int(final_damage)
 	if resolved_damage <= 0:
@@ -241,14 +241,14 @@ func _get_held_weapon_profile(held_item: Dictionary) -> Dictionary:
 		return held_item
 
 	match item_id:
-		&"iron_sword":
+		&"steel_sword":
 			return {
 				&"id": item_id,
-				&"display_name": "Iron Sword",
+				&"display_name": "Steel Sword",
 				&"weapon_type": "melee",
-				&"damage_type": String(IRON_SWORD_DAMAGE_TYPE),
-				&"base_damage": IRON_SWORD_DAMAGE,
-				&"attack_cooldown": IRON_SWORD_COOLDOWN,
+				&"damage_type": String(STEEL_SWORD_DAMAGE_TYPE),
+				&"base_damage": STEEL_SWORD_DAMAGE,
+				&"attack_cooldown": STEEL_SWORD_COOLDOWN,
 			}
 		&"rust_bolt":
 			return {
@@ -265,25 +265,25 @@ func _get_held_weapon_profile(held_item: Dictionary) -> Dictionary:
 
 func _setup_melee_animation() -> void:
 	melee_animation_player.set_root_node(NodePath(".."))
-	if melee_animation_player.has_animation("iron_sword_swing"):
+	if melee_animation_player.has_animation("steel_sword_swing"):
 		return
 
 	var animation := Animation.new()
-	animation.length = IRON_SWORD_SWING_DURATION
+	animation.length = STEEL_SWORD_SWING_DURATION
 	animation.loop_mode = Animation.LOOP_NONE
 	var rotation_track := animation.add_track(Animation.TYPE_VALUE)
 	animation.track_set_path(rotation_track, NodePath("MeleeHitbox:rotation_degrees"))
 	animation.track_insert_key(rotation_track, 0.0, -25.0)
-	animation.track_insert_key(rotation_track, IRON_SWORD_SWING_DURATION * 0.5, 0.0)
-	animation.track_insert_key(rotation_track, IRON_SWORD_SWING_DURATION, 25.0)
+	animation.track_insert_key(rotation_track, STEEL_SWORD_SWING_DURATION * 0.5, 0.0)
+	animation.track_insert_key(rotation_track, STEEL_SWORD_SWING_DURATION, 25.0)
 	var visual_track := animation.add_track(Animation.TYPE_VALUE)
 	animation.track_set_path(visual_track, NodePath("SwordArcVisual:rotation_degrees"))
 	animation.track_insert_key(visual_track, 0.0, -25.0)
-	animation.track_insert_key(visual_track, IRON_SWORD_SWING_DURATION * 0.5, 0.0)
-	animation.track_insert_key(visual_track, IRON_SWORD_SWING_DURATION, 25.0)
+	animation.track_insert_key(visual_track, STEEL_SWORD_SWING_DURATION * 0.5, 0.0)
+	animation.track_insert_key(visual_track, STEEL_SWORD_SWING_DURATION, 25.0)
 
 	var animation_library := AnimationLibrary.new()
-	animation_library.add_animation("iron_sword_swing", animation)
+	animation_library.add_animation("steel_sword_swing", animation)
 	melee_animation_player.add_animation_library("", animation_library)
 
 

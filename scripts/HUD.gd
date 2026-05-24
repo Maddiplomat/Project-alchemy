@@ -229,7 +229,7 @@ func _get_item_color(item_id: String) -> Color:
 			return Color(0.17, 0.18, 0.20, 1.0)
 		"rust_bolt":
 			return Color(0.84, 0.38, 0.12, 1.0)
-		"iron_sword":
+		"steel_sword":
 			return Color(0.82, 0.85, 0.90, 1.0)
 		_:
 			return Color.WHITE

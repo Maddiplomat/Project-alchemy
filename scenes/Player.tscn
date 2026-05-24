@@ -11,7 +11,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_mdl7e"]
 size = Vector2(8, 8)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_iron_sword"]
+[sub_resource type="CircleShape2D" id="CircleShape2D_steel_sword"]
 radius = 16.0
 
 [node name="Player" type="CharacterBody2D" unique_id=297416554]
@@ -64,6 +64,6 @@ monitorable = false
 [node name="CollisionShape2D" type="CollisionShape2D" parent="MeleePivot/MeleeHitbox"]
 position = Vector2(24, 0)
 disabled = true
-shape = SubResource("CircleShape2D_iron_sword")
+shape = SubResource("CircleShape2D_steel_sword")
 
 [node name="MeleeAnimationPlayer" type="AnimationPlayer" parent="MeleePivot"]
