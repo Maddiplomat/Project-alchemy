@@ -11,6 +11,9 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_mdl7e"]
 size = Vector2(8, 8)
 
+[sub_resource type="CircleShape2D" id="CircleShape2D_iron_sword"]
+radius = 16.0
+
 [node name="Player" type="CharacterBody2D" unique_id=297416554]
 script = ExtResource("1_p0vlq")
 
@@ -45,3 +48,22 @@ scale = Vector2(1e-05, 1e-05)
 texture = ExtResource("6_70d11")
 
 [node name="ToolAnimationPlayer" type="AnimationPlayer" parent="ScannerTool" unique_id=1425251196]
+
+[node name="MeleePivot" type="Node2D" parent="."]
+
+[node name="SwordArcVisual" type="Line2D" parent="MeleePivot"]
+visible = false
+width = 3.0
+default_color = Color(0.87, 0.89, 0.94, 0.9)
+points = PackedVector2Array(0, 0, 24, 0)
+
+[node name="MeleeHitbox" type="Area2D" parent="MeleePivot"]
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="MeleePivot/MeleeHitbox"]
+position = Vector2(24, 0)
+disabled = true
+shape = SubResource("CircleShape2D_iron_sword")
+
+[node name="MeleeAnimationPlayer" type="AnimationPlayer" parent="MeleePivot"]

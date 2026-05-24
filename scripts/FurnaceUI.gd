@@ -45,6 +45,8 @@ const CARBONISATION_FLASH_TEMPERATURE := 650.0
 const CARBONISATION_SFX_TEMPERATURE := 680.0
 const CARBONISATION_SLAG_TEMPERATURE := 700.0
 const WARNING_FLASH_SPEED := 0.014
+const IRON_SWORD_RECIPE_INPUT := &"steel"
+const IRON_SWORD_RECIPE_OUTPUT := &"iron_sword"
 
 @onready var root: Control = $Root
 @onready var panel: PanelContainer = $Root/PanelContainer
@@ -477,6 +479,12 @@ func _refresh_probable_output() -> void:
 		show_output_placeholder("Awaiting recipe")
 		return
 
+	if _is_iron_sword_forge_ready():
+		_slot_state[&"output"] = {&"item_id": IRON_SWORD_RECIPE_OUTPUT, &"quantity": 1}
+		_apply_slot_visual(&"output", IRON_SWORD_RECIPE_OUTPUT, 1, "Awaiting recipe")
+		action_hint_label.text = "Steel can be forged into an Iron Sword here."
+		return
+
 	if input_b_qty <= 0 and input_a_id == &"wood":
 		var output_id := _get_charred_output_id()
 		_slot_state[&"output"] = {&"item_id": output_id, &"quantity": maxi(1, input_a_qty)}
@@ -506,6 +514,9 @@ func _update_smelt_button_state() -> void:
 	var input_b: Dictionary = _slot_state.get(&"input_b", {})
 	var input_a_qty := int(input_a.get(&"quantity", 0))
 	var input_b_qty := int(input_b.get(&"quantity", 0))
+	if _is_iron_sword_forge_ready():
+		smelt_button.disabled = false
+		return
 	smelt_button.disabled = input_a_qty <= 0 if carbonisation_mode else (input_a_qty <= 0 or input_b_qty <= 0)
 
 
@@ -704,6 +715,8 @@ func _get_item_color(item_id: String) -> Color:
 			return Color.GRAY
 		"iron":
 			return Color.SILVER
+		"steel":
+			return Color(0.70, 0.76, 0.82, 1.0)
 		"pure_carbon":
 			return Color(0.29, 0.31, 0.35, 1.0)
 		"charcoal":
@@ -712,6 +725,8 @@ func _get_item_color(item_id: String) -> Color:
 			return Color(0.43, 0.18, 0.16, 1.0)
 		"primitive_axe":
 			return Color(0.76, 0.82, 0.88, 1.0)
+		"iron_sword":
+			return Color(0.82, 0.85, 0.90, 1.0)
 		_:
 			return Color.WHITE
 
@@ -747,6 +762,10 @@ func _evaluate_smelt_request() -> void:
 		current_temp = float(_bound_furnace.get("current_temp"))
 
 	_update_mode_state(input_b_qty <= 0)
+
+	if _is_iron_sword_forge_ready():
+		_forge_iron_sword(current_temp)
+		return
 
 	# ── CARBONISATION PATH ───────────────────────────────────────────────────
 	if carbonisation_mode:
@@ -899,6 +918,24 @@ func _deliver_output_to_inventory(output_id: StringName, quantity: int) -> void:
 	if output_id.is_empty() or quantity <= 0:
 		return
 
+	if output_id == IRON_SWORD_RECIPE_OUTPUT:
+		var sword_item := {
+			&"id": IRON_SWORD_RECIPE_OUTPUT,
+			&"display_name": "Iron Sword",
+			&"category": InventoryManager.InventoryItemCategory.CRAFTED,
+			&"durability": 1.0,
+			&"max_durability": 1.0,
+			&"weapon_type": "melee",
+			&"damage_type": "physical_sharp",
+			&"base_damage": 10.0,
+			&"attack_cooldown": 0.3,
+		}
+		var sword_added := InventoryManager.add_item(sword_item, quantity)
+		if not sword_added:
+			action_hint_label.text = "Inventory full! Output dropped on the floor."
+			print("[FurnaceUI] Could not add %s x%d to inventory — capacity reached." % [output_id, quantity])
+		return
+
 	var element_data := ElementDatabase.get_element(output_id)
 	if element_data.is_empty():
 		# Build a minimal item entry for products not yet in the database.
@@ -927,6 +964,47 @@ func _build_explosion_result(notes: String) -> Dictionary:
 		"tier": "danger",
 		"notes": notes,
 	}
+
+
+func _is_iron_sword_forge_ready() -> bool:
+	var input_a: Dictionary = _slot_state.get(&"input_a", {})
+	var input_b: Dictionary = _slot_state.get(&"input_b", {})
+	var input_a_id: StringName = input_a.get(&"item_id", &"")
+	var input_b_id: StringName = input_b.get(&"item_id", &"")
+	var input_a_qty := int(input_a.get(&"quantity", 0))
+	var input_b_qty := int(input_b.get(&"quantity", 0))
+	return (
+		(input_a_id == IRON_SWORD_RECIPE_INPUT and input_a_qty >= 1 and input_b_qty <= 0) or
+		(input_b_id == IRON_SWORD_RECIPE_INPUT and input_b_qty >= 1 and input_a_qty <= 0)
+	)
+
+
+func _forge_iron_sword(current_temp: float) -> void:
+	var source_slot: StringName = &"input_a"
+	var source_state: Dictionary = _slot_state.get(source_slot, {})
+	if source_state.get(&"item_id", &"") != IRON_SWORD_RECIPE_INPUT:
+		source_slot = &"input_b"
+		source_state = _slot_state.get(source_slot, {})
+	if source_state.get(&"item_id", &"") != IRON_SWORD_RECIPE_INPUT:
+		show_output_placeholder("Load Steel")
+		action_hint_label.text = "Iron Sword forging needs Steel x1."
+		return
+
+	var consumed_qty := _consume_furnace_slot(source_slot, IRON_SWORD_RECIPE_INPUT, 1)
+	if consumed_qty <= 0:
+		show_output_placeholder("Load Steel")
+		action_hint_label.text = "Iron Sword forging needs Steel x1."
+		return
+
+	var forge_result := {
+		"output_id": String(IRON_SWORD_RECIPE_OUTPUT),
+		"quality": 1.0,
+		"tier": "success",
+		"notes": "Iron Sword forged. Baseline melee output online.",
+	}
+	_last_reaction_result = forge_result
+	var inputs_log := [{"item_id": IRON_SWORD_RECIPE_INPUT, "quantity": consumed_qty}]
+	_apply_reaction_result(forge_result, 1, inputs_log, current_temp)
 
 
 ## Trigger an explosion: shake, burst sparks, damage nearby bodies, and reset the furnace.

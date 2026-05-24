@@ -324,6 +324,11 @@ func _build_output_item() -> Dictionary:
 		var normalized_durability := clampf(float(durability), 0.0, 1.0)
 		item_data[&"durability"] = normalized_durability
 		item_data[&"max_durability"] = normalized_durability
+	if output_id == &"rust_bolt":
+		item_data[&"weapon_type"] = "ranged"
+		item_data[&"projectile_id"] = "rust_bolt"
+		item_data[&"damage_type"] = "oxidation"
+		item_data[&"base_damage"] = 15.0
 	return item_data
 
 
@@ -354,7 +359,7 @@ func _refresh_recipe_copy() -> void:
 	if _active_recipe.is_empty():
 		recipe_label.text = "ACTIVE RECIPE: Awaiting Valid Inputs"
 		summary_label.text = "Load a matching material pair to reveal the bench recipe."
-		action_hint_label.text = "Supported pairs: Iron + Water, or Iron + Wood."
+		action_hint_label.text = _get_supported_recipe_hint()
 		react_button.text = "React"
 		return
 
@@ -400,3 +405,18 @@ func _recipe_matches_state(recipe: Dictionary, slot_state: Dictionary, require_e
 			return false
 
 	return true
+
+
+func _get_supported_recipe_hint() -> String:
+	var pair_labels: Array[String] = []
+	for recipe: Dictionary in _bench_recipes:
+		var inputs: Array = recipe.get(&"inputs", [])
+		if inputs.size() < 2:
+			continue
+		pair_labels.append("%s + %s" % [
+			_get_item_name(inputs[0].get(&"element_id", &"")),
+			_get_item_name(inputs[1].get(&"element_id", &"")),
+		])
+	if pair_labels.is_empty():
+		return "Load a matching material pair."
+	return "Supported pairs: %s." % ", or ".join(pair_labels)

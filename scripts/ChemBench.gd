@@ -147,9 +147,6 @@ func _apply_recipe_metadata(recipe: Dictionary) -> void:
 		&"rust_bolt":
 			recipe[&"display_name"] = "Rust Bolt"
 			recipe[&"summary"] = "Oxidize iron with water to produce throwable rust bolts."
-		&"iron_sword":
-			recipe[&"display_name"] = "Iron Sword"
-			recipe[&"summary"] = "Forge an iron blade with a simple wooden grip."
 
 
 func _build_placeholder_texture() -> Texture2D:

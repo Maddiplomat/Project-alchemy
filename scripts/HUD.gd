@@ -84,7 +84,11 @@ func _refresh_held_item() -> void:
 	var element_data := ElementDatabase.get_element(StringName(item_id))
 	held_item_icon.texture = _get_placeholder_texture(item_id)
 	held_item_icon.modulate = _get_item_color(item_id)
-	held_item_label.text = str(element_data.get("display_name", item_id))
+	held_item_label.text = (
+		str(element_data.get("display_name", item_id))
+		if not element_data.is_empty() else
+		str(held_item.get("display_name", item_id))
+	)
 
 func _on_held_item_changed(_item_id: String) -> void:
 	_refresh_held_item()
@@ -219,8 +223,14 @@ func _get_item_color(item_id: String) -> Color:
 			return Color.GRAY
 		"iron":
 			return Color.SILVER
+		"steel":
+			return Color(0.70, 0.76, 0.82, 1.0)
 		"charcoal":
 			return Color(0.17, 0.18, 0.20, 1.0)
+		"rust_bolt":
+			return Color(0.84, 0.38, 0.12, 1.0)
+		"iron_sword":
+			return Color(0.82, 0.85, 0.90, 1.0)
 		_:
 			return Color.WHITE
 

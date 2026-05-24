@@ -23,30 +23,5 @@
     "required_temp": null,
     "reaction_type": "oxidation",
     "durability": null
-  },
-  {
-    "id": "iron_sword",
-    "inputs": [
-      {
-        "element_id": "iron",
-        "qty": 3
-      },
-      {
-        "element_id": "wood",
-        "qty": 1
-      }
-    ],
-    "output": {
-      "item_id": "iron_sword",
-      "qty": 1
-    },
-    "station": "chem_bench",
-    "ratio": {
-      "iron": 0.75,
-      "wood": 0.25
-    },
-    "required_temp": null,
-    "reaction_type": "forging",
-    "durability": 1.0
   }
 ]
