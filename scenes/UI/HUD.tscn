@@ -29,6 +29,40 @@ offset_right = -8.0
 offset_bottom = 72.0
 color = Color(0, 0, 0, 1)
 
+[node name="CarrierRiskStrip" type="Panel" parent="."]
+visible = false
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -240.0
+offset_top = 16.0
+offset_right = 240.0
+offset_bottom = 82.0
+z_index = 25
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CarrierRiskStrip"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 8.0
+offset_right = -12.0
+offset_bottom = -8.0
+theme_override_constants/separation = 2
+
+[node name="WarningLabel" type="Label" parent="CarrierRiskStrip/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "SULFUR UNSTABLE - 3s"
+horizontal_alignment = 1
+
+[node name="HintLabel" type="Label" parent="CarrierRiskStrip/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Drop Sulfur from inventory to cancel"
+horizontal_alignment = 1
+
 [node name="HealthBar" type="ProgressBar" parent="."]
 anchors_preset = 3
 anchor_top = 1.0
@@ -155,6 +189,14 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Cause of death: Unknown"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="LastHitsLabel" type="Label" parent="DeathOverlay/CenterContainer/DialogPanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.83, 0.83, 0.83, 1)
+theme_override_font_sizes/font_size = 12
+text = "Last hits:\\nNo recent damage recorded."
 horizontal_alignment = 1
 autowrap_mode = 3
 

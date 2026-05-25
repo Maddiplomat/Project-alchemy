@@ -23,5 +23,26 @@
     "required_temp": null,
     "reaction_type": "oxidation",
     "durability": null
+  },
+  {
+    "id": "distillation_kit",
+    "inputs": [
+      {
+        "element_id": "iron",
+        "qty": 2
+      },
+      {
+        "element_id": "wood",
+        "qty": 3
+      }
+    ],
+    "output": {
+      "item_id": "distillation_kit",
+      "qty": 1
+    },
+    "station": "chem_bench",
+    "required_temp": null,
+    "reaction_type": "",
+    "durability": 1.0
   }
 ]

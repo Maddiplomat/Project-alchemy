@@ -2,6 +2,7 @@ extends CanvasLayer
 
 signal ui_closed
 
+const STABILIZATION_MINIGAME_SCENE := preload("res://scenes/UI/StabilizationMinigame.tscn")
 const SLOT_EMPTY_TEXT := {
 	&"input_a": "Input A",
 	&"input_b": "Input B",
@@ -32,6 +33,10 @@ const SLOT_OUTPUT_READY_COLOR := Color(0.34, 0.28, 0.15, 1.0)
 var _chem_bench: Node = null
 var _bench_recipes: Array[Dictionary] = []
 var _active_recipe: Dictionary = {}
+var _stabilization_overlay: CanvasLayer = null
+var _stabilization_active := false
+var _pending_output_item: Dictionary = {}
+var _pending_output_quantity := 0
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
 	&"input_b": {&"item_id": &"", &"quantity": 0},
@@ -52,6 +57,9 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
 		return
+	if _stabilization_active:
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		emit_signal("ui_closed")
 		get_viewport().set_input_as_handled()
@@ -59,6 +67,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func bind_chem_bench(chem_bench: Node) -> void:
 	_chem_bench = chem_bench
+	_ensure_stabilization_overlay()
 	if _chem_bench != null and _chem_bench.has_method("get_available_recipes"):
 		_bench_recipes = _chem_bench.get_available_recipes()
 	elif _chem_bench != null and _chem_bench.has_method("get_active_recipe"):
@@ -72,9 +81,12 @@ func bind_chem_bench(chem_bench: Node) -> void:
 func open_ui() -> void:
 	visible = true
 	root.visible = true
+	_ensure_stabilization_overlay()
 
 
 func close_ui() -> void:
+	if _stabilization_active:
+		return
 	root.visible = false
 	visible = false
 
@@ -84,6 +96,8 @@ func _on_ratio_slider_changed(value: float) -> void:
 
 
 func _on_react_button_pressed() -> void:
+	if _stabilization_active:
+		return
 	if not _can_craft_active_recipe():
 		react_button.text = _get_missing_materials_text()
 		return
@@ -93,17 +107,105 @@ func _on_react_button_pressed() -> void:
 	if output_item.is_empty() or output_quantity <= 0:
 		react_button.text = "Invalid Recipe"
 		return
+	if not InventoryManager.can_add_item(output_item, output_quantity):
+		react_button.text = "Inventory Full"
+		return
+
+	if bool(_active_recipe.get(&"requires_stabilization", false)):
+		_start_stabilization(output_item, output_quantity)
+		return
+
 	if not InventoryManager.add_item(output_item, output_quantity):
 		react_button.text = "Inventory Full"
 		return
 
+	_complete_reaction_success(output_item, output_quantity)
+
+
+func _complete_reaction_success(output_item: Dictionary, output_quantity: int) -> void:
 	_clear_inputs()
 	output_name_label.text = "%s x%d" % [str(output_item.get(&"display_name", "Output")), output_quantity]
 	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_READY_COLOR)
 	react_button.text = "%s Crafted" % str(output_item.get(&"display_name", "Item"))
 
 
+func _start_stabilization(output_item: Dictionary, output_quantity: int) -> void:
+	_ensure_stabilization_overlay()
+	if _stabilization_overlay == null:
+		react_button.text = "Stabilizer Missing"
+		return
+	_pending_output_item = output_item.duplicate(true)
+	_pending_output_quantity = output_quantity
+	_stabilization_active = true
+	react_button.disabled = true
+	close_button.disabled = true
+	ratio_slider.editable = false
+	action_hint_label.text = "Stabilization in progress. Player controls are locked."
+	var recipe_name := str(_active_recipe.get(&"display_name", "Reaction"))
+	if _stabilization_overlay.has_method("start"):
+		_stabilization_overlay.call("start", recipe_name)
+
+
+func _finish_stabilization_state() -> void:
+	_stabilization_active = false
+	react_button.disabled = false
+	close_button.disabled = false
+	ratio_slider.editable = true
+	_pending_output_item = {}
+	_pending_output_quantity = 0
+	_refresh_recipe_copy()
+
+
+func _on_stabilization_succeeded() -> void:
+	var output_item := _pending_output_item.duplicate(true)
+	var output_quantity := _pending_output_quantity
+	_finish_stabilization_state()
+	if output_item.is_empty() or output_quantity <= 0:
+		react_button.text = "Invalid Recipe"
+		return
+	if not InventoryManager.add_item(output_item, output_quantity):
+		react_button.text = "Inventory Full"
+		return
+	_complete_reaction_success(output_item, output_quantity)
+
+
+func _on_stabilization_failed(reason: StringName) -> void:
+	_finish_stabilization_state()
+	if _chem_bench != null and _chem_bench.has_method("trigger_stabilization_failure"):
+		_chem_bench.trigger_stabilization_failure(reason)
+	_clear_inputs()
+	output_name_label.text = _format_stabilization_failure(reason)
+	_apply_slot_panel_style(output_visual, Color(0.42, 0.13, 0.10, 1.0))
+	react_button.text = "Reaction Failed"
+	action_hint_label.text = _format_stabilization_failure(reason)
+
+
+func _ensure_stabilization_overlay() -> void:
+	if _stabilization_overlay != null:
+		return
+	_stabilization_overlay = STABILIZATION_MINIGAME_SCENE.instantiate()
+	add_child(_stabilization_overlay)
+	if _stabilization_overlay.has_signal("stabilization_succeeded"):
+		_stabilization_overlay.stabilization_succeeded.connect(_on_stabilization_succeeded)
+	if _stabilization_overlay.has_signal("stabilization_failed"):
+		_stabilization_overlay.stabilization_failed.connect(_on_stabilization_failed)
+
+
+func _format_stabilization_failure(reason: StringName) -> String:
+	match reason:
+		&"heat_runaway":
+			return "Failure: heat runaway"
+		&"pressure_spike":
+			return "Failure: pressure spike"
+		&"timer_expiry":
+			return "Failure: toxic release"
+		_:
+			return "Failure: unstable reaction"
+
+
 func _on_close_button_pressed() -> void:
+	if _stabilization_active:
+		return
 	emit_signal("ui_closed")
 
 
@@ -126,9 +228,10 @@ func handle_inventory_drop(global_mouse_position: Vector2, item_id: StringName, 
 	if slot_id.is_empty():
 		return false
 
+	var existing_qty := int(_slot_state[slot_id].get(&"quantity", 0)) if _slot_state[slot_id].get(&"item_id", &"") == item_id or _slot_state[slot_id].get(&"item_id", &"").is_empty() else 0
 	_slot_state[slot_id] = {
 		&"item_id": item_id,
-		&"quantity": qty,
+		&"quantity": existing_qty + qty,
 	}
 	_sync_active_recipe()
 	_refresh_recipe_copy()
@@ -200,9 +303,10 @@ func _can_accept_drop_to_slot(slot_id: StringName, item_id: StringName, qty: int
 		return false
 
 	var test_state := _slot_state.duplicate(true)
+	var existing_qty := int(existing.get(&"quantity", 0))
 	test_state[slot_id] = {
 		&"item_id": item_id,
-		&"quantity": qty,
+		&"quantity": existing_qty + qty,
 	}
 	return not _get_matching_recipes(test_state, false).is_empty()
 
@@ -311,6 +415,8 @@ func _build_output_item() -> Dictionary:
 		return {}
 
 	var category := InventoryManager.InventoryItemCategory.CRAFTED
+	if output_id == &"distillation_kit":
+		category = InventoryManager.InventoryItemCategory.TOOL
 	if _active_recipe.get(&"durability") == null:
 		category = InventoryManager.InventoryItemCategory.CONSUMABLE
 
@@ -329,6 +435,14 @@ func _build_output_item() -> Dictionary:
 		item_data[&"projectile_id"] = "rust_bolt"
 		item_data[&"damage_type"] = "oxidation"
 		item_data[&"base_damage"] = 15.0
+	elif output_id == &"sulfuric_bolt":
+		item_data[&"weapon_type"] = "ranged"
+		item_data[&"projectile_id"] = "sulfuric_bolt"
+		item_data[&"damage_type"] = "chemical"
+		item_data[&"base_damage"] = 22.0
+		item_data[&"requires_stabilization"] = bool(_active_recipe.get(&"requires_stabilization", false))
+	elif output_id == &"distillation_kit":
+		item_data[&"tool_type"] = "distillation_kit"
 	return item_data
 
 
@@ -366,7 +480,11 @@ func _refresh_recipe_copy() -> void:
 	var recipe_name := str(_active_recipe.get(&"display_name", "Unknown Recipe"))
 	recipe_label.text = "ACTIVE RECIPE: %s" % recipe_name
 	summary_label.text = str(_active_recipe.get(&"summary", ""))
-	action_hint_label.text = "Load both required materials, then %s." % _get_action_verb().to_lower()
+	action_hint_label.text = (
+		"Load both required materials, stabilize the reaction, then %s." % _get_action_verb().to_lower()
+		if bool(_active_recipe.get(&"requires_stabilization", false)) else
+		"Load both required materials, then %s." % _get_action_verb().to_lower()
+	)
 	react_button.text = _get_action_verb()
 
 
@@ -383,28 +501,40 @@ func _recipe_matches_state(recipe: Dictionary, slot_state: Dictionary, require_e
 	if inputs.size() < 2:
 		return false
 
-	for i in range(2):
-		var slot_id: StringName = &"input_a" if i == 0 else &"input_b"
-		var expected_input: Dictionary = inputs[i]
-		var expected_item_id: StringName = expected_input.get(&"element_id", &"")
-		var expected_qty := int(expected_input.get(&"qty", 0))
-		var actual_input: Dictionary = slot_state.get(slot_id, {})
-		var actual_item_id: StringName = actual_input.get(&"item_id", &"")
-		var actual_qty := int(actual_input.get(&"quantity", 0))
+	var a_input: Dictionary = slot_state.get(&"input_a", {})
+	var b_input: Dictionary = slot_state.get(&"input_b", {})
+	var a_id: StringName = a_input.get(&"item_id", &"")
+	var a_qty := int(a_input.get(&"quantity", 0))
+	var b_id: StringName = b_input.get(&"item_id", &"")
+	var b_qty := int(b_input.get(&"quantity", 0))
 
-		if actual_item_id.is_empty() or actual_qty <= 0:
-			if require_exact_quantities:
-				return false
-			continue
-		if actual_item_id != expected_item_id:
-			return false
-		if require_exact_quantities:
-			if actual_qty != expected_qty:
-				return false
-		elif actual_qty > expected_qty:
-			return false
+	var exp0_id: StringName = inputs[0].get(&"element_id", &"")
+	var exp0_qty := int(inputs[0].get(&"qty", 0))
+	var exp1_id: StringName = inputs[1].get(&"element_id", &"")
+	var exp1_qty := int(inputs[1].get(&"qty", 0))
 
+	var match_straight := _check_pair(a_id, a_qty, b_id, b_qty, exp0_id, exp0_qty, exp1_id, exp1_qty, require_exact_quantities)
+	var match_swapped := _check_pair(a_id, a_qty, b_id, b_qty, exp1_id, exp1_qty, exp0_id, exp0_qty, require_exact_quantities)
+	
+	return match_straight or match_swapped
+
+
+func _check_pair(act1_id: StringName, act1_qty: int, act2_id: StringName, act2_qty: int, exp1_id: StringName, exp1_qty: int, exp2_id: StringName, exp2_qty: int, req_exact: bool) -> bool:
+	if not _check_single(act1_id, act1_qty, exp1_id, exp1_qty, req_exact):
+		return false
+	if not _check_single(act2_id, act2_qty, exp2_id, exp2_qty, req_exact):
+		return false
 	return true
+
+
+func _check_single(act_id: StringName, act_qty: int, exp_id: StringName, exp_qty: int, req_exact: bool) -> bool:
+	if act_id.is_empty() or act_qty <= 0:
+		return not req_exact
+	if act_id != exp_id:
+		return false
+	if req_exact:
+		return act_qty == exp_qty
+	return act_qty <= exp_qty
 
 
 func _get_supported_recipe_hint() -> String:

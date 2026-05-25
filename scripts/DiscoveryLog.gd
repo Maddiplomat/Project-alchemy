@@ -26,6 +26,7 @@ var log_entries: Array[Dictionary] = []
 
 ## Set of output_ids already logged — prevents duplicate "first discovery" pings.
 var _seen_outputs: Dictionary[StringName, bool] = {}
+var _seen_environment_entries: Dictionary[StringName, bool] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +101,41 @@ func has_seen(output_id: StringName) -> bool:
 func clear() -> void:
 	log_entries.clear()
 	_seen_outputs.clear()
+	_seen_environment_entries.clear()
+
+
+func log_environment(entry_id: StringName, title: String, notes: String, one_time: bool = true) -> bool:
+	if entry_id.is_empty():
+		return false
+	if one_time and _seen_environment_entries.get(entry_id, false):
+		return false
+
+	if one_time:
+		_seen_environment_entries[entry_id] = true
+
+	var entry := {
+		"timestamp": Time.get_ticks_msec(),
+		"output_id": entry_id,
+		"output_name": title,
+		"tier": "environment",
+		"tier_enum": OutcomeTier.UNKNOWN,
+		"quality": 1.0,
+		"notes": notes,
+		"temperature": 0.0,
+		"inputs": [],
+		"personal_note": "",
+		"is_first_discovery": false,
+		"entry_type": "environment",
+	}
+
+	log_entries.append(entry)
+	if log_entries.size() > MAX_LOG_SIZE:
+		log_entries.pop_front()
+
+	discovery_made.emit(entry)
+	entry_added.emit(entry)
+	_print_entry(entry)
+	return true
 
 
 func set_personal_note(timestamp: int, note: String) -> void:

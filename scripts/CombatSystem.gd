@@ -14,6 +14,7 @@ func _register_default_damage_types() -> void:
 	register_damage_type("oxidation", "Oxidation/Fire", "#FF4500")
 	register_damage_type("electrical", "Electrical", "#FFD700")
 	register_damage_type("chemical", "Chemical/Acid", "#32CD32")
+	register_damage_type("acid", "Acid", "#9ACD32")
 	register_damage_type("radiation", "Radiation", "#00FF00")
 
 func register_damage_type(id: String, display_name: String, color_hex: String) -> void:

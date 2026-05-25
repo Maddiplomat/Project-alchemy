@@ -1,0 +1,26 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/SulfuricBolt.gd" id="1_sulfuric"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_sulfuric"]
+radius = 3.0
+
+[node name="SulfuricBolt" type="Area2D"]
+collision_mask = 1
+monitoring = true
+script = ExtResource("1_sulfuric")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_sulfuric")
+
+[node name="Trail" type="GPUParticles2D" parent="."]
+position = Vector2(-4, 0)
+amount = 10
+lifetime = 0.24
+explosiveness = 0.0
+randomness = 0.45
+local_coords = false
+emitting = false

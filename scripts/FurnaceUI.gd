@@ -1020,7 +1020,7 @@ func _trigger_explosion(notes: String, inputs_log: Array, temp: float) -> void:
 	_spawn_explosion_particles()
 
 	for health_system in _get_overlapping_health_systems():
-		health_system.take_damage(FURNACE_EXPLOSION_DAMAGE, &"explosion")
+		health_system.take_damage(FURNACE_EXPLOSION_DAMAGE, &"explosion", "Furnace explosion")
 
 	var inventory_loss_text := ""
 	if randf() < FURNACE_EXPLOSION_SLOT_LOSS_CHANCE:

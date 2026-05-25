@@ -69,7 +69,7 @@ func _apply_damage() -> void:
 
 	var health_system: Node = player_body.get_node_or_null("HealthSystem")
 	if health_system != null and health_system.has_method("take_damage"):
-		health_system.take_damage(damage_amount, &"physical")
+		health_system.take_damage(damage_amount, &"physical", "Hazard field")
 
 
 func _is_player_body(body: Node) -> bool:

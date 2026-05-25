@@ -1,0 +1,23 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/AcidPuddle.gd" id="1_acid"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_acid"]
+radius = 4.0
+
+[node name="AcidPuddle" type="Area2D"]
+monitoring = true
+script = ExtResource("1_acid")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_acid")
+
+[node name="DamageTimer" type="Timer" parent="."]
+wait_time = 1.0
+
+[node name="ColorRect" type="ColorRect" parent="."]
+offset_left = -4.0
+offset_top = -4.0
+offset_right = 4.0
+offset_bottom = 4.0
+color = Color(0.48, 0.82, 0.20, 0.55)

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "sulfuric_bolt",
+    "inputs": [
+      {
+        "sulfur": 1
+      },
+      {
+        "iron": 1
+      }
+    ],
+    "output": {
+      "sulfuric_bolt": 6
+    },
+    "station": "chem_bench",
+    "reaction_type": "chemical",
+    "requires_stabilization": true,
+    "ratio": {
+      "sulfur": 0.5,
+      "iron": 0.5
+    },
+    "durability": null
+  }
+]

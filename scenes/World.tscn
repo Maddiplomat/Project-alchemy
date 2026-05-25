@@ -10,6 +10,7 @@
 [ext_resource type="PackedScene" path="res://scenes/CharcoalPileProp.tscn" id="8_cp1v9"]
 [ext_resource type="PackedScene" path="res://scenes/ChemBench.tscn" id="9_cbnch"]
 [ext_resource type="PackedScene" path="res://scenes/EnemySpawner.tscn" id="10_spawner"]
+[ext_resource type="Script" path="res://scripts/IgnitionSystem.gd" id="11_ignite"]
 
 [node name="World" type="Node2D" unique_id=1488050509]
 script = ExtResource("2_nvi4h")
@@ -32,6 +33,9 @@ tile_map_data = PackedByteArray("AAD8//3/AAABAAEAAAACAP7/AAABAAEAAAADAAMAAAACAAE
 tile_set = ExtResource("1_kqs1s")
 
 [node name="ElementSpawnSystem" type="Node2D" parent="." unique_id=1729565649]
+
+[node name="SulfurFlatsZone" type="Node2D" parent="."]
+script = ExtResource("11_ignite")
 
 [node name="EnemySpawner" parent="." instance=ExtResource("10_spawner")]
 spawn_position = Array[Vector2]([Vector2(752, 448)])

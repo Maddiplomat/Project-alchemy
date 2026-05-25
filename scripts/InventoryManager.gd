@@ -71,7 +71,14 @@ func add_item(item_data: Dictionary, quantity: int = 1) -> bool:
 
 
 func receive_world_pickup(item_data: Dictionary, quantity: int = 1) -> bool:
-	return add_item(item_data, quantity)
+	var normalized_pickup := item_data.duplicate(true)
+	var item_id := _get_item_id(normalized_pickup)
+	var element_data := ElementDatabase.get_element(item_id)
+	if not element_data.is_empty():
+		normalized_pickup[&"purity"] = _get_purity(normalized_pickup)
+		normalized_pickup[&"category"] = InventoryItemCategory.ELEMENT
+		normalized_pickup[&"risk_level"] = _to_inventory_risk_level(element_data.get(&"carrier_risk"))
+	return add_item(normalized_pickup, quantity)
 
 
 func remove_item(item_id: StringName, quantity: int = 1) -> bool:
@@ -349,7 +356,8 @@ func _normalize_item_data(item_data: Dictionary, quantity: int) -> Dictionary:
 	if not normalized.has(&"category"):
 		normalized[&"category"] = InventoryItemCategory.GENERIC
 
-	var category: int = normalized.get(&"category", InventoryItemCategory.GENERIC)
+	normalized[&"category"] = _normalize_inventory_category(normalized.get(&"category", InventoryItemCategory.GENERIC))
+	var category: int = normalized[&"category"]
 	var is_raw_element := category == InventoryItemCategory.ELEMENT
 	var is_consumable := category == InventoryItemCategory.CONSUMABLE
 	var max_durability = normalized.get(&"max_durability")
@@ -402,6 +410,23 @@ func _to_inventory_risk_level(risk_level_name) -> int:
 			return InventoryRiskLevel.EXTREME
 		_:
 			return InventoryRiskLevel.NONE
+
+
+func _normalize_inventory_category(category_value) -> int:
+	if category_value is int:
+		return category_value
+
+	match String(category_value).to_lower():
+		"element":
+			return InventoryItemCategory.ELEMENT
+		"tool":
+			return InventoryItemCategory.TOOL
+		"crafted":
+			return InventoryItemCategory.CRAFTED
+		"consumable":
+			return InventoryItemCategory.CONSUMABLE
+		_:
+			return InventoryItemCategory.GENERIC
 
 
 func _recalculate_weight() -> void:
@@ -469,7 +494,7 @@ func _is_risky_item(item_data: Dictionary) -> bool:
 	if risk_level >= InventoryRiskLevel.MEDIUM:
 		return true
 
-	var category: int = item_data.get(&"category", InventoryItemCategory.GENERIC)
+	var category: int = _normalize_inventory_category(item_data.get(&"category", InventoryItemCategory.GENERIC))
 	return category == InventoryItemCategory.ELEMENT and risk_level >= InventoryRiskLevel.LOW
 
 

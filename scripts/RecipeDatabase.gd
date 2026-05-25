@@ -97,25 +97,22 @@ func _normalize_recipe(raw_recipe: Dictionary) -> Dictionary:
 	for raw_input in raw_inputs:
 		if not raw_input is Dictionary:
 			return {}
-		if not raw_input.has(&"element_id") or not raw_input.has(&"qty"):
+		var normalized_input := _normalize_recipe_input(raw_input)
+		if normalized_input.is_empty():
 			return {}
-
-		var qty := int(raw_input.get(&"qty", 0))
+		var qty := int(normalized_input.get(&"qty", 0))
 		if qty <= 0:
 			return {}
-
-		normalized_inputs.append({
-			&"element_id": StringName(str(raw_input.get(&"element_id"))),
-			&"qty": qty,
-		})
+		normalized_inputs.append(normalized_input)
 
 	var raw_output = raw_recipe.get(&"output")
 	if not raw_output is Dictionary:
 		return {}
-	if not raw_output.has(&"item_id") or not raw_output.has(&"qty"):
+	var normalized_output := _normalize_recipe_output(raw_output)
+	if normalized_output.is_empty():
 		return {}
 
-	var output_qty := int(raw_output.get(&"qty", 0))
+	var output_qty := int(normalized_output.get(&"qty", 0))
 	if output_qty <= 0:
 		return {}
 
@@ -142,7 +139,7 @@ func _normalize_recipe(raw_recipe: Dictionary) -> Dictionary:
 		&"id": StringName(str(raw_recipe.get(&"id"))),
 		&"inputs": normalized_inputs,
 		&"output": {
-			&"item_id": StringName(str(raw_output.get(&"item_id"))),
+			&"item_id": StringName(str(normalized_output.get(&"item_id"))),
 			&"qty": output_qty,
 		},
 		&"durability": durability,
@@ -151,4 +148,39 @@ func _normalize_recipe(raw_recipe: Dictionary) -> Dictionary:
 		&"ratio": ratio,
 		&"required_temp": raw_recipe.get(&"required_temp"),
 		&"reaction_type": StringName(str(raw_recipe.get(&"reaction_type", ""))),
+		&"requires_stabilization": bool(raw_recipe.get(&"requires_stabilization", false)),
+	}
+
+
+func _normalize_recipe_input(raw_input: Dictionary) -> Dictionary:
+	if raw_input.has(&"element_id") and raw_input.has(&"qty"):
+		return {
+			&"element_id": StringName(str(raw_input.get(&"element_id"))),
+			&"qty": int(raw_input.get(&"qty", 0)),
+		}
+
+	if raw_input.size() != 1:
+		return {}
+
+	var element_key = raw_input.keys()[0]
+	return {
+		&"element_id": StringName(str(element_key)),
+		&"qty": int(raw_input[element_key]),
+	}
+
+
+func _normalize_recipe_output(raw_output: Dictionary) -> Dictionary:
+	if raw_output.has(&"item_id") and raw_output.has(&"qty"):
+		return {
+			&"item_id": StringName(str(raw_output.get(&"item_id"))),
+			&"qty": int(raw_output.get(&"qty", 0)),
+		}
+
+	if raw_output.size() != 1:
+		return {}
+
+	var item_key = raw_output.keys()[0]
+	return {
+		&"item_id": StringName(str(item_key)),
+		&"qty": int(raw_output[item_key]),
 	}

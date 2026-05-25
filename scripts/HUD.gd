@@ -4,7 +4,11 @@ const WORLD_SCENE_PATH := "res://scenes/World.tscn"
 const MAIN_MENU_SCENE_PATH := "res://scenes/MainMenu.tscn"
 const DEATH_OVERLAY_FADE_SECONDS := 1.0
 const DISCOVERY_JOURNAL_SCENE := preload("res://scenes/UI/DiscoveryJournal.tscn")
+const CARRIER_WARNING_SFX_DURATION := 0.11
 
+@onready var carrier_risk_strip: Panel = $CarrierRiskStrip
+@onready var carrier_risk_warning_label: Label = $CarrierRiskStrip/VBoxContainer/WarningLabel
+@onready var carrier_risk_hint_label: Label = $CarrierRiskStrip/VBoxContainer/HintLabel
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var health_label: Label = $HealthBar/HealthLabel
 @onready var held_item_icon: TextureRect = $HeldItemContainer/HBoxContainer/ActiveItemIcon
@@ -12,6 +16,7 @@ const DISCOVERY_JOURNAL_SCENE := preload("res://scenes/UI/DiscoveryJournal.tscn"
 @onready var carry_vignette: ColorRect = $CarryVignette
 @onready var death_overlay: Panel = $DeathOverlay
 @onready var death_cause_label: Label = $DeathOverlay/CenterContainer/DialogPanel/VBoxContainer/CauseLabel
+@onready var death_last_hits_label: Label = $DeathOverlay/CenterContainer/DialogPanel/VBoxContainer/LastHitsLabel
 @onready var retry_button: Button = $DeathOverlay/CenterContainer/DialogPanel/VBoxContainer/RetryButton
 @onready var quit_button: Button = $DeathOverlay/CenterContainer/DialogPanel/VBoxContainer/QuitButton
 
@@ -28,6 +33,9 @@ var _death_overlay_tween: Tween = null
 var _journal_panel: Panel = null
 var _journal_open := false
 var _paused_player: Node = null
+var _carrier_warning_audio_player: AudioStreamPlayer = null
+var _active_carrier_risk_element: StringName = &""
+var _active_carrier_risk_seconds := -1
 
 func _ready() -> void:
 	GameManager.player_health_changed.connect(_update_health)
@@ -37,11 +45,17 @@ func _ready() -> void:
 	InventoryManager.weight_changed.connect(_on_weight_changed)
 	retry_button.pressed.connect(_on_retry_button_pressed)
 	quit_button.pressed.connect(_on_quit_button_pressed)
+	if has_node("/root/CarrierRiskSystem"):
+		CarrierRiskSystem.carrier_risk_warning.connect(_on_carrier_risk_warning)
+		CarrierRiskSystem.carrier_risk_cleared.connect(_on_carrier_risk_cleared)
+		CarrierRiskSystem.carrier_risk_ignition.connect(_on_carrier_risk_ignition)
 
 	_update_health(GameManager.player_health, GameManager.max_player_health)
 	_refresh_held_item()
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	_hide_death_overlay()
+	_hide_carrier_risk_warning()
+	_setup_carrier_warning_audio()
 	_setup_discovery_journal()
 
 	if debug_seed_journal_entries > 0:
@@ -113,6 +127,7 @@ func _show_death_overlay(cause_of_death: StringName) -> void:
 	death_overlay.visible = true
 	death_overlay.modulate.a = 0.0
 	death_cause_label.text = "Cause of death: %s" % _format_cause_of_death(cause_of_death)
+	death_last_hits_label.text = _build_last_hits_text()
 	retry_button.disabled = true
 	quit_button.disabled = true
 	_death_overlay_tween = create_tween()
@@ -124,8 +139,38 @@ func _hide_death_overlay() -> void:
 	death_overlay.visible = false
 	death_overlay.modulate.a = 0.0
 	death_cause_label.text = "Cause of death: Unknown"
+	death_last_hits_label.text = "Last hits:\nNo recent damage recorded."
 	retry_button.disabled = false
 	quit_button.disabled = false
+
+
+func _on_carrier_risk_warning(element_id: StringName, seconds_remaining: int) -> void:
+	_active_carrier_risk_element = element_id
+	_active_carrier_risk_seconds = seconds_remaining
+	carrier_risk_strip.visible = true
+	carrier_risk_warning_label.text = "%s UNSTABLE - %ds" % [_get_risk_item_name(element_id).to_upper(), seconds_remaining]
+	carrier_risk_hint_label.text = "Drop %s from inventory to cancel" % _get_risk_item_name(element_id)
+	if seconds_remaining == 1:
+		_play_carrier_warning_sfx()
+
+
+func _on_carrier_risk_cleared(element_id: StringName) -> void:
+	if element_id != _active_carrier_risk_element:
+		return
+	_hide_carrier_risk_warning()
+
+
+func _on_carrier_risk_ignition(element_id: StringName) -> void:
+	if element_id == _active_carrier_risk_element:
+		_hide_carrier_risk_warning()
+
+
+func _hide_carrier_risk_warning() -> void:
+	_active_carrier_risk_element = &""
+	_active_carrier_risk_seconds = -1
+	carrier_risk_strip.visible = false
+	carrier_risk_warning_label.text = "SULFUR UNSTABLE - 3s"
+	carrier_risk_hint_label.text = "Drop Sulfur from inventory to cancel"
 
 
 func _on_death_overlay_fade_finished() -> void:
@@ -150,6 +195,19 @@ func _setup_discovery_journal() -> void:
 		_journal_panel.close_requested.connect(_close_journal)
 	if _journal_panel.has_method("hide_panel"):
 		_journal_panel.hide_panel()
+
+
+func _setup_carrier_warning_audio() -> void:
+	_carrier_warning_audio_player = AudioStreamPlayer.new()
+	add_child(_carrier_warning_audio_player)
+	_carrier_warning_audio_player.stream = _build_carrier_warning_stream()
+
+
+func _play_carrier_warning_sfx() -> void:
+	if _carrier_warning_audio_player == null or _carrier_warning_audio_player.stream == null:
+		return
+	_carrier_warning_audio_player.stop()
+	_carrier_warning_audio_player.play()
 
 
 func _open_journal() -> void:
@@ -215,6 +273,38 @@ func _format_cause_of_death(cause_of_death: StringName) -> String:
 		_:
 			return String(cause_of_death).replace("_", " ").capitalize()
 
+
+func _build_last_hits_text() -> String:
+	var health_system := GameManager.player_health_system
+	if health_system == null or not health_system.has_method("get_recent_damage_entries"):
+		return "Last hits:\nNo recent damage recorded."
+
+	var recent_entries: Array = health_system.get_recent_damage_entries(3)
+	if recent_entries.is_empty():
+		return "Last hits:\nNo recent damage recorded."
+
+	var lines: Array[String] = ["Last hits:"]
+	for index in range(recent_entries.size() - 1, -1, -1):
+		lines.append(_format_damage_log_entry(recent_entries[index]))
+	return "\n".join(lines)
+
+
+func _format_damage_log_entry(entry: Dictionary) -> String:
+	var source_label := str(entry.get(&"source_label", "")).strip_edges()
+	if source_label.is_empty():
+		source_label = _format_cause_of_death(StringName(entry.get(&"damage_type", &"physical")))
+
+	var amount := int(entry.get(&"amount", 0))
+	var damage_type := _format_damage_type(StringName(entry.get(&"damage_type", &"physical")))
+	return "%s - %d %s" % [source_label, amount, damage_type]
+
+
+func _format_damage_type(damage_type: StringName) -> String:
+	var normalized := String(damage_type).replace("_", " ").strip_edges()
+	if normalized.is_empty():
+		normalized = "physical"
+	return "%s damage" % normalized
+
 func _get_item_color(item_id: String) -> Color:
 	match item_id:
 		"wood":
@@ -229,10 +319,45 @@ func _get_item_color(item_id: String) -> Color:
 			return Color(0.17, 0.18, 0.20, 1.0)
 		"rust_bolt":
 			return Color(0.84, 0.38, 0.12, 1.0)
+		"sulfuric_bolt":
+			return Color(0.76, 0.90, 0.22, 1.0)
 		"steel_sword":
 			return Color(0.82, 0.85, 0.90, 1.0)
 		_:
 			return Color.WHITE
+
+
+func _get_risk_item_name(item_id: StringName) -> String:
+	var element_data := ElementDatabase.get_element(item_id)
+	if not element_data.is_empty():
+		return str(element_data.get(&"display_name", item_id))
+	return String(item_id).replace("_", " ").capitalize()
+
+
+func _build_carrier_warning_stream() -> AudioStreamWAV:
+	var sample_rate := 22050
+	var frame_count := int(sample_rate * CARRIER_WARNING_SFX_DURATION)
+	var data := PackedByteArray()
+	data.resize(frame_count * 2)
+
+	for frame in range(frame_count):
+		var t := float(frame) / float(sample_rate)
+		var envelope := 1.0 - (float(frame) / float(frame_count))
+		var sample := (
+			sin(TAU * 1480.0 * t) * 0.45
+			+ sin(TAU * 2120.0 * t) * 0.18
+		) * envelope * 0.8
+		var sample_value := int(clampi(int(sample * 32767.0), -32768, 32767))
+		var packed_value := sample_value & 0xffff
+		data[frame * 2] = packed_value & 0xff
+		data[frame * 2 + 1] = (packed_value >> 8) & 0xff
+
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = sample_rate
+	stream.stereo = false
+	stream.data = data
+	return stream
 
 func _get_placeholder_texture(item_id: String) -> Texture2D:
 	if _placeholder_textures.has(item_id):

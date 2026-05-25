@@ -149,6 +149,8 @@ func _is_failure(entry: Dictionary) -> bool:
 
 
 func _is_unknown(entry: Dictionary) -> bool:
+	if str(entry.get("entry_type", "")) == "environment":
+		return true
 	var tier := str(entry.get("tier", "unknown"))
 	var output_id := StringName(str(entry.get("output_id", "")))
 	return tier == "unknown" or output_id.is_empty()
@@ -237,6 +239,8 @@ func _build_entry_card(entry: Dictionary) -> PanelContainer:
 
 
 func _format_pair(entry: Dictionary) -> String:
+	if str(entry.get("entry_type", "")) == "environment":
+		return "Environmental discovery"
 	var output_name := str(entry.get("output_name", "Unknown"))
 	var input_names: Array[String] = []
 	for input_data: Dictionary in entry.get("inputs", []):
@@ -250,6 +254,8 @@ func _format_pair(entry: Dictionary) -> String:
 
 
 func _format_conditions(entry: Dictionary) -> String:
+	if str(entry.get("entry_type", "")) == "environment":
+		return str(entry.get("notes", ""))
 	var output_id := StringName(str(entry.get("output_id", "")))
 	var notes := str(entry.get("notes", ""))
 	var temperature := int(round(float(entry.get("temperature", 0.0))))
@@ -269,6 +275,8 @@ func _format_conditions(entry: Dictionary) -> String:
 
 
 func _format_quality_badge(entry: Dictionary) -> String:
+	if str(entry.get("entry_type", "")) == "environment":
+		return "Field Note"
 	var tier := str(entry.get("tier", "unknown")).capitalize()
 	var quality_pct := int(round(float(entry.get("quality", 0.0)) * 100.0))
 	return "%s %d%%" % [tier, quality_pct]
@@ -284,6 +292,8 @@ func _get_display_name(item_id: StringName) -> String:
 
 
 func _get_badge_color(entry: Dictionary) -> Color:
+	if str(entry.get("entry_type", "")) == "environment":
+		return Color(0.40, 0.32, 0.16, 1.0)
 	match str(entry.get("tier", "unknown")):
 		"optimal":
 			return SUCCESS_COLOR

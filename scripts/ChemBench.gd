@@ -2,6 +2,9 @@ extends StaticBody2D
 
 const CHEM_BENCH_UI_SCENE := preload("res://scenes/UI/ChemBenchUI.tscn")
 const CHEM_BENCH_STATION_ID := &"chem_bench"
+const CHEMICAL_EXPLOSION_SCENE := preload("res://scenes/ChemicalExplosion.tscn")
+const SHRAPNEL_BURST_SCENE := preload("res://scenes/ShrapnelBurst.tscn")
+const TOXIC_CLOUD_SCENE := preload("res://scenes/ToxicCloud.tscn")
 
 signal player_entered_range
 signal player_exited_range
@@ -74,12 +77,33 @@ func get_available_recipes() -> Array[Dictionary]:
 			continue
 		_apply_recipe_metadata(recipe)
 		results.append(recipe)
+	results.sort_custom(_sort_recipe_by_unlock_order)
 	return results
 
 
 func get_active_recipe() -> Dictionary:
 	var recipes := get_available_recipes()
 	return recipes[0] if not recipes.is_empty() else {}
+
+
+func trigger_stabilization_failure(reason: StringName) -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		current_scene = get_tree().root
+
+	match reason:
+		&"heat_runaway":
+			var explosion := CHEMICAL_EXPLOSION_SCENE.instantiate() as Node2D
+			current_scene.add_child(explosion)
+			explosion.global_position = global_position
+		&"pressure_spike":
+			var shrapnel_burst := SHRAPNEL_BURST_SCENE.instantiate() as Node2D
+			current_scene.add_child(shrapnel_burst)
+			shrapnel_burst.global_position = global_position
+		&"timer_expiry":
+			var toxic_cloud := TOXIC_CLOUD_SCENE.instantiate() as Node2D
+			current_scene.add_child(toxic_cloud)
+			toxic_cloud.global_position = global_position
 
 
 func _start_interaction() -> void:
@@ -147,6 +171,28 @@ func _apply_recipe_metadata(recipe: Dictionary) -> void:
 		&"rust_bolt":
 			recipe[&"display_name"] = "Rust Bolt"
 			recipe[&"summary"] = "Oxidize iron with water to produce throwable rust bolts."
+		&"sulfuric_bolt":
+			recipe[&"display_name"] = "Sulfuric Bolt"
+			recipe[&"summary"] = "Combine sulfur and iron into unstable acid payload bolts. The 50/50 ratio is forgiving; stabilization is the real challenge."
+		&"distillation_kit":
+			recipe[&"display_name"] = "Distillation Kit"
+			recipe[&"summary"] = "Workbench-grade extraction kit required to safely collect Sulfur."
+
+
+func _sort_recipe_by_unlock_order(a: Dictionary, b: Dictionary) -> bool:
+	return _get_recipe_sort_order(a.get(&"id", &"")) < _get_recipe_sort_order(b.get(&"id", &""))
+
+
+func _get_recipe_sort_order(recipe_id: StringName) -> int:
+	match recipe_id:
+		&"rust_bolt":
+			return 0
+		&"sulfuric_bolt":
+			return 1
+		&"distillation_kit":
+			return 2
+		_:
+			return 100
 
 
 func _build_placeholder_texture() -> Texture2D:

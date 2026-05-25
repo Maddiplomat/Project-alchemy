@@ -19,6 +19,10 @@ const SLOT_BG_DEFAULT := Color(0.18, 0.19, 0.22, 0.96)
 const SLOT_BORDER_DEFAULT := Color(0.32, 0.34, 0.38, 1.0)
 const SLOT_BG_CHARCOAL := Color(0.08, 0.08, 0.09, 0.98)
 const SLOT_BORDER_CHARCOAL := Color(0.20, 0.20, 0.22, 1.0)
+const SLOT_BORDER_SULFUR := Color(0.96, 0.86, 0.25, 1.0)
+const SLOT_BG_SULFUR := Color(0.21, 0.19, 0.08, 0.98)
+const SLOT_BORDER_RISK := Color(0.96, 0.18, 0.18, 1.0)
+const SLOT_BG_RISK := Color(0.31, 0.08, 0.08, 0.98)
 const QUANTITY_FONT_COLOR := Color(0.97, 0.97, 0.97, 1.0)
 const QUANTITY_OUTLINE_COLOR := Color(0.03, 0.04, 0.05, 0.95)
 
@@ -32,6 +36,9 @@ var is_drag_origin := false
 var is_equipped := false
 var _placeholder_textures := {}
 var _press_start_pos := Vector2.ZERO
+var _pulse_time := 0.0
+var _carrier_risk_active := false
+var _carrier_risk_time := 0.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -55,7 +62,21 @@ func _ready() -> void:
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 	resized.connect(_on_resized)
+	set_process(true)
 	_apply_background_style()
+
+
+func _process(delta: float) -> void:
+	if _carrier_risk_active and has_item() and current_item_id == "sulfur":
+		_carrier_risk_time += delta
+		_apply_background_style()
+	elif has_item() and current_item_id == "sulfur" and is_equipped:
+		_pulse_time += delta
+		_apply_background_style()
+	elif _pulse_time != 0.0 or _carrier_risk_time != 0.0:
+		_pulse_time = 0.0
+		_carrier_risk_time = 0.0
+		_apply_background_style()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -100,6 +121,15 @@ func has_item() -> bool:
 func set_drag_origin(active: bool) -> void:
 	is_drag_origin = active
 	_apply_visual_state()
+
+
+func set_carrier_risk_alert(active: bool) -> void:
+	if _carrier_risk_active == active:
+		return
+	_carrier_risk_active = active
+	if not active:
+		_carrier_risk_time = 0.0
+	_apply_background_style()
 
 func _apply_visual_state() -> void:
 	var has_stack := has_item()
@@ -151,19 +181,40 @@ func _get_item_color(item_id: String) -> Color:
 			return Color.SILVER
 		"charcoal":
 			return Color(0.17, 0.18, 0.20, 1.0)
+		"distillation_kit":
+			return Color(0.78, 0.67, 0.46, 1.0)
+		"sulfur":
+			return Color(0.95, 0.87, 0.24, 1.0)
+		"sulfuric_bolt":
+			return Color(0.76, 0.90, 0.22, 1.0)
 		_:
 			return Color.WHITE
 
 
 func _apply_background_style() -> void:
 	var is_charcoal_slot := has_item() and current_item_id == "charcoal"
+	var is_sulfur_held_slot := has_item() and current_item_id == "sulfur" and is_equipped
+	var is_sulfur_risk_slot := has_item() and current_item_id == "sulfur" and _carrier_risk_active
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = SLOT_BG_CHARCOAL if is_charcoal_slot else SLOT_BG_DEFAULT
-	panel_style.border_color = SLOT_BORDER_CHARCOAL if is_charcoal_slot else SLOT_BORDER_DEFAULT
-	panel_style.border_width_left = 1
-	panel_style.border_width_top = 1
-	panel_style.border_width_right = 1
-	panel_style.border_width_bottom = 1
+	panel_style.bg_color = SLOT_BG_RISK if is_sulfur_risk_slot else (SLOT_BG_SULFUR if is_sulfur_held_slot else (SLOT_BG_CHARCOAL if is_charcoal_slot else SLOT_BG_DEFAULT))
+	if is_sulfur_risk_slot:
+		var flash_phase := fmod(_carrier_risk_time * 4.0, 1.0)
+		var flash_alpha := 1.0 if flash_phase < 0.5 else 0.22
+		panel_style.border_color = Color(SLOT_BORDER_RISK.r, SLOT_BORDER_RISK.g, SLOT_BORDER_RISK.b, flash_alpha)
+	elif is_sulfur_held_slot:
+		var pulse_alpha := 0.55 + 0.25 * sin(_pulse_time * TAU * 1.2)
+		panel_style.border_color = Color(
+			SLOT_BORDER_SULFUR.r,
+			SLOT_BORDER_SULFUR.g,
+			SLOT_BORDER_SULFUR.b,
+			pulse_alpha
+		)
+	else:
+		panel_style.border_color = SLOT_BORDER_CHARCOAL if is_charcoal_slot else SLOT_BORDER_DEFAULT
+	panel_style.border_width_left = 2 if is_sulfur_held_slot or is_sulfur_risk_slot else 1
+	panel_style.border_width_top = 2 if is_sulfur_held_slot or is_sulfur_risk_slot else 1
+	panel_style.border_width_right = 2 if is_sulfur_held_slot or is_sulfur_risk_slot else 1
+	panel_style.border_width_bottom = 2 if is_sulfur_held_slot or is_sulfur_risk_slot else 1
 	panel_style.corner_radius_top_left = 6
 	panel_style.corner_radius_top_right = 6
 	panel_style.corner_radius_bottom_right = 6

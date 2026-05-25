@@ -21,6 +21,8 @@ const HEALTH_BAR_HIDE_DELAY := 3.0
 const HEALTH_BAR_FULL_COLOR := Color(0.31, 0.82, 0.38, 1.0)
 const HEALTH_BAR_MID_COLOR := Color(0.91, 0.79, 0.23, 1.0)
 const HEALTH_BAR_LOW_COLOR := Color(0.86, 0.24, 0.22, 1.0)
+const ALERT_INDICATOR_OFFSET := Vector2(0.0, -48.0)
+const ALERT_INDICATOR_DURATION := 1.5
 
 @export var patrol_radius: float = 96.0
 @export var detection_radius: float = 180.0
@@ -122,6 +124,8 @@ func set_state(new_state: State) -> void:
 	elif current_state == State.ALERT:
 		velocity = Vector2.ZERO
 		_chase_repath_timer = CHASE_REPATH_INTERVAL
+		_show_alert_indicator()
+		_play_alert_sfx()
 	elif current_state == State.CHASE:
 		_chase_repath_timer = 0.0
 	elif current_state == State.ATTACK:
@@ -243,12 +247,12 @@ func _perform_ground_slam() -> void:
 	query.collision_mask = 1
 	var results = space_state.intersect_shape(query)
 	for res in results:
-		var col = res.collider
-		if col.name == "Player":
-			if col.has_node("HealthSystem"):
-				col.get_node("HealthSystem").take_damage(12, "physical_blunt")
-			elif col.has_method("take_damage"):
-				col.take_damage(12, "physical_blunt")
+			var col = res.collider
+			if col.name == "Player":
+				if col.has_node("HealthSystem"):
+					col.get_node("HealthSystem").take_damage(12, "physical_blunt", "Iron Golem ground slam")
+				elif col.has_method("take_damage"):
+					col.take_damage(12, "physical_blunt")
 
 
 func _update_hit_state(delta: float) -> void:
@@ -376,7 +380,6 @@ func _trigger_alert(reason: StringName, player: CharacterBody2D) -> void:
 
 	_player_target = player
 	_face_target(player.global_position)
-	_play_alert_sfx()
 	alert_triggered.emit(reason)
 	if current_state != State.CHASE and current_state != State.ATTACK:
 		set_state(State.ALERT)
@@ -399,15 +402,23 @@ func _play_alert_sfx() -> void:
 
 func _build_alert_audio_stream() -> void:
 	var sample_rate := 22050
-	var duration_seconds := 0.12
+	var duration_seconds := 0.28
 	var frame_count := int(sample_rate * duration_seconds)
 	var data := PackedByteArray()
 	data.resize(frame_count * 2)
 
 	for frame in range(frame_count):
 		var t := float(frame) / float(sample_rate)
-		var envelope := 1.0 - (float(frame) / float(frame_count))
-		var sample: float = sin(TAU * 660.0 * t) * envelope * 0.35
+		var normalized_frame := float(frame) / float(frame_count)
+		var envelope := sin(normalized_frame * PI)
+		var creak_pitch := lerpf(210.0, 130.0, normalized_frame) + sin(TAU * 7.0 * t) * 12.0
+		var metallic_overtone := lerpf(440.0, 280.0, normalized_frame)
+		var rasp := sin(TAU * 31.0 * t) * 0.08
+		var sample := (
+			sin(TAU * creak_pitch * t) * 0.52
+			+ sin(TAU * metallic_overtone * t) * 0.22
+			+ rasp
+		) * envelope * 0.55
 		var sample_value := int(clampi(int(sample * 32767.0), -32768, 32767))
 		var packed_value := sample_value & 0xffff
 		data[frame * 2] = packed_value & 0xff
@@ -419,6 +430,38 @@ func _build_alert_audio_stream() -> void:
 	stream.stereo = false
 	stream.data = data
 	alert_audio_player.stream = stream
+
+
+func _show_alert_indicator() -> void:
+	var existing_indicator := get_node_or_null("AlertIndicator") as Label
+	if existing_indicator != null:
+		existing_indicator.queue_free()
+
+	var indicator := Label.new()
+	indicator.name = "AlertIndicator"
+	indicator.text = "!"
+	indicator.position = ALERT_INDICATOR_OFFSET
+	indicator.modulate = Color(1.0, 0.93, 0.42, 0.0)
+	indicator.scale = Vector2(0.35, 0.35)
+	indicator.z_index = 10
+	indicator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	indicator.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	indicator.offset_left = -12.0
+	indicator.offset_top = -14.0
+	indicator.offset_right = 12.0
+	indicator.offset_bottom = 14.0
+	indicator.add_theme_font_size_override("font_size", 26)
+	add_child(indicator)
+
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(indicator, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(indicator, "modulate:a", 1.0, 0.08)
+	tween.chain()
+	tween.tween_interval(ALERT_INDICATOR_DURATION - 0.44)
+	tween.tween_property(indicator, "position:y", ALERT_INDICATOR_OFFSET.y - 10.0, 0.3)
+	tween.parallel().tween_property(indicator, "modulate:a", 0.0, 0.3)
+	tween.tween_callback(indicator.queue_free)
 
 
 func _on_detection_body_entered(body: Node) -> void:

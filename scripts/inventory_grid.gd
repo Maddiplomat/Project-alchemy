@@ -29,7 +29,8 @@ const RECIPE_ROW_BORDER_COLOR := Color(0.29, 0.31, 0.36, 1.0)
 const RECIPE_DURABILITY_COLOR := Color(0.75, 0.86, 0.43, 1.0)
 const ITEM_ICON_SIZE := Vector2(34, 34)
 const SELECT_KEYBIND_BASE_TEXT := "1-9: select active item"
-const DRAG_QUANTITY_HINT_TEXT := "Wheel or Up/Down or Q/E to adjust qty"
+const DRAG_QUANTITY_HINT_TEXT := "Wheel or Up/Down or Q/E to adjust qty, drag outside panel to drop"
+const WORLD_DROP_DISTANCE := 22.0
 
 var drag_origin_index := -1
 var drag_ghost: TextureRect = null
@@ -40,6 +41,7 @@ var tooltip_slot_index := -1
 var tooltip_delay_timer: SceneTreeTimer = null
 var recipe_row_refs: Dictionary[StringName, Dictionary] = {}
 var _placeholder_textures := {}
+var _carrier_risk_item_id: StringName = &""
 
 func _ready():
 	for i in range(SLOT_COUNT):
@@ -70,6 +72,10 @@ func _ready():
 	InventoryManager.inventory_changed.connect(refresh_grid)
 	InventoryManager.held_item_changed.connect(func(_id): refresh_grid())
 	InventoryManager.weight_changed.connect(_on_weight_changed)
+	if has_node("/root/CarrierRiskSystem"):
+		CarrierRiskSystem.carrier_risk_warning.connect(_on_carrier_risk_warning)
+		CarrierRiskSystem.carrier_risk_cleared.connect(_on_carrier_risk_cleared)
+		CarrierRiskSystem.carrier_risk_ignition.connect(_on_carrier_risk_ignition)
 	_setup_crafting_pulse_animation()
 	_build_recipe_rows()
 	refresh_grid()
@@ -86,6 +92,8 @@ func _setup_panel():
 
 func _input(event):
 	if event.is_action_pressed("toggle_inventory"):
+		if _is_inventory_toggle_blocked():
+			return
 		toggle_inventory()
 
 	if _is_dragging():
@@ -117,7 +125,8 @@ func _input(event):
 
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
 		if _is_dragging():
-			_finish_drag(_get_slot_index_at_position(get_viewport().get_mouse_position()))
+			var mouse_position := get_viewport().get_mouse_position()
+			_finish_drag(_get_slot_index_at_position(mouse_position), mouse_position)
 
 func _process(_delta: float) -> void:
 	if drag_ghost != null:
@@ -148,6 +157,14 @@ func toggle_inventory():
 		# closing
 		tween.tween_callback(func(): panel.visible = false)
 
+
+func _is_inventory_toggle_blocked() -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return false
+	var player := current_scene.get_node_or_null("Player")
+	return player != null and player.has_method("is_input_paused") and bool(player.call("is_input_paused"))
+
 func refresh_grid():
 	var held_id = InventoryManager.get_held_item_id()
 	for i in range(grid.get_child_count()):
@@ -160,6 +177,7 @@ func refresh_grid():
 			slot.update_slot(data.id, data.quantity, data.purity, data.get("durability"), data.get("max_durability"))
 		else:
 			slot.clear()
+		slot.set_carrier_risk_alert(not _carrier_risk_item_id.is_empty() and not data.is_empty() and StringName(str(data.get("id", ""))) == _carrier_risk_item_id)
 
 	if tooltip_panel.visible and hover_slot_index >= 0:
 		_show_tooltip_for_slot(hover_slot_index)
@@ -167,6 +185,31 @@ func refresh_grid():
 		_hide_tooltip()
 
 	_refresh_recipe_states()
+
+
+func _on_carrier_risk_warning(element_id: StringName, _seconds_remaining: int) -> void:
+	_carrier_risk_item_id = element_id
+	_apply_carrier_risk_slot_state()
+
+
+func _on_carrier_risk_cleared(element_id: StringName) -> void:
+	if element_id != _carrier_risk_item_id:
+		return
+	_carrier_risk_item_id = &""
+	_apply_carrier_risk_slot_state()
+
+
+func _on_carrier_risk_ignition(element_id: StringName) -> void:
+	if element_id == _carrier_risk_item_id:
+		_carrier_risk_item_id = &""
+	_apply_carrier_risk_slot_state()
+
+
+func _apply_carrier_risk_slot_state() -> void:
+	for i in range(grid.get_child_count()):
+		var slot = grid.get_child(i)
+		var data = InventoryManager.get_slot_item(i)
+		slot.set_carrier_risk_alert(not _carrier_risk_item_id.is_empty() and not data.is_empty() and StringName(str(data.get("id", ""))) == _carrier_risk_item_id)
 
 func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 	_update_weight_display(total_weight, carry_capacity)
@@ -207,7 +250,7 @@ func _on_slot_drag_started(slot_index: int) -> void:
 
 func _on_slot_drag_released(slot_index: int) -> void:
 	if _is_dragging():
-		_finish_drag(slot_index)
+		_finish_drag(slot_index, get_viewport().get_mouse_position())
 
 func _on_slot_clicked(slot_index: int) -> void:
 	InventoryManager.select_slot(slot_index)
@@ -241,7 +284,7 @@ func _create_drag_ghost(source_slot) -> void:
 	add_child(drag_ghost)
 	_update_drag_ghost_quantity()
 
-func _finish_drag(drop_slot_index: int) -> void:
+func _finish_drag(drop_slot_index: int, release_mouse_position: Vector2) -> void:
 	var from_slot := drag_origin_index
 	var quantity_to_drop := drag_quantity
 	_clear_drag_ghost()
@@ -264,7 +307,11 @@ func _finish_drag(drop_slot_index: int) -> void:
 	if dragged_item.is_empty():
 		return
 
-	_try_drop_to_station_ui(dragged_item, quantity_to_drop)
+	if _try_drop_to_station_ui(dragged_item, quantity_to_drop):
+		return
+
+	if _should_drop_to_world(release_mouse_position):
+		_try_drop_to_world(dragged_item, quantity_to_drop)
 
 func _get_slot_index_at_position(global_mouse_position: Vector2) -> int:
 	for i in range(grid.get_child_count()):
@@ -333,6 +380,45 @@ func _try_drop_to_station_ui(dragged_item: Dictionary, initial_drag_quantity: in
 		return InventoryManager.remove_item(item_id, quantity)
 
 	return false
+
+
+func _should_drop_to_world(release_mouse_position: Vector2) -> bool:
+	return not panel.get_global_rect().has_point(release_mouse_position)
+
+
+func _try_drop_to_world(dragged_item: Dictionary, initial_drag_quantity: int) -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return false
+
+	var item_id := StringName(str(dragged_item.get("id", "")))
+	var quantity := mini(initial_drag_quantity, int(dragged_item.get("quantity", 0)))
+	if item_id.is_empty() or quantity <= 0:
+		return false
+
+	var player := current_scene.get_node_or_null("Player") as Node2D
+	var spawn_system := current_scene.get_node_or_null("ElementSpawnSystem")
+	if player == null or spawn_system == null or not spawn_system.has_method("spawn_inventory_pickup"):
+		return false
+
+	var pickup := spawn_system.call("spawn_inventory_pickup", dragged_item, _get_world_drop_position(player), quantity) as Node2D
+	if pickup == null:
+		return false
+
+	if InventoryManager.remove_item(item_id, quantity):
+		return true
+
+	pickup.queue_free()
+	return false
+
+
+func _get_world_drop_position(player: Node2D) -> Vector2:
+	var viewport_rect := get_viewport().get_visible_rect()
+	var screen_center := viewport_rect.size * 0.5
+	var direction := (get_viewport().get_mouse_position() - screen_center).normalized()
+	if direction == Vector2.ZERO:
+		direction = Vector2.DOWN
+	return player.global_position + direction * WORLD_DROP_DISTANCE
 
 func _on_slot_hover_started(slot_index: int) -> void:
 	if _is_dragging():

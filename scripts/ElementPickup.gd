@@ -3,6 +3,8 @@ extends Area2D
 signal picked_up(item_data: Dictionary, quantity: int)
 
 static var _shape_logged := false
+const DISTILLATION_KIT_ITEM_ID := &"distillation_kit"
+const DISTILLATION_KIT_DURABILITY_LOSS := 0.05
 
 @export var element_id: StringName = &""
 @export var pickup_quantity := 1
@@ -12,6 +14,7 @@ static var _shape_logged := false
 @onready var anim_player := $AnimationPlayer as AnimationPlayer
 @onready var sprite := $Sprite2D as Sprite2D
 @onready var glow_sprite := $GlowSprite2D as Sprite2D
+@onready var sulfur_particles := $SulfurParticles as GPUParticles2D
 
 var _player_in_range: CharacterBody2D = null
 var _pickup_textures := {}
@@ -43,6 +46,7 @@ func _on_body_entered(body: Node) -> void:
 		return
 
 	_player_in_range = body
+	_refresh_prompt_state()
 	prompt_label.visible = true
 
 
@@ -59,8 +63,14 @@ func _attempt_pickup() -> void:
 	if item_data.is_empty():
 		return
 
-	if not InventoryManager.add_element(item_data.id, pickup_quantity, 1.0):
+	if not _can_extract_pickup(item_data):
+		_refresh_prompt_state()
 		return
+
+	if not InventoryManager.receive_world_pickup(item_data, pickup_quantity):
+		return
+
+	_apply_extraction_cost(item_data)
 
 	picked_up.emit(item_data, pickup_quantity)
 	prompt_label.visible = false
@@ -68,6 +78,10 @@ func _attempt_pickup() -> void:
 
 
 func _get_pickup_item_data() -> Dictionary:
+	var stored_item_data = get_meta(&"item_data", {})
+	if stored_item_data is Dictionary and not stored_item_data.is_empty():
+		return stored_item_data.duplicate(true)
+
 	var resolved_element_id := element_id
 	if resolved_element_id.is_empty():
 		resolved_element_id = get_meta(&"element_id", &"")
@@ -154,13 +168,22 @@ func _setup_animations() -> void:
 	anim_water.track_insert_key(track_water_modulate, 1.8, Color(1.0, 1.0, 1.0, 0.95))
 	lib.add_animation("idle_water", anim_water)
 
+	# Sulfur: subtle crystal glint.
+	var anim_sulfur := Animation.new()
+	anim_sulfur.length = 1.2
+	anim_sulfur.loop_mode = Animation.LOOP_LINEAR
+	var track_sulfur_scale := anim_sulfur.add_track(Animation.TYPE_VALUE)
+	anim_sulfur.track_set_path(track_sulfur_scale, "Sprite2D:scale")
+	anim_sulfur.track_insert_key(track_sulfur_scale, 0.0, Vector2.ONE)
+	anim_sulfur.track_insert_key(track_sulfur_scale, 0.6, Vector2(1.04, 0.98))
+	anim_sulfur.track_insert_key(track_sulfur_scale, 1.2, Vector2.ONE)
+	lib.add_animation("idle_sulfur", anim_sulfur)
+
 	anim_player.add_animation_library("", lib)
 
 
 func _play_idle_animation() -> void:
-	var resolved_element_id := element_id
-	if resolved_element_id.is_empty():
-		resolved_element_id = get_meta(&"element_id", &"")
+	var resolved_element_id := get_element_id()
 
 	var anim_name := "idle_" + str(resolved_element_id)
 	if anim_player.has_animation(anim_name):
@@ -175,24 +198,69 @@ func get_element_id() -> StringName:
 
 func _apply_visual_identity() -> void:
 	var item_data := _get_pickup_item_data()
-	var resolved_element_id := get_element_id()
-	var display_name := str(item_data.get(&"display_name", resolved_element_id))
+	var resolved_item_id := StringName(str(item_data.get(&"id", get_element_id())))
+	var display_name := str(item_data.get(&"display_name", resolved_item_id))
 	var symbol := str(item_data.get(&"symbol", ""))
+	var pickup_display_name := display_name
+
+	if pickup_quantity > 1:
+		pickup_display_name = "%s x%d" % [pickup_display_name, pickup_quantity]
 
 	if display_name.is_empty():
 		prompt_label.text = "Press E"
 	else:
-		prompt_label.text = "%s (%s)" % [display_name, symbol] if not symbol.is_empty() else display_name
+		prompt_label.text = "%s (%s)" % [pickup_display_name, symbol] if not symbol.is_empty() else pickup_display_name
 
-	sprite.texture = _get_pickup_texture(String(resolved_element_id))
-	sprite.modulate = Color.WHITE
+	sprite.texture = _get_pickup_texture(String(resolved_item_id))
+	sprite.modulate = _get_pickup_modulate(item_data, resolved_item_id)
 	glow_sprite.texture = null
 	glow_sprite.visible = false
 	glow_sprite.modulate = Color(1.0, 0.46, 0.18, 0.6)
+	sulfur_particles.visible = false
+	sulfur_particles.emitting = false
 
-	if resolved_element_id == &"charcoal":
-		glow_sprite.texture = _get_glow_texture(String(resolved_element_id))
+	if resolved_item_id == &"charcoal":
+		glow_sprite.texture = _get_glow_texture(String(resolved_item_id))
 		glow_sprite.visible = true
+	elif resolved_item_id == &"sulfur":
+		_configure_sulfur_particles()
+		sulfur_particles.visible = true
+		sulfur_particles.emitting = true
+	_refresh_prompt_state()
+
+
+func _get_pickup_modulate(item_data: Dictionary, item_id: StringName) -> Color:
+	var element_data := ElementDatabase.get_element(item_id)
+	if not element_data.is_empty():
+		return Color.WHITE
+
+	var category := _resolve_inventory_category(item_data.get("category", InventoryManager.InventoryItemCategory.GENERIC))
+	match category:
+		InventoryManager.InventoryItemCategory.TOOL:
+			return Color(0.78, 0.67, 0.46, 1.0)
+		InventoryManager.InventoryItemCategory.CRAFTED:
+			return Color(0.67, 0.80, 0.92, 1.0)
+		InventoryManager.InventoryItemCategory.CONSUMABLE:
+			return Color(0.88, 0.42, 0.30, 1.0)
+		_:
+			return Color(0.88, 0.88, 0.88, 1.0)
+
+
+func _resolve_inventory_category(category_value) -> int:
+	if category_value is int:
+		return category_value
+
+	match String(category_value).to_lower():
+		"element":
+			return InventoryManager.InventoryItemCategory.ELEMENT
+		"tool":
+			return InventoryManager.InventoryItemCategory.TOOL
+		"crafted":
+			return InventoryManager.InventoryItemCategory.CRAFTED
+		"consumable":
+			return InventoryManager.InventoryItemCategory.CONSUMABLE
+		_:
+			return InventoryManager.InventoryItemCategory.GENERIC
 
 
 func _get_pickup_texture(element_key: String) -> Texture2D:
@@ -213,6 +281,8 @@ func _get_pickup_texture(element_key: String) -> Texture2D:
 			_build_water_texture(image)
 		"charcoal":
 			_build_charcoal_texture(image)
+		"sulfur":
+			_build_sulfur_texture(image)
 		_:
 			_build_generic_texture(image)
 
@@ -246,6 +316,103 @@ func _build_generic_texture(image: Image) -> void:
 	for y in range(4, 12):
 		for x in range(4, 12):
 			image.set_pixel(x, y, Color(0.88, 0.88, 0.88, 1.0))
+
+
+func _build_sulfur_texture(image: Image) -> void:
+	var core := Color(0.93, 0.86, 0.22, 1.0)
+	var highlight := Color(1.0, 0.97, 0.56, 1.0)
+	var shadow := Color(0.71, 0.58, 0.09, 1.0)
+	var pixels := [
+		Vector2i(8, 2), Vector2i(7, 3), Vector2i(8, 3), Vector2i(9, 3),
+		Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4), Vector2i(9, 4), Vector2i(10, 4),
+		Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5), Vector2i(8, 5), Vector2i(9, 5), Vector2i(10, 5),
+		Vector2i(6, 6), Vector2i(7, 6), Vector2i(8, 6), Vector2i(9, 6), Vector2i(10, 6),
+		Vector2i(6, 7), Vector2i(7, 7), Vector2i(8, 7), Vector2i(9, 7),
+		Vector2i(7, 8), Vector2i(8, 8), Vector2i(9, 8),
+		Vector2i(8, 9)
+	]
+	for pixel: Vector2i in pixels:
+		image.set_pixel(pixel.x, pixel.y, core)
+	for pixel: Vector2i in [Vector2i(7, 3), Vector2i(8, 3), Vector2i(6, 4), Vector2i(7, 4), Vector2i(7, 5)]:
+		image.set_pixel(pixel.x, pixel.y, highlight)
+	for pixel: Vector2i in [Vector2i(10, 5), Vector2i(9, 6), Vector2i(10, 6), Vector2i(8, 8), Vector2i(9, 8), Vector2i(8, 9)]:
+		image.set_pixel(pixel.x, pixel.y, shadow)
+
+
+func _configure_sulfur_particles() -> void:
+	var process_material := ParticleProcessMaterial.new()
+	process_material.direction = Vector3(0.0, -1.0, 0.0)
+	process_material.spread = 22.0
+	process_material.initial_velocity_min = 4.0
+	process_material.initial_velocity_max = 9.0
+	process_material.gravity = Vector3(0.0, -4.0, 0.0)
+	process_material.scale_min = 0.25
+	process_material.scale_max = 0.45
+	process_material.color = Color(1.0, 0.96, 0.68, 0.8)
+	process_material.color_ramp = _build_sulfur_particle_gradient()
+	sulfur_particles.process_material = process_material
+	sulfur_particles.texture = _build_sulfur_particle_texture()
+	sulfur_particles.amount = 5
+	sulfur_particles.amount_ratio = 1.0
+	sulfur_particles.lifetime = 0.8
+	sulfur_particles.one_shot = false
+	sulfur_particles.explosiveness = 0.0
+	sulfur_particles.position = Vector2(0.0, -2.0)
+	sulfur_particles.visibility_rect = Rect2(Vector2(-10.0, -10.0), Vector2(20.0, 20.0))
+
+
+func _build_sulfur_particle_gradient() -> GradientTexture1D:
+	var gradient := Gradient.new()
+	gradient.add_point(0.0, Color(1.0, 1.0, 0.92, 0.0))
+	gradient.add_point(0.2, Color(1.0, 0.98, 0.74, 0.85))
+	gradient.add_point(1.0, Color(0.95, 0.82, 0.28, 0.0))
+	var texture := GradientTexture1D.new()
+	texture.gradient = gradient
+	return texture
+
+
+func _build_sulfur_particle_texture() -> Texture2D:
+	var image := Image.create(6, 6, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0.0, 0.0, 0.0, 0.0))
+	for y in range(6):
+		for x in range(6):
+			var distance := Vector2(float(x), float(y)).distance_to(Vector2(2.5, 2.5))
+			var alpha := clampf(1.0 - distance / 2.8, 0.0, 1.0)
+			if alpha > 0.0:
+				image.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+	return ImageTexture.create_from_image(image)
+
+
+func _refresh_prompt_state() -> void:
+	var item_data := _get_pickup_item_data()
+	if item_data.is_empty():
+		prompt_label.text = "Press E"
+		return
+
+	var resolved_element_id: StringName = item_data.get(&"id", &"")
+	if resolved_element_id == &"sulfur" and not InventoryManager.has_item(DISTILLATION_KIT_ITEM_ID, 1):
+		prompt_label.text = "Requires Distillation Kit"
+		return
+
+	var display_name := str(item_data.get(&"display_name", resolved_element_id))
+	if pickup_quantity > 1:
+		display_name = "%s x%d" % [display_name, pickup_quantity]
+	var symbol := str(item_data.get(&"symbol", ""))
+	prompt_label.text = "%s (%s)" % [display_name, symbol] if not symbol.is_empty() else display_name
+
+
+func _can_extract_pickup(item_data: Dictionary) -> bool:
+	var resolved_element_id: StringName = item_data.get(&"id", &"")
+	if resolved_element_id != &"sulfur":
+		return true
+	return InventoryManager.has_item(DISTILLATION_KIT_ITEM_ID, 1)
+
+
+func _apply_extraction_cost(item_data: Dictionary) -> void:
+	var resolved_element_id: StringName = item_data.get(&"id", &"")
+	if resolved_element_id != &"sulfur":
+		return
+	InventoryManager.degrade_item(DISTILLATION_KIT_ITEM_ID, DISTILLATION_KIT_DURABILITY_LOSS)
 
 
 func _build_wood_texture(image: Image) -> void:

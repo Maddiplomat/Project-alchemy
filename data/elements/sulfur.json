@@ -1,0 +1,23 @@
+{
+  "id": "sulfur",
+  "symbol": "S",
+  "display_name": "Sulfur",
+  "category": "volatile",
+  "weight": 1.2,
+  "stress_multiplier": 1.25,
+  "extraction_tool": "distillation_kit",
+  "properties": {
+    "flammability": 0.9,
+    "toxicity": 0.3,
+    "reactivity": 0.8,
+    "conductivity": 0.0,
+    "radiation": 0.0
+  },
+  "carrier_risk_conditions": {
+    "hp_threshold": 0.2,
+    "status_trigger": "burning"
+  },
+  "environmental_hint": "Yellow crust near geothermal vents",
+  "carrier_risk": "Ignites if player HP < 20% or burning status active",
+  "biome_spawn": ["volcanic"]
+}

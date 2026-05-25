@@ -28,6 +28,7 @@ WorldSystem="*res://scripts/WorldSystem.gd"
 ChemistryEngine="*res://scripts/ChemistryEngine.gd"
 DiscoveryLog="*res://scripts/DiscoveryLog.gd"
 CombatSystem="*res://scripts/CombatSystem.gd"
+CarrierRiskSystem="*res://scripts/CarrierRiskSystem.gd"
 
 [display]
 

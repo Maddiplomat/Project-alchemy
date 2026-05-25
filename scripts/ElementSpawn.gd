@@ -27,7 +27,12 @@ const ELEMENT_SPAWN_TABLE: Array[Dictionary] = [
 ]
 
 
-func spawn_elements(ground_layer: TileMapLayer, objects_layer: TileMapLayer, world_seed: int) -> Dictionary[StringName, int]:
+func spawn_elements(
+	ground_layer: TileMapLayer,
+	objects_layer: TileMapLayer,
+	world_seed: int,
+	blocked_tiles: Dictionary = {}
+) -> Dictionary[StringName, int]:
 	_clear_spawned_elements()
 
 	var rng := RandomNumberGenerator.new()
@@ -39,6 +44,9 @@ func spawn_elements(ground_layer: TileMapLayer, objects_layer: TileMapLayer, wor
 	for coords: Vector2i in ground_cells:
 		if _are_all_caps_reached(spawn_counts):
 			break
+
+		if blocked_tiles.has(coords):
+			continue
 
 		if _is_blocked_by_collision_tile(objects_layer, coords):
 			continue
@@ -117,13 +125,34 @@ func spawn_element_at(element_id: StringName, coords: Vector2i, ground_layer: Ti
 	if existing_pickup != null:
 		return existing_pickup
 
-	var pickup := ELEMENT_PICKUP_SCENE.instantiate()
+	var pickup := _create_pickup(element_id, 1)
 	pickup.name = "%s_%d_%d" % [element_id, coords.x, coords.y]
-	pickup.set(&"element_id", element_id)
-	pickup.set_meta(&"element_id", element_id)
 	pickup.set_meta(&"tile_coords", coords)
 	add_child(pickup)
 	pickup.global_position = ground_layer.to_global(ground_layer.map_to_local(coords))
+	return pickup
+
+
+func spawn_world_pickup(element_id: StringName, world_position: Vector2, quantity: int = 1) -> Node2D:
+	if element_id.is_empty() or quantity <= 0:
+		return null
+
+	var pickup := _create_pickup(element_id, quantity)
+	pickup.name = "%s_drop_%d" % [element_id, Time.get_ticks_usec()]
+	add_child(pickup)
+	pickup.global_position = world_position
+	return pickup
+
+
+func spawn_inventory_pickup(item_data: Dictionary, world_position: Vector2, quantity: int = 1) -> Node2D:
+	if item_data.is_empty() or quantity <= 0:
+		return null
+
+	var pickup := _create_inventory_pickup(item_data, quantity)
+	var item_id := StringName(str(item_data.get("id", "item")))
+	pickup.name = "%s_drop_%d" % [item_id, Time.get_ticks_usec()]
+	add_child(pickup)
+	pickup.global_position = world_position
 	return pickup
 
 
@@ -176,3 +205,24 @@ func _count_blocked_spawn_tiles(objects_layer: TileMapLayer) -> int:
 			blocked_count += 1
 
 	return blocked_count
+
+
+func _create_pickup(element_id: StringName, quantity: int) -> Node2D:
+	var pickup := ELEMENT_PICKUP_SCENE.instantiate()
+	pickup.set(&"element_id", element_id)
+	pickup.set(&"pickup_quantity", quantity)
+	pickup.set_meta(&"element_id", element_id)
+	return pickup
+
+
+func _create_inventory_pickup(item_data: Dictionary, quantity: int) -> Node2D:
+	var pickup := ELEMENT_PICKUP_SCENE.instantiate()
+	var payload := item_data.duplicate(true)
+	payload.erase("quantity")
+	pickup.set(&"pickup_quantity", quantity)
+	pickup.set_meta(&"item_data", payload)
+	if payload.has("id"):
+		var item_id := StringName(str(payload.get("id", "")))
+		pickup.set(&"element_id", item_id)
+		pickup.set_meta(&"element_id", item_id)
+	return pickup

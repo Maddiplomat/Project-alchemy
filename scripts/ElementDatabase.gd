@@ -177,7 +177,10 @@ func _normalize_element_data(raw_data: Dictionary) -> Dictionary:
 		&"category": str(raw_data.get(&"category")),
 		&"weight": float(raw_data.get(&"weight")),
 		&"stress_multiplier": float(raw_data.get(&"stress_multiplier")),
+		&"extraction_tool": raw_data.get(&"extraction_tool", ""),
 		&"properties": raw_properties.duplicate(true),
+		&"carrier_risk_conditions": raw_data.get(&"carrier_risk_conditions", {}).duplicate(true) if raw_data.get(&"carrier_risk_conditions", {}) is Dictionary else {},
+		&"environmental_hint": str(raw_data.get(&"environmental_hint", "")),
 		&"carrier_risk": raw_data.get(&"carrier_risk"),
 		&"biome_spawn": normalized_biomes,
 	}

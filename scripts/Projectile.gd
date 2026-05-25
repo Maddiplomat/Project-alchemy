@@ -25,27 +25,47 @@ func _on_body_entered(body: Node) -> void:
 	if not body.is_in_group(&"enemy"):
 		return
 
-	var final_damage := DamageCalculator.calculate(damage, damage_type, body, global_position)
-	var resolved_damage := int(final_damage)
-	if resolved_damage <= 0:
-		if not pierce:
-			queue_free()
-		return
-
-	var health_system := body.get_node_or_null("HealthSystem")
-	if health_system == null:
-		health_system = body.find_child("HealthSystem", true, false)
-	if health_system != null and health_system.has_method("take_resolved_damage"):
-		health_system.take_resolved_damage(resolved_damage, StringName(damage_type))
-	elif body.has_method("take_resolved_damage"):
-		body.take_resolved_damage(resolved_damage, damage_type, global_position)
-	elif body.has_method("take_damage"):
-		body.take_damage(resolved_damage, damage_type, global_position)
-	elif health_system != null and health_system.has_method("take_damage"):
-		health_system.take_damage(resolved_damage, StringName(damage_type))
+	var resolved_damage := _calculate_damage_for_body(body, damage, damage_type, global_position)
+	if resolved_damage > 0:
+		_apply_resolved_damage_to_body(body, resolved_damage, damage_type, global_position)
 
 	if not pierce:
 		queue_free()
+
+
+func _calculate_damage_for_body(body: Node, damage_amount: float, resolved_damage_type: String, damage_origin: Vector2) -> int:
+	if body == null:
+		return 0
+	return int(DamageCalculator.calculate(damage_amount, resolved_damage_type, body, damage_origin))
+
+
+func _apply_resolved_damage_to_body(body: Node, resolved_damage: int, resolved_damage_type: String, damage_origin: Vector2) -> bool:
+	if body == null or resolved_damage <= 0:
+		return false
+
+	var health_system := _get_health_system(body)
+	if health_system != null and health_system.has_method("take_resolved_damage"):
+		health_system.take_resolved_damage(resolved_damage, StringName(resolved_damage_type))
+		return true
+	if body.has_method("take_resolved_damage"):
+		body.take_resolved_damage(resolved_damage, resolved_damage_type, damage_origin)
+		return true
+	if body.has_method("take_damage"):
+		body.take_damage(resolved_damage, resolved_damage_type, damage_origin)
+		return true
+	if health_system != null and health_system.has_method("take_damage"):
+		health_system.take_damage(resolved_damage, StringName(resolved_damage_type))
+		return true
+	return false
+
+
+func _get_health_system(body: Node) -> Node:
+	if body == null:
+		return null
+	var health_system := body.get_node_or_null("HealthSystem")
+	if health_system == null:
+		health_system = body.find_child("HealthSystem", true, false)
+	return health_system
 
 
 func _ensure_default_visual() -> void:

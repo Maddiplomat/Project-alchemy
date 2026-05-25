@@ -1,10 +1,12 @@
 extends CharacterBody2D
 
 const RUST_BOLT_SCRIPT := preload("res://scripts/RustBolt.gd")
+const SULFURIC_BOLT_SCRIPT := preload("res://scripts/SulfuricBolt.gd")
 const STEEL_SWORD_DAMAGE := 10.0
 const STEEL_SWORD_DAMAGE_TYPE := &"physical_sharp"
 const STEEL_SWORD_COOLDOWN := 0.3
 const STEEL_SWORD_SWING_DURATION := 0.2
+const WORLD_DROP_DISTANCE := 18.0
 
 @export var max_speed: float = 200.0
 @export var acceleration: float = 600.0
@@ -25,6 +27,7 @@ signal input_paused_changed(is_paused: bool)
 
 var _speed_multiplier := 1.0
 var _sprint_multiplier := 1.0
+var _terrain_speed_multiplier := 1.0
 var _step_timer := 0.0
 var _base_max_speed := 0.0
 var _input_paused := false
@@ -59,13 +62,14 @@ func _physics_process(delta: float) -> void:
 
 	_sprint_multiplier = SPRINT_SPEED_MULTIPLIER if Input.is_action_pressed(&'sprint') else 1.0
 	_handle_sprint_risk()
+	_update_terrain_speed_multiplier()
 	var input_direction := Input.get_vector(
 		"move_left",
 		"move_right",
 		"move_up",
 		"move_down"
 	)
-	var current_max_speed := _base_max_speed * _speed_multiplier * _sprint_multiplier
+	var current_max_speed := _base_max_speed * _speed_multiplier * _sprint_multiplier * _terrain_speed_multiplier
 
 	if input_direction != Vector2.ZERO and not _input_paused:
 		velocity = velocity.move_toward(input_direction * current_max_speed, acceleration * delta)
@@ -93,11 +97,41 @@ func _on_drop_item(slot_index: int) -> void:
 	if slot_item.is_empty():
 		return
 
-	InventoryManager.remove_item(StringName(slot_item.get("id", "")), 1)
+	if not _spawn_inventory_pickup(slot_item, _get_drop_spawn_position(), 1):
+		return
+
+	InventoryManager.remove_item(StringName(str(slot_item.get("id", ""))), 1)
 
 
 func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 	_speed_multiplier = OVER_CAPACITY_SPEED_MULTIPLIER if total_weight > carry_capacity else 1.0
+
+
+func _spawn_inventory_pickup(item_data: Dictionary, world_position: Vector2, quantity: int) -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return false
+
+	var spawn_system := current_scene.get_node_or_null("ElementSpawnSystem")
+	if spawn_system == null or not spawn_system.has_method("spawn_inventory_pickup"):
+		return false
+
+	return (spawn_system.call("spawn_inventory_pickup", item_data, world_position, quantity) as Node2D) != null
+
+
+func _get_drop_spawn_position() -> Vector2:
+	var direction := global_position.direction_to(get_global_mouse_position())
+	if direction == Vector2.ZERO:
+		direction = Vector2.DOWN
+	return global_position + direction * WORLD_DROP_DISTANCE
+
+
+func _update_terrain_speed_multiplier() -> void:
+	_terrain_speed_multiplier = 1.0
+	var current_scene := get_tree().current_scene
+	if current_scene == null or not current_scene.has_method("get_movement_speed_multiplier_at_world_position"):
+		return
+	_terrain_speed_multiplier = float(current_scene.get_movement_speed_multiplier_at_world_position(global_position))
 
 
 func pause_input() -> void:
@@ -157,6 +191,8 @@ func _fire_ranged_weapon(weapon_profile: Dictionary) -> void:
 	match projectile_id:
 		"rust_bolt":
 			RUST_BOLT_SCRIPT.spawn(current_scene, spawn_origin, aim_target)
+		"sulfuric_bolt":
+			SULFURIC_BOLT_SCRIPT.spawn(current_scene, spawn_origin, aim_target)
 		_:
 			InventoryManager.add_item(weapon_profile, 1)
 			return
@@ -258,6 +294,16 @@ func _get_held_weapon_profile(held_item: Dictionary) -> Dictionary:
 				&"projectile_id": "rust_bolt",
 				&"damage_type": "oxidation",
 				&"base_damage": 15.0,
+			}
+		&"sulfuric_bolt":
+			return {
+				&"id": item_id,
+				&"display_name": "Sulfuric Bolt",
+				&"weapon_type": "ranged",
+				&"projectile_id": "sulfuric_bolt",
+				&"damage_type": "chemical",
+				&"base_damage": 22.0,
+				&"attack_cooldown": 0.24,
 			}
 		_:
 			return {}
