@@ -1,16 +1,28 @@
 extends Node2D
 
 const LIFETIME_SECONDS := 0.8
-const DAMAGE_RADIUS_PIXELS := 32.0
-const DAMAGE_AMOUNT := 30
-const DAMAGE_TYPE := "chemical"
+
+@export var damage_radius_pixels := 32.0
+@export var damage_amount := 30
+@export var damage_type := "chemical"
+@export var destroy_inventory_slot := true
 
 @onready var particles: GPUParticles2D = $GPUParticles2D
 
+var _activated := false
+
 
 func _ready() -> void:
+	call_deferred("_activate_explosion")
+
+
+func _activate_explosion() -> void:
+	if _activated:
+		return
+	_activated = true
 	_apply_explosion_damage()
-	_destroy_random_inventory_slot()
+	if destroy_inventory_slot:
+		_destroy_random_inventory_slot()
 	_configure_particles()
 	particles.restart()
 	particles.emitting = true
@@ -23,7 +35,7 @@ func _apply_explosion_damage() -> void:
 		return
 
 	var circle := CircleShape2D.new()
-	circle.radius = DAMAGE_RADIUS_PIXELS
+	circle.radius = damage_radius_pixels
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = circle
 	query.transform = Transform2D(0.0, global_position)
@@ -45,7 +57,7 @@ func _apply_explosion_damage() -> void:
 
 
 func _apply_damage_to_body(body: Node) -> void:
-	var resolved_damage := int(DamageCalculator.calculate(float(DAMAGE_AMOUNT), DAMAGE_TYPE, body, global_position))
+	var resolved_damage := int(DamageCalculator.calculate(float(damage_amount), damage_type, body, global_position))
 	if resolved_damage <= 0:
 		return
 
@@ -53,13 +65,13 @@ func _apply_damage_to_body(body: Node) -> void:
 	if health_system == null:
 		health_system = body.find_child("HealthSystem", true, false)
 	if health_system != null and health_system.has_method("take_resolved_damage"):
-		health_system.take_resolved_damage(resolved_damage, StringName(DAMAGE_TYPE), "Chemical explosion")
+		health_system.take_resolved_damage(resolved_damage, StringName(damage_type), "Chemical explosion")
 	elif body.has_method("take_resolved_damage"):
-		body.take_resolved_damage(resolved_damage, DAMAGE_TYPE, global_position)
+		body.take_resolved_damage(resolved_damage, damage_type, global_position)
 	elif body.has_method("take_damage"):
-		body.take_damage(resolved_damage, DAMAGE_TYPE, global_position)
+		body.take_damage(resolved_damage, damage_type, global_position)
 	elif health_system != null and health_system.has_method("take_damage"):
-		health_system.take_damage(resolved_damage, StringName(DAMAGE_TYPE), "Chemical explosion")
+		health_system.take_damage(resolved_damage, StringName(damage_type), "Chemical explosion")
 
 
 func _destroy_random_inventory_slot() -> void:

@@ -14,6 +14,8 @@ const DEFAULT_ITEM_WEIGHT := 1.0
 const DEFAULT_ITEM_PURITY := 1.0
 const DEFAULT_ITEM_DURABILITY := 1.0
 const DEFAULT_ITEM_MAX_DURABILITY := 1.0
+const LITHIUM_ITEM_ID := &"lithium"
+const DEFAULT_LITHIUM_CHARGE := 1.0
 const NO_HELD_ITEM := &""
 const carry_capacity := 20.0
 
@@ -254,6 +256,18 @@ func swap_slots(from_slot: int, to_slot: int) -> void:
 	inventory_changed.emit()
 
 
+func move_item_to_slot(item_id: StringName, target_slot: int) -> void:
+	_ensure_slot_count(DEFAULT_SLOT_COUNT)
+	if item_id.is_empty() or not items.has(item_id):
+		return
+	if target_slot < 0 or target_slot >= slot_order.size():
+		return
+	var current_slot := slot_order.find(item_id)
+	if current_slot == -1 or current_slot == target_slot:
+		return
+	swap_slots(current_slot, target_slot)
+
+
 func clear_inventory() -> void:
 	if items.is_empty() and is_zero_approx(current_weight) and held_item_id.is_empty():
 		return
@@ -304,6 +318,28 @@ func degrade_item(item_id: StringName, amount: float) -> bool:
 	items[item_id] = stored_item
 	_emit_inventory_state_changed()
 	return true
+
+
+func get_item_charge(item_id: StringName) -> float:
+	if not items.has(item_id):
+		return 0.0
+	return clampf(float(items[item_id].get(&"charge", 0.0)), 0.0, 1.0)
+
+
+func drain_lithium_charge(amount: float) -> float:
+	if amount <= 0.0 or not items.has(LITHIUM_ITEM_ID):
+		return get_item_charge(LITHIUM_ITEM_ID)
+
+	var stored_item := items[LITHIUM_ITEM_ID]
+	var current_charge := clampf(float(stored_item.get(&"charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
+	var next_charge := clampf(current_charge - amount, 0.0, 1.0)
+	if is_equal_approx(current_charge, next_charge):
+		return next_charge
+
+	stored_item[&"charge"] = next_charge
+	items[LITHIUM_ITEM_ID] = stored_item
+	_emit_inventory_state_changed()
+	return next_charge
 
 
 func set_max_weight(value: float) -> void:
@@ -358,6 +394,9 @@ func _normalize_item_data(item_data: Dictionary, quantity: int) -> Dictionary:
 
 	normalized[&"category"] = _normalize_inventory_category(normalized.get(&"category", InventoryItemCategory.GENERIC))
 	var category: int = normalized[&"category"]
+	if normalized[&"id"] == LITHIUM_ITEM_ID:
+		normalized[&"charge"] = clampf(float(normalized.get(&"charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
+		normalized[&"max_charge"] = clampf(float(normalized.get(&"max_charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
 	var is_raw_element := category == InventoryItemCategory.ELEMENT
 	var is_consumable := category == InventoryItemCategory.CONSUMABLE
 	var max_durability = normalized.get(&"max_durability")

@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://cjmeqfdwpfk7u"]
+
+[ext_resource type="Script" path="res://scripts/StoneQuarry.gd" id="1_owsyv"]
+
+[node name="StoneQuarry" type="Node2D" unique_id=1767651082]
+script = ExtResource("1_owsyv")
+
+[node name="InteractionArea" type="Area2D" parent="." unique_id=2131907705]
+collision_layer = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea" unique_id=409351306]

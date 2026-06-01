@@ -44,6 +44,7 @@ var _slot_state: Dictionary[StringName, Dictionary] = {
 
 
 func _ready() -> void:
+	add_to_group(&"station_inventory_drop_target")
 	visible = false
 	root.visible = false
 	_apply_theme()

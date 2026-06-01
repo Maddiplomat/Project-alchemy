@@ -2,6 +2,7 @@ extends CanvasLayer
 
 signal ui_closed
 signal smelt_requested
+signal forge_requested
 
 const MAX_TEMPERATURE := 2000.0
 const DANGER_TEMPERATURE := 1600.0
@@ -22,6 +23,7 @@ const BUTTON_IDLE_COLOR := Color(0.28, 0.30, 0.35, 1.0)
 const BUTTON_HOVER_COLOR := Color(0.36, 0.39, 0.45, 1.0)
 const BUTTON_PRESSED_COLOR := Color(0.22, 0.24, 0.28, 1.0)
 const SMELT_BUTTON_COLOR := Color(0.79, 0.47, 0.18, 1.0)
+const FORGE_BUTTON_COLOR := Color(0.39, 0.54, 0.74, 1.0)
 const PANEL_VIEW_SCALE := 0.46
 const PANEL_MARGIN := Vector2(24.0, 24.0)
 const RATIO_GUIDE_BG_COLOR := Color(0.18, 0.20, 0.23, 0.82)
@@ -47,6 +49,36 @@ const CARBONISATION_SLAG_TEMPERATURE := 700.0
 const WARNING_FLASH_SPEED := 0.014
 const STEEL_SWORD_RECIPE_INPUT := &"steel"
 const STEEL_SWORD_RECIPE_OUTPUT := &"steel_sword"
+const TOOL_RECIPE_DEFINITIONS := {
+	&"iron_axe": {
+		&"metal_id": &"iron",
+		&"metal_qty": 2,
+		&"wood_qty": 2,
+		&"display_name": "Iron Axe",
+		&"tool_type": "axe",
+	},
+	&"steel_axe": {
+		&"metal_id": &"steel",
+		&"metal_qty": 2,
+		&"wood_qty": 2,
+		&"display_name": "Steel Axe",
+		&"tool_type": "axe",
+	},
+	&"iron_pickaxe": {
+		&"metal_id": &"iron",
+		&"metal_qty": 2,
+		&"wood_qty": 2,
+		&"display_name": "Iron Pickaxe",
+		&"tool_type": "pickaxe",
+	},
+	&"steel_pickaxe": {
+		&"metal_id": &"steel",
+		&"metal_qty": 2,
+		&"wood_qty": 2,
+		&"display_name": "Steel Pickaxe",
+		&"tool_type": "pickaxe",
+	},
+}
 
 @onready var root: Control = $Root
 @onready var panel: PanelContainer = $Root/PanelContainer
@@ -54,7 +86,10 @@ const STEEL_SWORD_RECIPE_OUTPUT := &"steel_sword"
 @onready var summary_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/SummaryLabel
 @onready var close_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/CloseButton
 @onready var smelt_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/SmeltButton
+@onready var forge_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ForgeButton
+@onready var fire_toggle_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/FireToggleButton
 @onready var action_hint_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ActionHintLabel
+@onready var fuel_cost_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/FuelCostLabel
 @onready var mode_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ActionLabel
 @onready var temperature_column_box: VBoxContainer = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer
 @onready var gauge_frame: Control = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame
@@ -94,6 +129,8 @@ var warning_audio_play_count := 0
 var warning_last_audio_temp := -1.0
 var warning_display_text := ""
 var _slot_refs: Dictionary[StringName, Dictionary] = {}
+var _burn_enabled := true
+var _fuel_cost_state: Dictionary = {&"item_id": &"", &"burned_units": 0.0}
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
 	&"input_b": {&"item_id": &"", &"quantity": 0},
@@ -103,9 +140,12 @@ var _slot_state: Dictionary[StringName, Dictionary] = {
 
 
 func _ready() -> void:
+	add_to_group(&"station_inventory_drop_target")
 	_ensure_dynamic_ui_nodes()
 	close_button.pressed.connect(_on_close_pressed)
 	smelt_button.pressed.connect(_on_smelt_pressed)
+	forge_button.pressed.connect(_on_forge_pressed)
+	fire_toggle_button.pressed.connect(_on_fire_toggle_pressed)
 	ratio_slider.value_changed.connect(_on_ratio_slider_changed)
 	get_viewport().size_changed.connect(_layout_panel)
 
@@ -235,6 +275,16 @@ func set_fuel_slot(item_id: StringName, quantity: int) -> void:
 	_set_slot(&"fuel", item_id, quantity, "Fuel item")
 
 
+func set_fuel_cost_state(state: Dictionary) -> void:
+	_fuel_cost_state = state.duplicate(true)
+	_update_fuel_cost_indicator()
+
+
+func set_burn_enabled(value: bool) -> void:
+	_burn_enabled = value
+	_update_fire_toggle_button()
+
+
 func set_probable_output(item_id: StringName, quantity: int) -> void:
 	_set_slot(&"output", item_id, quantity, "Awaiting recipe")
 
@@ -242,7 +292,8 @@ func set_probable_output(item_id: StringName, quantity: int) -> void:
 func show_output_placeholder(text: String) -> void:
 	_slot_state[&"output"] = {&"item_id": &"", &"quantity": 0}
 	_apply_slot_visual(&"output", &"", 0, text)
-	_update_smelt_button_state()
+	_set_result_feedback(text)
+	_update_action_button_states()
 
 
 func _on_close_pressed() -> void:
@@ -252,6 +303,19 @@ func _on_close_pressed() -> void:
 func _on_smelt_pressed() -> void:
 	_evaluate_smelt_request()
 	smelt_requested.emit()
+
+
+func _on_forge_pressed() -> void:
+	_evaluate_forge_request()
+	forge_requested.emit()
+
+
+func _on_fire_toggle_pressed() -> void:
+	if not is_instance_valid(_bound_furnace) or not _bound_furnace.has_method("toggle_burn_enabled"):
+		return
+	_burn_enabled = bool(_bound_furnace.toggle_burn_enabled())
+	_update_fire_toggle_button()
+	_pull_state_from_furnace()
 
 
 func _on_ratio_slider_changed(value: float) -> void:
@@ -348,11 +412,14 @@ func _apply_theme() -> void:
 	temperature_gauge.add_theme_color_override("font_color", Color(0, 0, 0, 0))
 
 	_style_button(smelt_button, SMELT_BUTTON_COLOR)
+	_style_button(forge_button, FORGE_BUTTON_COLOR)
+	_style_button(fire_toggle_button, BUTTON_IDLE_COLOR)
 	_style_button(close_button, BUTTON_IDLE_COLOR)
 	title_label.add_theme_color_override("font_color", Color(0.94, 0.95, 0.97, 1.0))
 	summary_label.add_theme_color_override("font_color", Color(0.72, 0.74, 0.79, 1.0))
 	temp_readout_label.add_theme_color_override("font_color", GAUGE_NORMAL_COLOR)
 	action_hint_label.add_theme_color_override("font_color", Color(0.72, 0.74, 0.79, 1.0))
+	fuel_cost_label.add_theme_color_override("font_color", Color(0.60, 0.76, 0.67, 1.0))
 	mode_label.add_theme_color_override("font_color", Color(0.93, 0.94, 0.96, 1.0))
 	ratio_value_label.add_theme_color_override("font_color", Color(0.72, 0.74, 0.79, 1.0))
 	danger_label.add_theme_color_override("font_color", GAUGE_DANGER_COLOR)
@@ -398,7 +465,7 @@ func _reset_slots() -> void:
 	_apply_slot_visual(&"fuel", &"", 0, "Fuel item")
 	_apply_slot_visual(&"output", &"", 0, "Awaiting recipe")
 	_update_mode_state(false)
-	_update_smelt_button_state()
+	_update_action_button_states()
 
 
 func _pull_state_from_furnace() -> void:
@@ -427,7 +494,10 @@ func _pull_state_from_furnace() -> void:
 		fuel_state.get(&"item_id", &""),
 		int(fuel_state.get(&"quantity", 0))
 	)
+	if _bound_furnace.has_method("is_burn_enabled"):
+		set_burn_enabled(bool(_bound_furnace.is_burn_enabled()))
 	_update_mode_state(_should_use_carbonisation_mode())
+	_clear_output_if_stale()
 
 
 func _set_slot(slot_id: StringName, item_id: StringName, quantity: int, empty_label: String) -> void:
@@ -445,7 +515,7 @@ func _set_slot(slot_id: StringName, item_id: StringName, quantity: int, empty_la
 		_update_ratio_guidance()
 	if slot_id != &"output":
 		_refresh_probable_output()
-	_update_smelt_button_state()
+	_update_action_button_states()
 
 
 func _apply_slot_visual(slot_id: StringName, item_id: StringName, quantity: int, empty_label: String) -> void:
@@ -479,10 +549,11 @@ func _refresh_probable_output() -> void:
 		show_output_placeholder("Awaiting recipe")
 		return
 
-	if _is_steel_sword_forge_ready():
-		_slot_state[&"output"] = {&"item_id": STEEL_SWORD_RECIPE_OUTPUT, &"quantity": 1}
-		_apply_slot_visual(&"output", STEEL_SWORD_RECIPE_OUTPUT, 1, "Awaiting recipe")
-		action_hint_label.text = "Steel can be forged into a Steel Sword here."
+	var forge_output_id := _get_matching_forge_output_id()
+	if not forge_output_id.is_empty():
+		_slot_state[&"output"] = {&"item_id": forge_output_id, &"quantity": 1}
+		_apply_slot_visual(&"output", forge_output_id, 1, "Awaiting recipe")
+		action_hint_label.text = "Use Forge for %s." % _get_item_label(forge_output_id)
 		return
 
 	if input_b_qty <= 0 and input_a_id == &"wood":
@@ -509,15 +580,19 @@ func _refresh_probable_output() -> void:
 	_show_output_prediction(prediction)
 
 
-func _update_smelt_button_state() -> void:
+func _update_action_button_states() -> void:
 	var input_a: Dictionary = _slot_state.get(&"input_a", {})
 	var input_b: Dictionary = _slot_state.get(&"input_b", {})
 	var input_a_qty := int(input_a.get(&"quantity", 0))
 	var input_b_qty := int(input_b.get(&"quantity", 0))
-	if _is_steel_sword_forge_ready():
-		smelt_button.disabled = false
-		return
-	smelt_button.disabled = input_a_qty <= 0 if carbonisation_mode else (input_a_qty <= 0 or input_b_qty <= 0)
+	var has_forge_recipe := not _get_matching_forge_output_id().is_empty()
+	var single_input := _get_single_input_state()
+	var can_run_carbonisation := not single_input.is_empty() and StringName(single_input.get(&"item_id", &"")) == &"wood"
+	forge_button.disabled = not has_forge_recipe
+	smelt_button.disabled = has_forge_recipe or (
+		not can_run_carbonisation if carbonisation_mode else (input_a_qty <= 0 or input_b_qty <= 0)
+	)
+	_update_fire_toggle_button()
 
 
 func _get_charred_output_id() -> StringName:
@@ -671,10 +746,8 @@ func _get_drop_slot_id(global_mouse_position: Vector2) -> StringName:
 			continue
 
 		var slot_visual: Control = slot_ref.get(&"visual")
-		if slot_visual != null:
-			var local_pos := slot_visual.make_canvas_position_local(global_mouse_position)
-			if Rect2(Vector2.ZERO, slot_visual.size).has_point(local_pos):
-				return slot_id
+		if slot_visual != null and slot_visual.get_global_rect().has_point(global_mouse_position):
+			return slot_id
 
 	return &""
 
@@ -723,8 +796,14 @@ func _get_item_color(item_id: String) -> Color:
 			return Color(0.18, 0.19, 0.21, 1.0)
 		"slag":
 			return Color(0.43, 0.18, 0.16, 1.0)
-		"primitive_axe":
+		"iron_axe":
+			return Color(0.71, 0.73, 0.77, 1.0)
+		"steel_axe":
+			return Color(0.82, 0.85, 0.90, 1.0)
+		"iron_pickaxe":
 			return Color(0.76, 0.82, 0.88, 1.0)
+		"steel_pickaxe":
+			return Color(0.86, 0.90, 0.95, 1.0)
 		"steel_sword":
 			return Color(0.82, 0.85, 0.90, 1.0)
 		_:
@@ -761,39 +840,48 @@ func _evaluate_smelt_request() -> void:
 	if is_instance_valid(_bound_furnace):
 		current_temp = float(_bound_furnace.get("current_temp"))
 
-	_update_mode_state(input_b_qty <= 0)
+	_update_mode_state(_should_use_carbonisation_mode())
 
-	if _is_steel_sword_forge_ready():
-		_forge_steel_sword(current_temp)
+	if not _get_matching_forge_output_id().is_empty():
+		show_output_placeholder("Use Forge")
+		action_hint_label.text = "This recipe uses the Forge button."
 		return
 
 	# ── CARBONISATION PATH ───────────────────────────────────────────────────
 	if carbonisation_mode:
-		if input_a_qty <= 0 or input_a_id != &"wood":
-			show_output_placeholder("Load Wood into Input A")
-			action_hint_label.text = "Carbonisation mode needs Wood in Input A."
+		var single_input := _get_single_input_state()
+		if single_input.is_empty() or StringName(single_input.get(&"item_id", &"")) != &"wood":
+			show_output_placeholder("Load a single Wood stack")
+			action_hint_label.text = "Carbonisation mode needs Wood in exactly one input slot."
 			return
+		var carbon_slot_id: StringName = single_input.get(&"slot_id", &"")
+		var carbon_item_id: StringName = single_input.get(&"item_id", &"")
+		var carbon_qty := int(single_input.get(&"quantity", 0))
 
 		# Validate temperature range 400–700°C
 		if current_temp < CARBONISATION_OPTIMAL_MIN:
-			show_output_placeholder("Heat too low")
-			action_hint_label.text = "Need 400–700°C for charcoal."
+			var carbonisation_result := ChemistryEngine.evaluate_reaction("wood", null, 0.0, current_temp)
+			_last_reaction_result = carbonisation_result
+			show_output_placeholder("No reaction")
+			_set_result_feedback(
+				str(carbonisation_result.get("notes", "Need 400–700°C for charcoal.")),
+				str(carbonisation_result.get("notes", ""))
+			)
 			return
 
 		if current_temp >= CARBONISATION_SLAG_TEMPERATURE:
 			var slag_result := ChemistryEngine.evaluate_reaction("wood", null, 0.0, current_temp)
 			_last_reaction_result = slag_result
-			var slag_inputs_log := [{"item_id": input_a_id, "quantity": input_a_qty}]
-			var slag_quantity := _consume_furnace_slot(&"input_a", input_a_id, input_a_qty)
+			var slag_inputs_log := [{"item_id": carbon_item_id, "quantity": carbon_qty}]
+			var slag_quantity := _consume_furnace_slot(carbon_slot_id, carbon_item_id, carbon_qty)
 			_apply_reaction_result(slag_result, slag_quantity, slag_inputs_log, current_temp)
 			return
 
 		var carb_result := ChemistryEngine.evaluate_reaction("wood", null, 0.0, current_temp)
 		_last_reaction_result = carb_result
 
-		# Consume Wood from Slot A
-		var consumed_a := _consume_furnace_slot(&"input_a", input_a_id, input_a_qty)
-		var inputs_log := [{"item_id": input_a_id, "quantity": consumed_a}]
+		var consumed_a := _consume_furnace_slot(carbon_slot_id, carbon_item_id, carbon_qty)
+		var inputs_log := [{"item_id": carbon_item_id, "quantity": consumed_a}]
 
 		_apply_reaction_result(carb_result, consumed_a, inputs_log, current_temp)
 		return
@@ -821,8 +909,18 @@ func _evaluate_smelt_request() -> void:
 
 	# Normal smelting: validate 1200–1600°C
 	if current_temp < 1200.0:
-		show_output_placeholder("Heat too low for smelting")
-		action_hint_label.text = "Smelting requires 1200–1600°C."
+		var too_cold_result := ChemistryEngine.evaluate_reaction(
+			String(input_a_id),
+			String(input_b_id),
+			_get_effective_b_ratio_from_slider(_get_active_carbon_source_info()),
+			current_temp
+		)
+		_last_reaction_result = too_cold_result
+		show_output_placeholder("No reaction")
+		_set_result_feedback(
+			str(too_cold_result.get("notes", "Smelting requires 1200–1600°C.")),
+			str(too_cold_result.get("notes", ""))
+		)
 		return
 
 	var source_info := _get_active_carbon_source_info()
@@ -845,6 +943,23 @@ func _evaluate_smelt_request() -> void:
 	_apply_reaction_result(alloy_result, qty_used, inputs_log2, current_temp)
 
 
+func _evaluate_forge_request() -> void:
+	var current_temp := 0.0
+	if is_instance_valid(_bound_furnace):
+		current_temp = float(_bound_furnace.get("current_temp"))
+
+	var forge_output_id := _get_matching_forge_output_id()
+	if forge_output_id.is_empty():
+		show_output_placeholder("Load forge recipe")
+		action_hint_label.text = "Forge supports tools and the Steel Sword."
+		return
+
+	if forge_output_id == STEEL_SWORD_RECIPE_OUTPUT:
+		_forge_steel_sword(current_temp)
+		return
+	_forge_tool(forge_output_id, current_temp)
+
+
 ## Consume `qty` of `item_id` from a furnace input slot and mirror to InventoryManager.
 ## Returns the actual quantity consumed.
 func _consume_furnace_slot(slot_id: StringName, item_id: StringName, qty: int) -> int:
@@ -854,20 +969,29 @@ func _consume_furnace_slot(slot_id: StringName, item_id: StringName, qty: int) -
 	var actual_qty := qty
 
 	# Update furnace internal state
-	if is_instance_valid(_bound_furnace) and _bound_furnace.has_method("clear_input"):
+	if is_instance_valid(_bound_furnace) and _bound_furnace.has_method("consume_input"):
+		actual_qty = int(_bound_furnace.consume_input(slot_id, qty))
+	elif is_instance_valid(_bound_furnace) and _bound_furnace.has_method("clear_input"):
 		_bound_furnace.clear_input(slot_id)
 	elif is_instance_valid(_bound_furnace):
 		# Fallback: zero out the slot directly if clear_input is unavailable
 		if _bound_furnace._input_slots.has(slot_id):
 			_bound_furnace._input_slots[slot_id] = {&"item_id": &"", &"quantity": 0}
 
-	# Remove from player inventory
-	if InventoryManager.has_item(item_id):
-		InventoryManager.remove_item(item_id, actual_qty)
+	if actual_qty <= 0:
+		return 0
 
-	# Clear the local slot state
-	_slot_state[slot_id] = {&"item_id": &"", &"quantity": 0}
-	_apply_slot_visual(slot_id, &"", 0, "No material")
+	# Update the local slot state to match the furnace.
+	var local_slot: Dictionary = _slot_state.get(slot_id, {})
+	var local_quantity := int(local_slot.get(&"quantity", 0))
+	var remaining_qty: int = maxi(local_quantity - actual_qty, 0)
+	if remaining_qty <= 0:
+		_slot_state[slot_id] = {&"item_id": &"", &"quantity": 0}
+		_apply_slot_visual(slot_id, &"", 0, "No material")
+	else:
+		_slot_state[slot_id] = {&"item_id": item_id, &"quantity": remaining_qty}
+		var empty_label := "Fuel item" if slot_id == &"fuel" else "No material"
+		_apply_slot_visual(slot_id, item_id, remaining_qty, empty_label)
 	return actual_qty
 
 
@@ -882,7 +1006,7 @@ func _apply_reaction_result(
 	var notes := str(result.get("notes", ""))
 	var tier := str(result.get("tier", "unknown"))
 
-	action_hint_label.text = notes if not notes.is_empty() else "Reaction evaluated."
+	_set_result_feedback(notes if not notes.is_empty() else "Reaction evaluated.", notes)
 
 	# ── EXPLOSION ────────────────────────────────────────────────────────────
 	if output_id == &"explosion":
@@ -891,7 +1015,9 @@ func _apply_reaction_result(
 
 	# ── NO REACTION / FAILED TEMP CHECK ─────────────────────────────────────
 	if output_id.is_empty():
+		_capture_reaction_fuel_cost(0)
 		show_output_placeholder(notes if not notes.is_empty() else "No reaction")
+		_set_result_feedback(notes if not notes.is_empty() else "No reaction", notes)
 		_log_to_discovery(result, inputs_log, temp)
 		return
 
@@ -900,11 +1026,11 @@ func _apply_reaction_result(
 
 	# Deliver output to InventoryManager
 	_deliver_output_to_inventory(output_id, output_quantity)
+	_capture_reaction_fuel_cost(output_quantity)
 
-	# Update UI output slot
-	_slot_state[&"output"] = {&"item_id": output_id, &"quantity": output_quantity}
-	_apply_slot_visual(&"output", output_id, output_quantity, "Awaiting recipe")
-	_update_smelt_button_state()
+	show_output_placeholder("Delivered to inventory")
+	_set_result_feedback(notes if not notes.is_empty() else "Delivered to inventory", notes)
+	_update_action_button_states()
 
 	# Log to DiscoveryLog (emits signal, marks first discovery, etc.)
 	_log_to_discovery(result, inputs_log, temp)
@@ -916,6 +1042,14 @@ func _apply_reaction_result(
 ## Deliver the smelted output to the player's InventoryManager.
 func _deliver_output_to_inventory(output_id: StringName, quantity: int) -> void:
 	if output_id.is_empty() or quantity <= 0:
+		return
+
+	if TOOL_RECIPE_DEFINITIONS.has(output_id):
+		var tool_item := _build_tool_item(output_id)
+		var tool_added := InventoryManager.add_item(tool_item, quantity)
+		if not tool_added:
+			action_hint_label.text = "Inventory full! Output dropped on the floor."
+			print("[FurnaceUI] Could not add %s x%d to inventory — capacity reached." % [output_id, quantity])
 		return
 
 	if output_id == STEEL_SWORD_RECIPE_OUTPUT:
@@ -963,6 +1097,95 @@ func _build_explosion_result(notes: String) -> Dictionary:
 		"quality": 0.0,
 		"tier": "danger",
 		"notes": notes,
+	}
+
+
+func _get_matching_tool_recipe_output_id() -> StringName:
+	var input_a: Dictionary = _slot_state.get(&"input_a", {})
+	var input_b: Dictionary = _slot_state.get(&"input_b", {})
+	var input_a_id: StringName = input_a.get(&"item_id", &"")
+	var input_b_id: StringName = input_b.get(&"item_id", &"")
+	var input_a_qty := int(input_a.get(&"quantity", 0))
+	var input_b_qty := int(input_b.get(&"quantity", 0))
+
+	for output_id: StringName in TOOL_RECIPE_DEFINITIONS.keys():
+		var recipe: Dictionary = TOOL_RECIPE_DEFINITIONS[output_id]
+		var metal_id: StringName = recipe.get(&"metal_id", &"")
+		var metal_qty := int(recipe.get(&"metal_qty", 0))
+		var wood_qty := int(recipe.get(&"wood_qty", 0))
+		var matches_straight := (
+			input_a_id == metal_id and input_a_qty >= metal_qty and
+			input_b_id == &"wood" and input_b_qty >= wood_qty
+		)
+		var matches_swapped := (
+			input_b_id == metal_id and input_b_qty >= metal_qty and
+			input_a_id == &"wood" and input_a_qty >= wood_qty
+		)
+		if matches_straight or matches_swapped:
+			return output_id
+	return &""
+
+
+func _get_matching_forge_output_id() -> StringName:
+	var tool_output_id := _get_matching_tool_recipe_output_id()
+	if not tool_output_id.is_empty():
+		return tool_output_id
+	if _is_steel_sword_forge_ready():
+		return STEEL_SWORD_RECIPE_OUTPUT
+	return &""
+
+
+func _forge_tool(output_id: StringName, current_temp: float) -> void:
+	var recipe: Dictionary = TOOL_RECIPE_DEFINITIONS.get(output_id, {})
+	if recipe.is_empty():
+		return
+
+	var metal_id: StringName = recipe.get(&"metal_id", &"")
+	var metal_qty := int(recipe.get(&"metal_qty", 0))
+	var wood_qty := int(recipe.get(&"wood_qty", 0))
+	var input_a: Dictionary = _slot_state.get(&"input_a", {})
+	var input_b: Dictionary = _slot_state.get(&"input_b", {})
+	var metal_slot := &"input_a"
+	var wood_slot := &"input_b"
+	if input_b.get(&"item_id", &"") == metal_id:
+		metal_slot = &"input_b"
+		wood_slot = &"input_a"
+
+	var consumed_metal := _consume_furnace_slot(metal_slot, metal_id, metal_qty)
+	var consumed_wood := _consume_furnace_slot(wood_slot, &"wood", wood_qty)
+	if consumed_metal < metal_qty or consumed_wood < wood_qty:
+		show_output_placeholder("Load tool materials")
+		action_hint_label.text = "%s forging needs %s x%d + Wood x%d." % [
+			str(recipe.get(&"display_name", "Tool")),
+			_get_item_label(metal_id),
+			metal_qty,
+			wood_qty,
+		]
+		return
+
+	var forge_result := {
+		"output_id": String(output_id),
+		"quality": 1.0,
+		"tier": "success",
+		"notes": "%s forged. Harvesting effort reduced." % str(recipe.get(&"display_name", "Tool")),
+	}
+	_last_reaction_result = forge_result
+	var inputs_log := [
+		{"item_id": metal_id, "quantity": consumed_metal},
+		{"item_id": &"wood", "quantity": consumed_wood},
+	]
+	_apply_reaction_result(forge_result, 1, inputs_log, current_temp)
+
+
+func _build_tool_item(output_id: StringName) -> Dictionary:
+	var recipe: Dictionary = TOOL_RECIPE_DEFINITIONS.get(output_id, {})
+	return {
+		&"id": output_id,
+		&"display_name": str(recipe.get(&"display_name", String(output_id).replace("_", " ").capitalize())),
+		&"category": InventoryManager.InventoryItemCategory.TOOL,
+		&"durability": 1.0,
+		&"max_durability": 1.0,
+		&"tool_type": str(recipe.get(&"tool_type", "")),
 	}
 
 
@@ -1156,6 +1379,7 @@ func _get_explosion_spark_texture() -> Texture2D:
 
 func _log_to_discovery(result: Dictionary, inputs: Array, temp: float) -> void:
 	var log_node = get_node_or_null("/root/DiscoveryLog")
+	var output_id := StringName(str(result.get("output_id", "")))
 	if log_node:
 		if log_node.has_method("log_smelt"):
 			log_node.log_smelt(result, inputs, temp)
@@ -1164,28 +1388,32 @@ func _log_to_discovery(result: Dictionary, inputs: Array, temp: float) -> void:
 	else:
 		push_error("DiscoveryLog autoload node not found under /root")
 
+	var event_bus = get_node_or_null("/root/EventBus")
+	if not output_id.is_empty() and event_bus != null and event_bus.has_signal("discovery_made"):
+		event_bus.emit_signal("discovery_made", output_id)
+
 
 ## Show tier-specific action hint feedback.
 func _show_tier_feedback(output_id: StringName, tier: String) -> void:
 	match tier:
 		"optimal":
 			if output_id == &"steel":
-				action_hint_label.text = "Steel forged! Discovery logged."
+				_set_result_feedback("Steel forged! Discovery logged.")
 			elif output_id == &"charcoal":
-				action_hint_label.text = "Charcoal produced. Great fuel for the furnace."
+				_set_result_feedback("Charcoal produced. Great fuel for the furnace.")
 		"low":
-			action_hint_label.text = "Wrought Iron — soft, bends under load."
+			_set_result_feedback("Wrought Iron — soft, bends under load.")
 		"medium":
-			action_hint_label.text = "Cast Iron — brittle. Failed steel attempt logged."
+			_set_result_feedback("Cast Iron — brittle. Failed steel attempt logged.")
 		"waste":
 			if output_id == &"coke_slag":
-				action_hint_label.text = "Coke Slag — too much carbon. Logged as 'Unknown compound'."
+				_set_result_feedback("Coke Slag — too much carbon. Logged as 'Unknown compound'.")
 			else:
-				action_hint_label.text = "Slag — overburned. Try a lower temperature."
+				_set_result_feedback("Slag — overburned. Try a lower temperature.")
 		"danger":
-			action_hint_label.text = "EXPLOSION! You've been burned."
+			_set_result_feedback("EXPLOSION! You've been burned.")
 		_:
-			action_hint_label.text = "Reaction evaluated."
+			_set_result_feedback("Reaction evaluated.")
 
 
 func _update_mode_state(is_carbonisation: bool) -> void:
@@ -1205,7 +1433,7 @@ func _update_mode_state(is_carbonisation: bool) -> void:
 		"Load two materials, tune the B ratio, feed fuel, and watch the heat to preview the probable result."
 	)
 	action_hint_label.text = (
-		"Single-input run: Slot B is empty, so the furnace is in carbonisation mode."
+		"Single-input wood run detected. Use either input slot, but only one at a time."
 		if carbonisation_mode else
 		"Combine two inputs, adjust the B ratio, and smelt to evaluate the alloy result."
 	)
@@ -1215,8 +1443,92 @@ func _update_mode_state(is_carbonisation: bool) -> void:
 
 
 func _should_use_carbonisation_mode() -> bool:
+	var single_input := _get_single_input_state()
+	return not single_input.is_empty() and StringName(single_input.get(&"item_id", &"")) == &"wood"
+
+
+func _get_single_input_state() -> Dictionary:
+	var input_a: Dictionary = _slot_state.get(&"input_a", {})
 	var input_b: Dictionary = _slot_state.get(&"input_b", {})
-	return int(input_b.get(&"quantity", 0)) <= 0
+	var input_a_qty := int(input_a.get(&"quantity", 0))
+	var input_b_qty := int(input_b.get(&"quantity", 0))
+	if input_a_qty > 0 and input_b_qty <= 0:
+		return {
+			&"slot_id": &"input_a",
+			&"item_id": input_a.get(&"item_id", &""),
+			&"quantity": input_a_qty,
+		}
+	if input_b_qty > 0 and input_a_qty <= 0:
+		return {
+			&"slot_id": &"input_b",
+			&"item_id": input_b.get(&"item_id", &""),
+			&"quantity": input_b_qty,
+		}
+	return {}
+
+
+func _update_fire_toggle_button() -> void:
+	if fire_toggle_button == null:
+		return
+	var fuel_state: Dictionary = _slot_state.get(&"fuel", {})
+	var has_fuel := int(fuel_state.get(&"quantity", 0)) > 0
+	fire_toggle_button.disabled = not has_fuel
+	fire_toggle_button.text = "Fire: On" if _burn_enabled and has_fuel else "Fire: Off"
+
+
+func _set_result_feedback(text: String, notes: String = "") -> void:
+	action_hint_label.text = text
+	var tooltip_text := notes if not notes.is_empty() else text
+	action_hint_label.tooltip_text = tooltip_text
+	var output_refs: Dictionary = _slot_refs.get(&"output", {})
+	if not output_refs.is_empty():
+		var output_panel: Control = output_refs.get(&"panel")
+		var output_name: Label = output_refs.get(&"name")
+		if output_panel != null:
+			output_panel.tooltip_text = tooltip_text
+		if output_name != null:
+			output_name.tooltip_text = tooltip_text
+
+
+func _update_fuel_cost_indicator() -> void:
+	if fuel_cost_label == null:
+		return
+	fuel_cost_label.text = _format_fuel_cost_text(_fuel_cost_state)
+	fuel_cost_label.tooltip_text = fuel_cost_label.text
+
+
+func _capture_reaction_fuel_cost(output_quantity: int) -> void:
+	if is_instance_valid(_bound_furnace) and _bound_furnace.has_method("commit_reaction_fuel_cost"):
+		_fuel_cost_state = _bound_furnace.commit_reaction_fuel_cost()
+	_fuel_cost_state[&"output_quantity"] = output_quantity
+	_update_fuel_cost_indicator()
+
+
+func _format_fuel_cost_text(state: Dictionary) -> String:
+	var fuel_item_id: StringName = state.get(&"item_id", &"")
+	var burned_units := float(state.get(&"burned_units", 0.0))
+	var output_quantity := int(state.get(&"output_quantity", 0))
+	if fuel_item_id.is_empty() or burned_units <= 0.0:
+		return "Fuel cost: waiting on burn"
+
+	var fuel_name := _get_item_label(fuel_item_id)
+	var burned_text := _format_pct(burned_units)
+	if output_quantity > 0:
+		return "Fuel cost: %s %s for %d output" % [burned_text, fuel_name, output_quantity]
+	return "Fuel cost: %s %s burned so far" % [burned_text, fuel_name]
+
+
+func _clear_output_if_stale() -> void:
+	var output_state: Dictionary = _slot_state.get(&"output", {})
+	if int(output_state.get(&"quantity", 0)) <= 0:
+		return
+	var input_a: Dictionary = _slot_state.get(&"input_a", {})
+	var input_b: Dictionary = _slot_state.get(&"input_b", {})
+	var fuel: Dictionary = _slot_state.get(&"fuel", {})
+	var has_inputs := int(input_a.get(&"quantity", 0)) > 0 or int(input_b.get(&"quantity", 0)) > 0
+	var has_fuel := int(fuel.get(&"quantity", 0)) > 0
+	if not has_inputs and not has_fuel:
+		show_output_placeholder("Awaiting recipe")
 
 
 func _update_ratio_label(value: float) -> void:
@@ -1497,7 +1809,7 @@ func _get_active_ratio_guidance() -> Dictionary:
 	if carbonisation_mode:
 		return {
 			"has_window": false,
-			"tooltip": "Carbonisation mode: Slot B is empty."
+			"tooltip": "Carbonisation mode: a single Wood stack is loaded."
 		}
 
 	var source_info := _get_active_carbon_source_info()

@@ -23,6 +23,8 @@ const CARRIER_WARNING_SFX_DURATION := 0.11
 const CARRY_VIGNETTE_MAX_ALPHA := 0.35
 const CARRY_VIGNETTE_START_RATIO := 0.9
 const CARRY_VIGNETTE_END_RATIO := 1.0
+const CARRIER_VIGNETTE_PULSE_SPEED := 5.5
+const CARRIER_VIGNETTE_URGENT_SPEED := 9.0
 
 @export var debug_seed_journal_entries := 0
 @export var debug_open_journal_on_ready := false
@@ -36,6 +38,8 @@ var _paused_player: Node = null
 var _carrier_warning_audio_player: AudioStreamPlayer = null
 var _active_carrier_risk_element: StringName = &""
 var _active_carrier_risk_seconds := -1
+var _weight_vignette_alpha := 0.0
+var _carrier_vignette_phase := 0.0
 
 func _ready() -> void:
 	GameManager.player_health_changed.connect(_update_health)
@@ -63,6 +67,15 @@ func _ready() -> void:
 
 	if debug_open_journal_on_ready:
 		call_deferred("_open_debug_journal")
+
+
+func _process(delta: float) -> void:
+	if _active_carrier_risk_seconds <= 0:
+		return
+	_carrier_vignette_phase += delta * (
+		CARRIER_VIGNETTE_URGENT_SPEED if _active_carrier_risk_seconds <= 1 else CARRIER_VIGNETTE_PULSE_SPEED
+	)
+	_update_carry_vignette()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -112,12 +125,11 @@ func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 	if carry_capacity > 0.0:
 		capacity_ratio = total_weight / carry_capacity
 
-	var overlay_alpha := 0.0
+	_weight_vignette_alpha = 0.0
 	if capacity_ratio >= CARRY_VIGNETTE_START_RATIO:
 		var alpha_ratio := inverse_lerp(CARRY_VIGNETTE_START_RATIO, CARRY_VIGNETTE_END_RATIO, minf(capacity_ratio, CARRY_VIGNETTE_END_RATIO))
-		overlay_alpha = alpha_ratio * CARRY_VIGNETTE_MAX_ALPHA
-
-	carry_vignette.color.a = overlay_alpha
+		_weight_vignette_alpha = alpha_ratio * CARRY_VIGNETTE_MAX_ALPHA
+	_update_carry_vignette()
 
 
 func _show_death_overlay(cause_of_death: StringName) -> void:
@@ -150,6 +162,7 @@ func _on_carrier_risk_warning(element_id: StringName, seconds_remaining: int) ->
 	carrier_risk_strip.visible = true
 	carrier_risk_warning_label.text = "%s UNSTABLE - %ds" % [_get_risk_item_name(element_id).to_upper(), seconds_remaining]
 	carrier_risk_hint_label.text = "Drop %s from inventory to cancel" % _get_risk_item_name(element_id)
+	_update_carry_vignette()
 	if seconds_remaining == 1:
 		_play_carrier_warning_sfx()
 
@@ -168,9 +181,11 @@ func _on_carrier_risk_ignition(element_id: StringName) -> void:
 func _hide_carrier_risk_warning() -> void:
 	_active_carrier_risk_element = &""
 	_active_carrier_risk_seconds = -1
+	_carrier_vignette_phase = 0.0
 	carrier_risk_strip.visible = false
 	carrier_risk_warning_label.text = "SULFUR UNSTABLE - 3s"
 	carrier_risk_hint_label.text = "Drop Sulfur from inventory to cancel"
+	_update_carry_vignette()
 
 
 func _on_death_overlay_fade_finished() -> void:
@@ -317,6 +332,8 @@ func _get_item_color(item_id: String) -> Color:
 			return Color(0.70, 0.76, 0.82, 1.0)
 		"charcoal":
 			return Color(0.17, 0.18, 0.20, 1.0)
+		"lithium":
+			return Color(0.76, 0.88, 1.0, 1.0)
 		"rust_bolt":
 			return Color(0.84, 0.38, 0.12, 1.0)
 		"sulfuric_bolt":
@@ -332,6 +349,22 @@ func _get_risk_item_name(item_id: StringName) -> String:
 	if not element_data.is_empty():
 		return str(element_data.get(&"display_name", item_id))
 	return String(item_id).replace("_", " ").capitalize()
+
+
+func _update_carry_vignette() -> void:
+	var risk_alpha := 0.0
+	if _active_carrier_risk_seconds > 0:
+		var pulse := 0.5 + (0.5 * sin(_carrier_vignette_phase))
+		var minimum_alpha := 0.12 if _active_carrier_risk_seconds > 1 else 0.22
+		var maximum_alpha := 0.24 if _active_carrier_risk_seconds > 1 else 0.34
+		risk_alpha = lerpf(minimum_alpha, maximum_alpha, pulse)
+
+	carry_vignette.color = Color(
+		carry_vignette.color.r,
+		carry_vignette.color.g,
+		carry_vignette.color.b,
+		clampf(_weight_vignette_alpha + risk_alpha, 0.0, 0.45)
+	)
 
 
 func _build_carrier_warning_stream() -> AudioStreamWAV:

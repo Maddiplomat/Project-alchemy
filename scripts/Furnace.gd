@@ -3,6 +3,7 @@ extends StaticBody2D
 const FURNACE_UI_SCENE := preload("res://scenes/UI/FurnaceUI.tscn")
 const DEFAULT_FUEL_BURN_DURATION := 30.0
 const PASSIVE_COOL_RATE := 15.0
+const CHARCOAL_ITEM_ID := &"charcoal"
 
 signal player_entered_range
 signal player_exited_range
@@ -15,6 +16,7 @@ signal temp_changed(current_temp: float)
 @export var current_temp := 0.0
 @export var target_temp := 0.0
 @export var fuel_rate := 0.0
+@export var burn_enabled := true
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var interaction_area: Area2D = $InteractionArea
@@ -29,6 +31,10 @@ var _player: Node
 var _furnace_ui
 var _remaining_heat_potential := 0.0
 var _remaining_burn_time := 0.0
+var _purpose_hint_learned := false
+var _fuel_units_burned_since_reaction := 0.0
+var _last_fuel_item_id: StringName = &""
+var _last_unit_fuel_value := 0.0
 var _fuel_slot_state: Dictionary = {
 	&"item_id": &"",
 	&"quantity": 0,
@@ -44,6 +50,7 @@ func _ready() -> void:
 	_unlit_texture = _build_placeholder_texture(false)
 	_lit_texture = _build_placeholder_texture(true)
 	_update_sprite()
+	_configure_prompt_label()
 	call_deferred("_ensure_ui")
 	interaction_area.body_entered.connect(_on_body_entered)
 	interaction_area.body_exited.connect(_on_body_exited)
@@ -63,10 +70,10 @@ func _process(_delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	var remaining_delta := delta
 
-	if _has_active_fuel():
+	if burn_enabled and _has_active_fuel():
 		remaining_delta = _apply_fuel_heat(delta)
 
-	if remaining_delta > 0.0 and not _has_active_fuel():
+	if remaining_delta > 0.0 and (not _has_active_fuel() or not burn_enabled):
 		_apply_cooling(remaining_delta)
 
 	_sync_heat_state()
@@ -95,6 +102,9 @@ func add_fuel(element_id: StringName, qty: int) -> bool:
 	_fuel_slot_state[&"item_id"] = element_id
 	_fuel_slot_state[&"quantity"] = int(_fuel_slot_state.get(&"quantity", 0)) + qty
 	_fuel_slot_state[&"unit_fuel_value"] = fuel_value
+	_last_fuel_item_id = element_id
+	_last_unit_fuel_value = fuel_value
+	burn_enabled = true
 	_sync_heat_state()
 	return true
 
@@ -142,6 +152,27 @@ func clear_input(slot_name: StringName) -> void:
 	_sync_ui()
 
 
+func consume_input(slot_name: StringName, qty: int) -> int:
+	if qty <= 0 or not _input_slots.has(slot_name):
+		return 0
+
+	var slot_state: Dictionary = _input_slots[slot_name]
+	var current_item_id: StringName = slot_state.get(&"item_id", &"")
+	var current_quantity := int(slot_state.get(&"quantity", 0))
+	if current_item_id.is_empty() or current_quantity <= 0:
+		return 0
+
+	var consumed_qty := mini(qty, current_quantity)
+	var remaining_qty := current_quantity - consumed_qty
+	if remaining_qty <= 0:
+		_input_slots[slot_name] = {&"item_id": &"", &"quantity": 0}
+	else:
+		slot_state[&"quantity"] = remaining_qty
+		_input_slots[slot_name] = slot_state
+	_sync_ui()
+	return consumed_qty
+
+
 func reset_after_explosion() -> void:
 	_input_slots[&"input_a"] = {&"item_id": &"", &"quantity": 0}
 	_input_slots[&"input_b"] = {&"item_id": &"", &"quantity": 0}
@@ -151,6 +182,10 @@ func reset_after_explosion() -> void:
 	target_temp = 0.0
 	fuel_level = 0.0
 	fuel_rate = 0.0
+	_fuel_units_burned_since_reaction = 0.0
+	_last_fuel_item_id = &""
+	_last_unit_fuel_value = 0.0
+	burn_enabled = true
 	_sync_heat_state()
 	_sync_ui()
 	temp_changed.emit(current_temp)
@@ -171,7 +206,42 @@ func get_fuel_state() -> Dictionary:
 	}
 
 
+func get_fuel_cost_state() -> Dictionary:
+	var fuel_item_id: StringName = _fuel_slot_state.get(&"item_id", &"")
+	if fuel_item_id.is_empty():
+		fuel_item_id = _last_fuel_item_id
+
+	return {
+		&"item_id": fuel_item_id,
+		&"burned_units": _fuel_units_burned_since_reaction,
+	}
+
+
+func commit_reaction_fuel_cost() -> Dictionary:
+	var state := get_fuel_cost_state()
+	_fuel_units_burned_since_reaction = 0.0
+	_sync_ui()
+	return state
+
+
+func set_burn_enabled(value: bool) -> void:
+	burn_enabled = value
+	_sync_heat_state()
+	_sync_ui()
+	temp_changed.emit(current_temp)
+
+
+func toggle_burn_enabled() -> bool:
+	set_burn_enabled(not burn_enabled)
+	return burn_enabled
+
+
+func is_burn_enabled() -> bool:
+	return burn_enabled
+
+
 func open_ui() -> void:
+	_purpose_hint_learned = true
 	_is_interacting = true
 	_interact_locked_until_release = true
 	_show_prompt(false)
@@ -222,12 +292,30 @@ func _on_body_exited(body: Node) -> void:
 
 func _show_prompt(should_show: bool) -> void:
 	if prompt_label:
+		if should_show:
+			prompt_label.text = _get_prompt_text()
 		prompt_label.visible = should_show
 
 
 func _hide_prompt() -> void:
 	if prompt_label:
 		prompt_label.visible = false
+
+
+func _configure_prompt_label() -> void:
+	if prompt_label == null:
+		return
+	prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	prompt_label.offset_left = -98.0
+	prompt_label.offset_right = 98.0
+	prompt_label.offset_top = -58.0
+	prompt_label.offset_bottom = -8.0
+
+
+func _get_prompt_text() -> String:
+	if _purpose_hint_learned or InventoryManager.has_item(CHARCOAL_ITEM_ID, 1):
+		return "Press E to use Furnace"
+	return "Press E\nBurn fuel into charcoal"
 
 
 func _ensure_ui() -> void:
@@ -268,6 +356,9 @@ func _apply_fuel_heat(delta: float) -> float:
 
 	var rise_amount := fuel_rate * burn_step
 	current_temp = move_toward(current_temp, target_temp, rise_amount)
+	var unit_fuel_value := float(_fuel_slot_state.get(&"unit_fuel_value", 0.0))
+	if unit_fuel_value > 0.0:
+		_fuel_units_burned_since_reaction += rise_amount / unit_fuel_value
 	_remaining_heat_potential = maxf(0.0, _remaining_heat_potential - rise_amount)
 	_remaining_burn_time = maxf(0.0, _remaining_burn_time - burn_step)
 
@@ -284,7 +375,7 @@ func _sync_heat_state() -> void:
 	if _has_active_fuel():
 		fuel_rate = _remaining_heat_potential / _remaining_burn_time
 		target_temp = current_temp + _remaining_heat_potential
-		set_lit(true)
+		set_lit(burn_enabled)
 		return
 
 	_remaining_heat_potential = 0.0
@@ -323,6 +414,10 @@ func _sync_ui() -> void:
 			fuel_state.get(&"item_id", &""),
 			int(fuel_state.get(&"quantity", 0))
 		)
+	if _furnace_ui.has_method("set_burn_enabled"):
+		_furnace_ui.set_burn_enabled(burn_enabled)
+	if _furnace_ui.has_method("set_fuel_cost_state"):
+		_furnace_ui.set_fuel_cost_state(get_fuel_cost_state())
 
 
 func _update_sprite() -> void:

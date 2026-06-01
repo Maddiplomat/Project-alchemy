@@ -7,18 +7,18 @@ layer = 10
 script = ExtResource("1_pkvtp")
 
 [node name="InventoryPanel" type="Panel" parent="." unique_id=582636693]
-custom_minimum_size = Vector2(760, 500)
+custom_minimum_size = Vector2(620, 440)
 
 [node name="PanelContent" type="HBoxContainer" parent="InventoryPanel" unique_id=181028481]
 layout_mode = 0
 offset_left = 16.0
 offset_top = 16.0
-offset_right = 744.0
-offset_bottom = 424.0
+offset_right = 604.0
+offset_bottom = 364.0
 theme_override_constants/separation = 18
 
 [node name="InventoryColumn" type="VBoxContainer" parent="InventoryPanel/PanelContent" unique_id=1442415162]
-custom_minimum_size = Vector2(268, 0)
+custom_minimum_size = Vector2(220, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 14
@@ -49,7 +49,7 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="CraftingPanel" type="PanelContainer" parent="InventoryPanel/PanelContent" unique_id=944136859]
-custom_minimum_size = Vector2(430, 0)
+custom_minimum_size = Vector2(332, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -75,13 +75,13 @@ text = "Recipes appear here. Craft buttons enable automatically when the require
 autowrap_mode = 3
 
 [node name="RecipesScroll" type="ScrollContainer" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent" unique_id=900397119]
-custom_minimum_size = Vector2(0, 300)
+custom_minimum_size = Vector2(0, 260)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
 [node name="RecipesList" type="VBoxContainer" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/RecipesScroll" unique_id=1048866388]
-custom_minimum_size = Vector2(388, 0)
+custom_minimum_size = Vector2(290, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
@@ -95,9 +95,9 @@ mouse_filter = 2
 [node name="KeybindStrip" type="HBoxContainer" parent="InventoryPanel" unique_id=1814229381]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 434.0
-offset_right = 744.0
-offset_bottom = 466.0
+offset_top = 374.0
+offset_right = 604.0
+offset_bottom = 406.0
 theme_override_constants/separation = 24
 
 [node name="InventoryKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1822337350]

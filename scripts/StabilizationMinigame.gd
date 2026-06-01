@@ -12,6 +12,7 @@ const PRESSURE_MAX := 100.0
 const PRESSURE_SAFE_MIN := 45.0
 const PRESSURE_SAFE_MAX := 55.0
 const PRESSURE_DRIFT_PER_SECOND := 18.0
+const PRESSURE_MOVE_PAUSE_SECONDS := 2.0
 const REACTION_DURATION_SECONDS := 10.0
 
 @onready var root: Control = $Root
@@ -33,7 +34,7 @@ var _heat := 0.0
 var _vent_cooldown_remaining := 0.0
 var _reaction_time_remaining := REACTION_DURATION_SECONDS
 var _pressure_target := 50.0
-var _pressure_target_timer := 0.0
+var _pressure_pause_remaining := 0.0
 var _pressure_value := 50.0
 
 
@@ -43,7 +44,6 @@ func _ready() -> void:
 	overlay.color = Color(0.0, 0.0, 0.0, 0.85)
 	vent_button.pressed.connect(_on_vent_button_pressed)
 	pressure_slider.value_changed.connect(_on_pressure_slider_value_changed)
-	pressure_slider.gui_input.connect(_on_pressure_slider_gui_input)
 	_reset_state()
 	set_process(true)
 
@@ -74,10 +74,12 @@ func _process(delta: float) -> void:
 	_heat = minf(HEAT_LIMIT, _heat + HEAT_RISE_PER_SECOND * delta)
 	_reaction_time_remaining = maxf(0.0, _reaction_time_remaining - delta)
 	_vent_cooldown_remaining = maxf(0.0, _vent_cooldown_remaining - delta)
-	_pressure_target_timer = maxf(0.0, _pressure_target_timer - delta)
-	if _pressure_target_timer <= 0.0:
-		_pick_new_pressure_target()
-	_pressure_value = move_toward(_pressure_value, _pressure_target, PRESSURE_DRIFT_PER_SECOND * delta)
+	_pressure_pause_remaining = maxf(0.0, _pressure_pause_remaining - delta)
+	if _pressure_pause_remaining <= 0.0:
+		_pressure_value = move_toward(_pressure_value, _pressure_target, PRESSURE_DRIFT_PER_SECOND * delta)
+		if is_equal_approx(_pressure_value, _pressure_target):
+			_pressure_pause_remaining = PRESSURE_MOVE_PAUSE_SECONDS
+			_pick_new_pressure_target()
 	pressure_slider.value = _pressure_value
 
 	_refresh_ui()
@@ -102,27 +104,19 @@ func _on_vent_button_pressed() -> void:
 	_vent_cooldown_remaining = HEAT_VENT_COOLDOWN_SECONDS
 	_refresh_ui()
 
-
-func _on_pressure_slider_gui_input(event: InputEvent) -> void:
-	if not _active:
-		return
-	if event is InputEventMouseButton or event is InputEventMouseMotion:
-		get_viewport().set_input_as_handled()
-
-
 func _on_pressure_slider_value_changed(value: float) -> void:
 	_pressure_value = value
 
 
 func _pick_new_pressure_target() -> void:
 	_pressure_target = randf_range(8.0, 92.0)
-	_pressure_target_timer = randf_range(2.0, 4.0)
 
 
 func _reset_state() -> void:
 	_heat = 20.0
 	_vent_cooldown_remaining = 0.0
 	_reaction_time_remaining = REACTION_DURATION_SECONDS
+	_pressure_pause_remaining = 0.0
 	pressure_slider.min_value = PRESSURE_MIN
 	pressure_slider.max_value = PRESSURE_MAX
 	pressure_slider.step = 0.1

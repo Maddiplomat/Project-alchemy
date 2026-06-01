@@ -6,10 +6,17 @@ signal carrier_risk_ignition(element_id: StringName)
 
 const CHECK_INTERVAL_SECONDS := 0.5
 const WARNING_DURATION_SECONDS := 3.0
+const LITHIUM_DEGRADE_INTERVAL_SECONDS := 1.0
+const LITHIUM_ITEM_ID := &"lithium"
+const LITHIUM_CHARGE_LOSS_PER_SECOND := 0.15
+const LITHIUM_EXPLOSION_RADIUS_PIXELS := 16.0
+const LITHIUM_EXPLOSION_DAMAGE := 15
 const CHEMICAL_EXPLOSION_SCENE := preload("res://scenes/ChemicalExplosion.tscn")
 
 var _check_timer: Timer = null
 var _countdowns: Dictionary = {}
+var _lithium_exposure_elapsed := 0.0
+var _shelter_sources: Dictionary = {}
 
 
 func _ready() -> void:
@@ -22,8 +29,12 @@ func _ready() -> void:
 
 
 func _on_check_timeout() -> void:
+	_process_lithium_exposure()
+
 	var active_volatile_items := _get_active_volatile_items()
 	var active_item_lookup: Dictionary = {}
+	if _countdowns.has(LITHIUM_ITEM_ID):
+		active_item_lookup[LITHIUM_ITEM_ID] = true
 	for element_id: StringName in active_volatile_items:
 		active_item_lookup[element_id] = true
 
@@ -42,6 +53,8 @@ func _on_check_timeout() -> void:
 func _get_active_volatile_items() -> Array[StringName]:
 	var volatile_items: Array[StringName] = []
 	for item_id: StringName in InventoryManager.items.keys():
+		if item_id == LITHIUM_ITEM_ID:
+			continue
 		var element_data: Dictionary = ElementDatabase.get_element(item_id)
 		if element_data.is_empty():
 			continue
@@ -69,6 +82,90 @@ func _should_trigger_risk_for(element_id: StringName) -> bool:
 		return true
 
 	return false
+
+
+func _process_lithium_exposure() -> void:
+	if not InventoryManager.has_item(LITHIUM_ITEM_ID):
+		_lithium_exposure_elapsed = 0.0
+		_reset_countdown(LITHIUM_ITEM_ID)
+		return
+
+	if not _is_lithium_exposed():
+		_lithium_exposure_elapsed = 0.0
+		_reset_countdown(LITHIUM_ITEM_ID)
+		return
+
+	_lithium_exposure_elapsed += CHECK_INTERVAL_SECONDS
+	if _lithium_exposure_elapsed < LITHIUM_DEGRADE_INTERVAL_SECONDS:
+		return
+
+	while _lithium_exposure_elapsed >= LITHIUM_DEGRADE_INTERVAL_SECONDS:
+		_lithium_exposure_elapsed -= LITHIUM_DEGRADE_INTERVAL_SECONDS
+		var current_charge := InventoryManager.get_item_charge(LITHIUM_ITEM_ID)
+		var next_charge := InventoryManager.drain_lithium_charge(LITHIUM_CHARGE_LOSS_PER_SECOND)
+		var seconds_remaining := maxi(int(ceili(next_charge / LITHIUM_CHARGE_LOSS_PER_SECOND)), 0)
+
+		if not _countdowns.has(LITHIUM_ITEM_ID):
+			_countdowns[LITHIUM_ITEM_ID] = {
+				&"elapsed": 0.0,
+				&"last_emitted_second": seconds_remaining + 1,
+			}
+
+		var lithium_countdown: Dictionary = _countdowns[LITHIUM_ITEM_ID]
+		var last_emitted_second := int(lithium_countdown.get(&"last_emitted_second", seconds_remaining + 1))
+		if seconds_remaining > 0 and seconds_remaining != last_emitted_second:
+			carrier_risk_warning.emit(LITHIUM_ITEM_ID, seconds_remaining)
+			lithium_countdown[&"last_emitted_second"] = seconds_remaining
+
+		lithium_countdown[&"elapsed"] = float(lithium_countdown.get(&"elapsed", 0.0)) + LITHIUM_DEGRADE_INTERVAL_SECONDS
+		_countdowns[LITHIUM_ITEM_ID] = lithium_countdown
+
+		if current_charge > 0.0 and next_charge <= 0.0:
+			_lithium_exposure_elapsed = 0.0
+			_trigger_lithium_explosion()
+			return
+
+
+func _is_lithium_exposed() -> bool:
+	if is_sheltered():
+		return false
+
+	if GameManager.active_environmental_warnings.has(&"rain"):
+		var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
+		var player := scene_root.find_child("Player", true, false) as Node2D
+		if player == null:
+			return false
+		if scene_root != null and scene_root.has_method("is_rain_blocked_at_world_position"):
+			return not bool(scene_root.call("is_rain_blocked_at_world_position", player.global_position))
+		return true
+
+	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
+	var player := scene_root.find_child("Player", true, false) as Node2D
+	if player == null:
+		return false
+
+	if scene_root != null and scene_root.has_method("is_water_at_world_position"):
+		return bool(scene_root.call("is_water_at_world_position", player.global_position))
+
+	return false
+
+
+func set_sheltered(source_or_state, sheltered_state: bool = true) -> void:
+	if source_or_state is bool:
+		_set_shelter_source(-1, bool(source_or_state))
+		return
+	_set_shelter_source(int(source_or_state), sheltered_state)
+
+
+func is_sheltered() -> bool:
+	return not _shelter_sources.is_empty()
+
+
+func _set_shelter_source(source_id: int, sheltered: bool) -> void:
+	if sheltered:
+		_shelter_sources[source_id] = true
+	else:
+		_shelter_sources.erase(source_id)
 
 
 func _advance_countdown(element_id: StringName) -> void:
@@ -116,3 +213,23 @@ func _trigger_ignition(element_id: StringName) -> void:
 		explosion.global_position = (player as Node2D).global_position
 
 	carrier_risk_ignition.emit(element_id)
+
+
+func _trigger_lithium_explosion() -> void:
+	_reset_countdown(LITHIUM_ITEM_ID, false)
+	var quantity := InventoryManager.get_quantity(LITHIUM_ITEM_ID)
+	if quantity > 0:
+		InventoryManager.remove_item(LITHIUM_ITEM_ID, quantity)
+
+	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
+	var player := scene_root.find_child("Player", true, false)
+	if player is Node2D:
+		var explosion: Node2D = CHEMICAL_EXPLOSION_SCENE.instantiate()
+		explosion.set("damage_radius_pixels", LITHIUM_EXPLOSION_RADIUS_PIXELS)
+		explosion.set("damage_amount", LITHIUM_EXPLOSION_DAMAGE)
+		explosion.set("damage_type", "explosion")
+		explosion.set("destroy_inventory_slot", false)
+		scene_root.add_child(explosion)
+		explosion.global_position = (player as Node2D).global_position
+
+	carrier_risk_ignition.emit(LITHIUM_ITEM_ID)

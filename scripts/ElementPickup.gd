@@ -179,6 +179,22 @@ func _setup_animations() -> void:
 	anim_sulfur.track_insert_key(track_sulfur_scale, 1.2, Vector2.ONE)
 	lib.add_animation("idle_sulfur", anim_sulfur)
 
+	# Lithium: faint electric shimmer.
+	var anim_lithium := Animation.new()
+	anim_lithium.length = 2.0
+	anim_lithium.loop_mode = Animation.LOOP_LINEAR
+	var track_lithium_sprite := anim_lithium.add_track(Animation.TYPE_VALUE)
+	anim_lithium.track_set_path(track_lithium_sprite, "Sprite2D:modulate")
+	anim_lithium.track_insert_key(track_lithium_sprite, 0.0, Color(0.86, 0.94, 1.0, 0.78))
+	anim_lithium.track_insert_key(track_lithium_sprite, 1.0, Color(0.96, 0.99, 1.0, 1.0))
+	anim_lithium.track_insert_key(track_lithium_sprite, 2.0, Color(0.86, 0.94, 1.0, 0.78))
+	var track_lithium_glow := anim_lithium.add_track(Animation.TYPE_VALUE)
+	anim_lithium.track_set_path(track_lithium_glow, "GlowSprite2D:modulate")
+	anim_lithium.track_insert_key(track_lithium_glow, 0.0, Color(0.46, 0.82, 1.0, 0.78))
+	anim_lithium.track_insert_key(track_lithium_glow, 1.0, Color(0.60, 0.92, 1.0, 1.0))
+	anim_lithium.track_insert_key(track_lithium_glow, 2.0, Color(0.46, 0.82, 1.0, 0.78))
+	lib.add_animation("idle_lithium", anim_lithium)
+
 	anim_player.add_animation_library("", lib)
 
 
@@ -222,6 +238,10 @@ func _apply_visual_identity() -> void:
 	if resolved_item_id == &"charcoal":
 		glow_sprite.texture = _get_glow_texture(String(resolved_item_id))
 		glow_sprite.visible = true
+	elif resolved_item_id == &"lithium":
+		glow_sprite.texture = _get_glow_texture(String(resolved_item_id))
+		glow_sprite.visible = true
+		glow_sprite.modulate = Color(0.46, 0.82, 1.0, 0.78)
 	elif resolved_item_id == &"sulfur":
 		_configure_sulfur_particles()
 		sulfur_particles.visible = true
@@ -283,6 +303,8 @@ func _get_pickup_texture(element_key: String) -> Texture2D:
 			_build_charcoal_texture(image)
 		"sulfur":
 			_build_sulfur_texture(image)
+		"lithium":
+			_build_lithium_texture(image)
 		_:
 			_build_generic_texture(image)
 
@@ -306,6 +328,14 @@ func _get_glow_texture(element_key: String) -> Texture2D:
 				var alpha := clampf(1.0 - (distance / 7.5), 0.0, 1.0) * 0.35
 				if alpha > 0.0:
 					image.set_pixel(x, y, Color(1.0, 0.48, 0.18, alpha))
+	elif element_key == "lithium":
+		var lithium_center := Vector2(8.0, 8.0)
+		for y in range(16):
+			for x in range(16):
+				var lithium_distance := Vector2(float(x), float(y)).distance_to(lithium_center)
+				var lithium_alpha := clampf(1.0 - (lithium_distance / 7.0), 0.0, 1.0) * 0.42
+				if lithium_alpha > 0.0:
+					image.set_pixel(x, y, Color(0.38, 0.80, 1.0, lithium_alpha))
 
 	var texture := ImageTexture.create_from_image(image)
 	_glow_textures[element_key] = texture
@@ -336,6 +366,33 @@ func _build_sulfur_texture(image: Image) -> void:
 	for pixel: Vector2i in [Vector2i(7, 3), Vector2i(8, 3), Vector2i(6, 4), Vector2i(7, 4), Vector2i(7, 5)]:
 		image.set_pixel(pixel.x, pixel.y, highlight)
 	for pixel: Vector2i in [Vector2i(10, 5), Vector2i(9, 6), Vector2i(10, 6), Vector2i(8, 8), Vector2i(9, 8), Vector2i(8, 9)]:
+		image.set_pixel(pixel.x, pixel.y, shadow)
+
+
+func _build_lithium_texture(image: Image) -> void:
+	var core := Color(0.70, 0.84, 0.98, 1.0)
+	var highlight := Color(0.92, 0.98, 1.0, 1.0)
+	var accent := Color(0.40, 0.76, 1.0, 1.0)
+	var shadow := Color(0.34, 0.53, 0.76, 1.0)
+	var pixels := [
+		Vector2i(8, 1),
+		Vector2i(7, 2), Vector2i(8, 2), Vector2i(9, 2),
+		Vector2i(6, 3), Vector2i(7, 3), Vector2i(8, 3), Vector2i(9, 3), Vector2i(10, 3),
+		Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4), Vector2i(9, 4), Vector2i(10, 4),
+		Vector2i(5, 5), Vector2i(6, 5), Vector2i(7, 5), Vector2i(8, 5), Vector2i(9, 5),
+		Vector2i(10, 5), Vector2i(11, 5),
+		Vector2i(6, 6), Vector2i(7, 6), Vector2i(8, 6), Vector2i(9, 6), Vector2i(10, 6),
+		Vector2i(6, 7), Vector2i(7, 7), Vector2i(8, 7), Vector2i(9, 7),
+		Vector2i(7, 8), Vector2i(8, 8), Vector2i(9, 8),
+		Vector2i(8, 9)
+	]
+	for pixel: Vector2i in pixels:
+		image.set_pixel(pixel.x, pixel.y, core)
+	for pixel: Vector2i in [Vector2i(8, 1), Vector2i(7, 2), Vector2i(8, 2), Vector2i(7, 3), Vector2i(8, 3), Vector2i(7, 4)]:
+		image.set_pixel(pixel.x, pixel.y, highlight)
+	for pixel: Vector2i in [Vector2i(10, 3), Vector2i(10, 4), Vector2i(11, 5), Vector2i(9, 7)]:
+		image.set_pixel(pixel.x, pixel.y, accent)
+	for pixel: Vector2i in [Vector2i(10, 5), Vector2i(10, 6), Vector2i(8, 8), Vector2i(9, 8), Vector2i(8, 9)]:
 		image.set_pixel(pixel.x, pixel.y, shadow)
 
 

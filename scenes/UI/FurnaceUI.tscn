@@ -468,9 +468,24 @@ custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "Smelt"
 
+[node name="ForgeButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "Forge"
+
+[node name="FireToggleButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "Fire: On"
+
 [node name="ActionHintLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=542648246]
 layout_mode = 2
 text = "Burn wood to sustain heat. Output remains a preview until smelting logic lands."
+autowrap_mode = 3
+
+[node name="FuelCostLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Fuel cost: waiting"
 autowrap_mode = 3
 
 [node name="SpacerBottom" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=117979327]

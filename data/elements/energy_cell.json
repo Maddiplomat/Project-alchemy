@@ -1,0 +1,19 @@
+{
+  "id": "energy_cell",
+  "symbol": "E+",
+  "display_name": "Energy Cell",
+  "category": "crafted",
+  "weight": 0.5,
+  "stress_multiplier": 0.5,
+  "extraction_tool": null,
+  "properties": {
+    "flammability": 0.1,
+    "toxicity": 0.0,
+    "reactivity": 0.8,
+    "melting_point": 800
+  },
+  "carrier_risk_conditions": {},
+  "environmental_hint": "Compact crafted power source with a fragile reactive core.",
+  "carrier_risk": "low",
+  "biome_spawn": []
+}

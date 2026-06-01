@@ -1,0 +1,48 @@
+[gd_scene load_steps=4 format=4]
+
+[ext_resource type="Script" path="res://scripts/TreeResource.gd" id="1_tree"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_tree"]
+radius = 8.0
+height = 26.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tree_health_bar"]
+bg_color = Color(0.08, 0.09, 0.08, 0.82)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[node name="TreeResource" type="StaticBody2D"]
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("1_tree")
+
+[node name="Canopy" type="Polygon2D" parent="."]
+z_index = 2
+
+[node name="Trunk" type="Polygon2D" parent="."]
+z_index = 1
+
+[node name="Shadow" type="Polygon2D" parent="."]
+z_index = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 1)
+shape = SubResource("CapsuleShape2D_tree")
+
+[node name="HealthBarBg" type="Panel" parent="."]
+visible = false
+z_index = 8
+offset_left = -14.0
+offset_top = -32.0
+offset_right = 14.0
+offset_bottom = -26.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_tree_health_bar")
+
+[node name="HealthBarFill" type="ColorRect" parent="HealthBarBg"]
+offset_left = 1.0
+offset_top = 1.0
+offset_right = 27.0
+offset_bottom = 5.0
+color = Color(0.47, 0.82, 0.39, 1)

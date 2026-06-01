@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bmxawsi3y4fi1"]
+
+[ext_resource type="Script" path="res://scripts/IronMine.gd" id="1_ironm"]
+
+[node name="IronMine" type="Node2D"]
+script = ExtResource("1_ironm")

@@ -26,9 +26,14 @@ CraftingManager="*res://scripts/CraftingManager.gd"
 CameraShake="*res://scripts/CameraShake.gd"
 WorldSystem="*res://scripts/WorldSystem.gd"
 ChemistryEngine="*res://scripts/ChemistryEngine.gd"
+EventBus="*res://scripts/EventBus.gd"
 DiscoveryLog="*res://scripts/DiscoveryLog.gd"
 CombatSystem="*res://scripts/CombatSystem.gd"
 CarrierRiskSystem="*res://scripts/CarrierRiskSystem.gd"
+BuildSystem="*res://scripts/BuildSystem.gd"
+StorageManager="*res://scripts/StorageManager.gd"
+WorldSaveData="*res://scripts/WorldSaveData.gd"
+BaseGrid="*res://scripts/BaseGrid.gd"
 
 [display]
 

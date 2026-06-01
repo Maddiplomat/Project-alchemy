@@ -5,6 +5,7 @@ extends CanvasLayer
 @onready var weight_bar: ProgressBar = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightBar
 @onready var weight_label: Label = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightLabel
 @onready var select_keybind_label: Label = $InventoryPanel/KeybindStrip/SelectKeybindLabel
+@onready var crafting_hint_label: Label = $InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/CraftingHint
 @onready var recipes_list: VBoxContainer = $InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/RecipesScroll/RecipesList
 @onready var tooltip_panel: Panel = $TooltipPanel
 @onready var tooltip_name_label: Label = $TooltipPanel/MarginContainer/TooltipContent/NameLabel
@@ -31,6 +32,10 @@ const ITEM_ICON_SIZE := Vector2(34, 34)
 const SELECT_KEYBIND_BASE_TEXT := "1-9: select active item"
 const DRAG_QUANTITY_HINT_TEXT := "Wheel or Up/Down or Q/E to adjust qty, drag outside panel to drop"
 const WORLD_DROP_DISTANCE := 22.0
+const DISTILLATION_KIT_ITEM_ID := &"distillation_kit"
+const SULFUR_ITEM_ID := &"sulfur"
+const SULFURIC_BOLT_ITEM_ID := &"sulfuric_bolt"
+const RUST_BOLT_ITEM_ID := &"rust_bolt"
 
 var drag_origin_index := -1
 var drag_ghost: TextureRect = null
@@ -42,6 +47,7 @@ var tooltip_delay_timer: SceneTreeTimer = null
 var recipe_row_refs: Dictionary[StringName, Dictionary] = {}
 var _placeholder_textures := {}
 var _carrier_risk_item_id: StringName = &""
+var _tooltip_hint_label: Label = null
 
 func _ready():
 	for i in range(SLOT_COUNT):
@@ -77,6 +83,7 @@ func _ready():
 		CarrierRiskSystem.carrier_risk_cleared.connect(_on_carrier_risk_cleared)
 		CarrierRiskSystem.carrier_risk_ignition.connect(_on_carrier_risk_ignition)
 	_setup_crafting_pulse_animation()
+	_ensure_tooltip_hint_label()
 	_build_recipe_rows()
 	refresh_grid()
 	_update_weight_display(InventoryManager.total_weight, InventoryManager.carry_capacity)
@@ -159,6 +166,10 @@ func toggle_inventory():
 
 
 func _is_inventory_toggle_blocked() -> bool:
+	var build_system := get_node_or_null("/root/BuildSystem")
+	if build_system != null and build_system.has_method("is_build_mode_active"):
+		if bool(build_system.call("is_build_mode_active")):
+			return true
 	var current_scene := get_tree().current_scene
 	if current_scene == null:
 		return false
@@ -185,6 +196,7 @@ func refresh_grid():
 		_hide_tooltip()
 
 	_refresh_recipe_states()
+	_refresh_crafting_hint()
 
 
 func _on_carrier_risk_warning(element_id: StringName, _seconds_remaining: int) -> void:
@@ -371,9 +383,12 @@ func _try_drop_to_station_ui(dragged_item: Dictionary, initial_drag_quantity: in
 		return false
 
 	var mouse_position := get_viewport().get_mouse_position()
-	for ui_name: String in ["FurnaceUI", "ChemBenchUI"]:
-		var station_ui := current_scene.find_child(ui_name, true, false)
-		if station_ui == null or not station_ui.has_method("handle_inventory_drop"):
+	for station_ui in get_tree().get_nodes_in_group(&"station_inventory_drop_target"):
+		if station_ui == null or not is_instance_valid(station_ui):
+			continue
+		if current_scene != station_ui and not current_scene.is_ancestor_of(station_ui):
+			continue
+		if not station_ui.has_method("handle_inventory_drop"):
 			continue
 		if not station_ui.handle_inventory_drop(mouse_position, item_id, quantity):
 			continue
@@ -465,6 +480,7 @@ func _show_tooltip_for_slot(slot_index: int) -> void:
 	tooltip_weight_label.text = "Weight: %.1f" % _get_tooltip_item_weight(data, element_data)
 	tooltip_category_label.text = "Category: %s" % _format_category_value(data.get("category", element_data.get("category", "")))
 	_update_tooltip_durability(data)
+	_update_tooltip_hint(data, element_data, item_id)
 	tooltip_slot_index = slot_index
 	tooltip_panel.visible = true
 	_update_tooltip_position()
@@ -474,6 +490,8 @@ func _hide_tooltip() -> void:
 	tooltip_slot_index = -1
 	tooltip_panel.visible = false
 	tooltip_durability_label.visible = false
+	if _tooltip_hint_label != null:
+		_tooltip_hint_label.visible = false
 
 func _update_tooltip_position() -> void:
 	var viewport_rect := get_viewport().get_visible_rect()
@@ -538,6 +556,47 @@ func _update_tooltip_durability(item_data: Dictionary) -> void:
 	tooltip_durability_label.text = "Durability: %d%%" % percent
 	tooltip_durability_label.visible = true
 
+
+func _update_tooltip_hint(item_data: Dictionary, element_data: Dictionary, item_id: StringName) -> void:
+	if _tooltip_hint_label == null:
+		return
+
+	var tooltip_hint := ""
+	if item_id == DISTILLATION_KIT_ITEM_ID or str(item_data.get("tool_type", "")) == "distillation_kit":
+		tooltip_hint = "Needed for sulfur pickup. Loses durability on use."
+	elif item_id == &"iron_axe":
+		tooltip_hint = "Cuts wood faster. One wood every 2 clicks."
+	elif item_id == &"steel_axe":
+		tooltip_hint = "Best wood tool. One wood every click."
+	elif item_id == &"iron_pickaxe":
+		tooltip_hint = "Mines stone and iron faster. One unit every 2 clicks."
+	elif item_id == &"steel_pickaxe":
+		tooltip_hint = "Best mining tool. One stone or iron every click."
+	elif item_id == SULFUR_ITEM_ID:
+		tooltip_hint = "Carrier risk: low HP or burning can ignite it."
+	elif item_id == &"lithium":
+		tooltip_hint = "Carrier risk: water exposure drains charge and can trigger an explosion."
+	elif not element_data.is_empty():
+		var primary_use := str(element_data.get(&"primary_use", "")).strip_edges()
+		if not primary_use.is_empty():
+			tooltip_hint = primary_use
+
+	_tooltip_hint_label.text = tooltip_hint
+	_tooltip_hint_label.visible = not tooltip_hint.is_empty()
+
+
+func _ensure_tooltip_hint_label() -> void:
+	if _tooltip_hint_label != null:
+		return
+	var tooltip_content := tooltip_panel.get_node_or_null("MarginContainer/TooltipContent") as VBoxContainer
+	if tooltip_content == null:
+		return
+	_tooltip_hint_label = Label.new()
+	_tooltip_hint_label.visible = false
+	_tooltip_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tooltip_hint_label.add_theme_color_override("font_color", Color(0.80, 0.84, 0.72, 1.0))
+	tooltip_content.add_child(_tooltip_hint_label)
+
 func _build_recipe_rows() -> void:
 	for child in recipes_list.get_children():
 		child.queue_free()
@@ -577,16 +636,15 @@ func _build_recipe_rows() -> void:
 		margin.add_theme_constant_override("margin_bottom", 10)
 		row.add_child(margin)
 
-		var row_box := HBoxContainer.new()
-		row_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row_box.alignment = BoxContainer.ALIGNMENT_CENTER
-		row_box.add_theme_constant_override("separation", 10)
-		margin.add_child(row_box)
+		var card_box := VBoxContainer.new()
+		card_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card_box.add_theme_constant_override("separation", 8)
+		margin.add_child(card_box)
 
 		var recipe_flow := HBoxContainer.new()
-		recipe_flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		recipe_flow.alignment = BoxContainer.ALIGNMENT_CENTER
 		recipe_flow.add_theme_constant_override("separation", 6)
-		row_box.add_child(recipe_flow)
+		card_box.add_child(recipe_flow)
 
 		var inputs: Array = recipe.get(&"inputs", [])
 		for i in range(inputs.size()):
@@ -606,10 +664,16 @@ func _build_recipe_rows() -> void:
 			int(output.get(&"qty", 0))
 		))
 
+		var details_row := HBoxContainer.new()
+		details_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		details_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		details_row.add_theme_constant_override("separation", 14)
+		card_box.add_child(details_row)
+
 		var durability_box := VBoxContainer.new()
-		durability_box.custom_minimum_size = Vector2(82, 0)
+		durability_box.custom_minimum_size = Vector2(92, 0)
 		durability_box.alignment = BoxContainer.ALIGNMENT_CENTER
-		row_box.add_child(durability_box)
+		details_row.add_child(durability_box)
 
 		var durability_label := Label.new()
 		durability_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -635,14 +699,23 @@ func _build_recipe_rows() -> void:
 			durability_box.add_child(durability_value)
 
 		var availability_label := Label.new()
-		availability_label.custom_minimum_size = Vector2(96, 32)
+		availability_label.custom_minimum_size = Vector2(78, 32)
 		availability_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		availability_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		availability_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		row_box.add_child(availability_label)
+		details_row.add_child(availability_label)
+
+		var payoff_tag_label := Label.new()
+		payoff_tag_label.custom_minimum_size = Vector2(88, 26)
+		payoff_tag_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		payoff_tag_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		payoff_tag_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		payoff_tag_label.add_theme_color_override("font_color", Color(0.91, 0.79, 0.44, 1.0))
+		details_row.add_child(payoff_tag_label)
 
 		recipe_row_refs[recipe_id] = {
 			"availability_label": availability_label,
+			"payoff_tag_label": payoff_tag_label,
 			"style": row_style,
 		}
 
@@ -680,11 +753,16 @@ func _refresh_recipe_states() -> void:
 	for recipe_id: StringName in recipe_row_refs:
 		var row_ref: Dictionary = recipe_row_refs[recipe_id]
 		var availability_label: Label = row_ref.get("availability_label")
+		var payoff_tag_label: Label = row_ref.get("payoff_tag_label")
 		var row_style: StyleBoxFlat = row_ref.get("style")
 		var can_craft_now := CraftingManager.can_craft(recipe_id)
 		availability_label.text = "Materials\nReady" if can_craft_now else "Materials\nMissing"
 		availability_label.modulate = CRAFT_READY_COLOR if can_craft_now else CRAFT_LOCKED_COLOR
 		row_style.border_color = CRAFT_READY_COLOR if can_craft_now else RECIPE_ROW_BORDER_COLOR
+		if payoff_tag_label != null:
+			var payoff_tag := _get_recipe_payoff_tag(recipe_id)
+			payoff_tag_label.text = payoff_tag
+			payoff_tag_label.visible = not payoff_tag.is_empty()
 
 
 func _update_crafting_highlight() -> void:
@@ -739,6 +817,33 @@ func _setup_crafting_pulse_animation() -> void:
 	animation_library.add_animation(String(CRAFTING_PULSE_ANIMATION_NAME), animation)
 	crafting_pulse_player.add_animation_library("", animation_library)
 
+
+func _refresh_crafting_hint() -> void:
+	if crafting_hint_label == null:
+		return
+	if not InventoryManager.has_item(DISTILLATION_KIT_ITEM_ID, 1):
+		crafting_hint_label.text = "Next: build a Distillation Kit before sulfur runs."
+		return
+	if not InventoryManager.has_item(SULFUR_ITEM_ID, 1):
+		crafting_hint_label.text = "Next: take the kit into Sulfur Flats for sulfur pickup."
+		return
+	if not InventoryManager.has_item(SULFURIC_BOLT_ITEM_ID, 1):
+		crafting_hint_label.text = "Next: mix sulfur + iron at the ChemBench."
+		return
+	crafting_hint_label.text = "Recipes appear here. Craft buttons enable automatically when the required materials are in your inventory."
+
+
+func _get_recipe_payoff_tag(recipe_id: StringName) -> String:
+	match recipe_id:
+		&"distillation_kit":
+			return "" if InventoryManager.has_item(DISTILLATION_KIT_ITEM_ID, 1) else "Sulfur pickup"
+		&"sulfuric_bolt":
+			return "" if InventoryManager.has_item(SULFURIC_BOLT_ITEM_ID, 1) else "Acid ammo"
+		&"rust_bolt":
+			return "" if InventoryManager.has_item(RUST_BOLT_ITEM_ID, 1) or InventoryManager.has_item(DISTILLATION_KIT_ITEM_ID, 1) else "Early ammo"
+		_:
+			return ""
+
 func _get_item_color(item_id: String) -> Color:
 	match item_id:
 		"wood":
@@ -749,8 +854,14 @@ func _get_item_color(item_id: String) -> Color:
 			return Color.SILVER
 		"charcoal":
 			return Color(0.17, 0.18, 0.20, 1.0)
-		"primitive_axe":
+		"iron_axe":
+			return Color(0.71, 0.73, 0.77, 1.0)
+		"steel_axe":
+			return Color(0.82, 0.85, 0.90, 1.0)
+		"iron_pickaxe":
 			return Color(0.76, 0.82, 0.88, 1.0)
+		"steel_pickaxe":
+			return Color(0.86, 0.90, 0.95, 1.0)
 		"steel_sword":
 			return Color(0.82, 0.85, 0.90, 1.0)
 		_:

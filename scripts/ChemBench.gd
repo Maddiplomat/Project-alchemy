@@ -5,6 +5,7 @@ const CHEM_BENCH_STATION_ID := &"chem_bench"
 const CHEMICAL_EXPLOSION_SCENE := preload("res://scenes/ChemicalExplosion.tscn")
 const SHRAPNEL_BURST_SCENE := preload("res://scenes/ShrapnelBurst.tscn")
 const TOXIC_CLOUD_SCENE := preload("res://scenes/ToxicCloud.tscn")
+const DISTILLATION_KIT_ITEM_ID := &"distillation_kit"
 
 signal player_entered_range
 signal player_exited_range
@@ -20,11 +21,13 @@ var _is_interacting := false
 var _interact_locked_until_release := false
 var _player: Node = null
 var _chem_bench_ui
+var _purpose_hint_learned := false
 
 
 func _ready() -> void:
 	sprite.texture = _build_placeholder_texture()
 	_apply_visual_identity()
+	_configure_prompt_label()
 	call_deferred("_ensure_ui")
 	interaction_area.body_entered.connect(_on_body_entered)
 	interaction_area.body_exited.connect(_on_body_exited)
@@ -42,6 +45,7 @@ func _process(_delta: float) -> void:
 
 
 func open_ui() -> void:
+	_purpose_hint_learned = true
 	_is_interacting = true
 	_interact_locked_until_release = true
 	_show_prompt(false)
@@ -130,12 +134,30 @@ func _on_body_exited(body: Node) -> void:
 
 func _show_prompt(should_show: bool) -> void:
 	if prompt_label != null:
+		if should_show:
+			prompt_label.text = _get_prompt_text()
 		prompt_label.visible = should_show
 
 
 func _hide_prompt() -> void:
 	if prompt_label != null:
 		prompt_label.visible = false
+
+
+func _configure_prompt_label() -> void:
+	if prompt_label == null:
+		return
+	prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	prompt_label.offset_left = -104.0
+	prompt_label.offset_right = 104.0
+	prompt_label.offset_top = -58.0
+	prompt_label.offset_bottom = -8.0
+
+
+func _get_prompt_text() -> String:
+	if _purpose_hint_learned or InventoryManager.has_item(DISTILLATION_KIT_ITEM_ID, 1):
+		return "Press E to use ChemBench"
+	return "Press E\nCraft a kit before sulfur"
 
 
 func _ensure_ui() -> void:

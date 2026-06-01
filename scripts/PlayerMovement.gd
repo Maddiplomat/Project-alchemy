@@ -37,6 +37,7 @@ var _melee_hit_targets: Dictionary[int, bool] = {}
 
 
 func _ready() -> void:
+	add_to_group("player")
 	_base_max_speed = max_speed
 	drop_item.connect(_on_drop_item)
 	InventoryManager.weight_changed.connect(_on_weight_changed)

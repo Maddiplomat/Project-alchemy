@@ -3,21 +3,6 @@ extends Node2D
 const ELEMENT_PICKUP_SCENE := preload("res://scenes/ElementPickup.tscn")
 const ELEMENT_SPAWN_TABLE: Array[Dictionary] = [
 	{
-		&"id": &"wood",
-		&"weight": 50,
-		&"max_count": 20,
-	},
-	{
-		&"id": &"stone",
-		&"weight": 30,
-		&"max_count": 12,
-	},
-	{
-		&"id": &"iron",
-		&"weight": 20,
-		&"max_count": 8,
-	},
-	{
 		# Water is river-only — spawned by WorldGen._spawn_water_pickups(), not the weighted picker.
 		# Weight 0 keeps it out of random placement while still letting spawn_counts track it.
 		&"id": &"water",
