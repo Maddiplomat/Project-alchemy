@@ -7,6 +7,7 @@ signal scan_started(origin: Vector2)
 
 const ELEMENT_SCAN_RADIUS: float = 80.0
 const ENEMY_SCAN_RADIUS: float = 120.0
+const SUBSURFACE_SCAN_RADIUS: float = 240.0
 const ELEMENT_AUTO_DISMISS: float = 3.0
 const ENEMY_AUTO_DISMISS: float = 4.0
 const ELEMENT_SCAN_DURATION: float = 0.4
@@ -156,18 +157,63 @@ func _scan_elements(player_pos: Vector2) -> void:
 		_spawn_element_panel(pickup_node, data)
 		_flash_element(pickup_node)
 
+	_collect_scannable_resource_nodes(player_pos)
+
+
+func _collect_scannable_resource_nodes(player_pos: Vector2) -> void:
+	for node in get_tree().get_nodes_in_group(&"scannable_resource"):
+		var resource_node := node as Node2D
+		if resource_node == null or _active_panels.has(resource_node):
+			continue
+		if player_pos.distance_to(resource_node.global_position) > ELEMENT_SCAN_RADIUS:
+			continue
+		if not resource_node.has_method("get_scannable_element_id"):
+			continue
+
+		var raw_element_id: Variant = resource_node.get_scannable_element_id()
+		if raw_element_id is not StringName or StringName(raw_element_id).is_empty():
+			continue
+		var element_id: StringName = StringName(raw_element_id)
+
+		var data := ElementDatabase.get_element(element_id)
+		if data.is_empty():
+			continue
+
+		_spawn_element_panel(resource_node, data)
+		_flash_element(resource_node)
+
 
 func _scan_enemies(player_pos: Vector2) -> void:
-	var results := _intersect_circle(player_pos, ENEMY_SCAN_RADIUS, ENEMY_QUERY_MASK)
+	var detected_enemies: Dictionary = {}
+	_collect_scannable_enemies(player_pos, ENEMY_SCAN_RADIUS, false, detected_enemies)
+	_collect_scannable_enemies(player_pos, SUBSURFACE_SCAN_RADIUS, true, detected_enemies)
+	_collect_scannable_enemy_nodes(player_pos, ENEMY_SCAN_RADIUS, false, detected_enemies)
+	_collect_scannable_enemy_nodes(player_pos, SUBSURFACE_SCAN_RADIUS, true, detected_enemies)
+
+	for enemy_node in detected_enemies.keys():
+		if not is_instance_valid(enemy_node):
+			continue
+		var scan_data: Dictionary = detected_enemies[enemy_node]
+		_spawn_enemy_panel(enemy_node, scan_data)
+		_play_enemy_scan_sweep(enemy_node)
+
+
+func _collect_scannable_enemies(
+	player_pos: Vector2,
+	scan_radius: float,
+	require_subsurface_signal: bool,
+	detected_enemies: Dictionary
+) -> void:
+	var results := _intersect_circle(player_pos, scan_radius, ENEMY_QUERY_MASK)
 	for hit in results:
 		var collider := hit.get("collider") as Node
 		if collider == null:
 			continue
 
 		var enemy_node := _find_enemy_target(collider)
-		if enemy_node == null or _active_panels.has(enemy_node):
+		if enemy_node == null or _active_panels.has(enemy_node) or detected_enemies.has(enemy_node):
 			continue
-		if player_pos.distance_to(enemy_node.global_position) > ENEMY_SCAN_RADIUS:
+		if player_pos.distance_to(enemy_node.global_position) > scan_radius:
 			continue
 		if not enemy_node.has_method("get_scan_data"):
 			continue
@@ -175,9 +221,34 @@ func _scan_enemies(player_pos: Vector2) -> void:
 		var scan_data = enemy_node.get_scan_data()
 		if not (scan_data is Dictionary):
 			continue
+		if require_subsurface_signal and not bool(scan_data.get(&"subsurface_signal", false)):
+			continue
 
-		_spawn_enemy_panel(enemy_node, scan_data)
-		_play_enemy_scan_sweep(enemy_node)
+		detected_enemies[enemy_node] = scan_data
+
+
+func _collect_scannable_enemy_nodes(
+	player_pos: Vector2,
+	scan_radius: float,
+	require_subsurface_signal: bool,
+	detected_enemies: Dictionary
+) -> void:
+	for node in get_tree().get_nodes_in_group(&"enemy"):
+		var enemy_node := node as Node2D
+		if enemy_node == null or _active_panels.has(enemy_node) or detected_enemies.has(enemy_node):
+			continue
+		if not enemy_node.has_method("get_scan_data"):
+			continue
+		if player_pos.distance_to(enemy_node.global_position) > scan_radius:
+			continue
+
+		var scan_data = enemy_node.get_scan_data()
+		if not (scan_data is Dictionary):
+			continue
+		if require_subsurface_signal and not bool(scan_data.get(&"subsurface_signal", false)):
+			continue
+
+		detected_enemies[enemy_node] = scan_data
 
 
 func _intersect_circle(origin: Vector2, radius: float, collision_mask: int) -> Array:
@@ -348,8 +419,9 @@ func _build_element_panel(data: Dictionary) -> PanelContainer:
 
 
 func _build_enemy_panel(enemy: Node2D, scan_data: Dictionary) -> PanelContainer:
+	var has_subsurface_signal := bool(scan_data.get(&"subsurface_signal", false))
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(ENEMY_PANEL_WIDTH, ENEMY_PANEL_HEIGHT)
+	panel.custom_minimum_size = Vector2(ENEMY_PANEL_WIDTH, ENEMY_PANEL_HEIGHT + (18.0 if has_subsurface_signal else 0.0))
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_theme_stylebox_override("panel", _build_panel_style(ENEMY_PANEL_ACCENT, 0.94))
 
@@ -367,9 +439,15 @@ func _build_enemy_panel(enemy: Node2D, scan_data: Dictionary) -> PanelContainer:
 	margin.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "%s Scan" % _humanize_identifier(enemy.name)
+	title.text = "%s Scan%s" % [
+		_humanize_identifier(enemy.name),
+		"  [Sub-surface signal detected]" if has_subsurface_signal else ""
+	]
 	title.add_theme_font_size_override("font_size", 13)
-	title.add_theme_color_override("font_color", Color(0.96, 0.99, 1.0, 1.0))
+	title.add_theme_color_override(
+		"font_color",
+		Color(0.97, 0.93, 0.55, 1.0) if has_subsurface_signal else Color(0.96, 0.99, 1.0, 1.0)
+	)
 	vbox.add_child(title)
 
 	vbox.add_child(_build_separator(ENEMY_PANEL_ACCENT))

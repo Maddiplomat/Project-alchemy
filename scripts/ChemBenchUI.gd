@@ -3,14 +3,23 @@ extends CanvasLayer
 signal ui_closed
 
 const STABILIZATION_MINIGAME_SCENE := preload("res://scenes/UI/StabilizationMinigame.tscn")
-const SLOT_EMPTY_TEXT := {
-	&"input_a": "Input A",
-	&"input_b": "Input B",
-	&"output": "Output",
-}
 const SLOT_PANEL_COLOR := Color(0.18, 0.19, 0.22, 1.0)
 const SLOT_FILLED_COLOR := Color(0.24, 0.31, 0.36, 1.0)
 const SLOT_OUTPUT_READY_COLOR := Color(0.34, 0.28, 0.15, 1.0)
+const SLOT_OUTPUT_DANGER_COLOR := Color(0.42, 0.13, 0.10, 1.0)
+const SLOT_OUTPUT_UNKNOWN_COLOR := Color(0.21, 0.23, 0.25, 1.0)
+const SLOT_EMPTY_TEXT := {
+	&"input_a": "Input A",
+	&"input_b": "Input B",
+	&"catalyst": "Catalyst",
+	&"output": "Awaiting reaction",
+}
+const TEMPERATURE_MIN := 20.0
+const TEMPERATURE_MAX := 260.0
+const PANEL_VIEW_SCALE := 0.62
+const PANEL_MARGIN := Vector2(24.0, 24.0)
+const RATIO_TARGET_INPUT_A := &"input_a"
+const RATIO_TARGET_INPUT_B := &"input_b"
 
 @onready var root: Control = $Root
 @onready var backdrop: ColorRect = $Root/Backdrop
@@ -25,34 +34,47 @@ const SLOT_OUTPUT_READY_COLOR := Color(0.34, 0.28, 0.15, 1.0)
 @onready var output_visual: Panel = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask/MarginContainer/VBoxContainer/FlaskVisual
 @onready var output_name_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask/MarginContainer/VBoxContainer/ItemNameLabel
 @onready var ratio_slider: HSlider = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/RatioSlider
+@onready var ratio_target_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/RatioTargetButton
 @onready var ratio_value_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/RatioValueLabel
+@onready var temperature_slider: HSlider = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/TemperatureSlider
+@onready var temperature_value_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/TemperatureValueLabel
 @onready var react_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/ReactButton
 @onready var action_hint_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/ActionHintLabel
+@onready var catalyst_visual: Panel = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer/VBoxContainer/CatalystVisual
+@onready var catalyst_name_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer/VBoxContainer/CatalystNameLabel
 @onready var close_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/CloseButton
+@onready var footer_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/FooterLabel
 
 var _chem_bench: Node = null
-var _bench_recipes: Array[Dictionary] = []
-var _active_recipe: Dictionary = {}
 var _stabilization_overlay: CanvasLayer = null
 var _stabilization_active := false
-var _pending_output_item: Dictionary = {}
-var _pending_output_quantity := 0
-var _slot_state: Dictionary[StringName, Dictionary] = {
-	&"input_a": {&"item_id": &"", &"quantity": 0},
-	&"input_b": {&"item_id": &"", &"quantity": 0},
-}
+var _pending_result: Dictionary = {}
+var _slot_refs: Dictionary[StringName, Dictionary] = {}
+var _is_open := false
+var _ratio_target_slot: StringName = RATIO_TARGET_INPUT_B
 
 
 func _ready() -> void:
 	add_to_group(&"station_inventory_drop_target")
 	visible = false
 	root.visible = false
+	_slot_refs = {
+		&"input_a": {"visual": input_a_visual, "label": input_a_name_label},
+		&"input_b": {"visual": input_b_visual, "label": input_b_name_label},
+		&"catalyst": {"visual": catalyst_visual, "label": catalyst_name_label},
+	}
 	_apply_theme()
-	_refresh_slot_visuals()
+	_refresh_from_bench()
+	_update_ratio_target_button()
 	_update_ratio_label(ratio_slider.value)
+	_update_temperature_label(temperature_slider.value)
+	ratio_target_button.pressed.connect(_on_ratio_target_button_pressed)
 	ratio_slider.value_changed.connect(_on_ratio_slider_changed)
+	temperature_slider.value_changed.connect(_on_temperature_slider_changed)
 	react_button.pressed.connect(_on_react_button_pressed)
 	close_button.pressed.connect(_on_close_button_pressed)
+	get_viewport().size_changed.connect(_layout_panel)
+	_layout_panel()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -67,118 +89,404 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func bind_chem_bench(chem_bench: Node) -> void:
+	var callback := Callable(self, "_refresh_from_bench")
+	if is_instance_valid(_chem_bench) and _chem_bench.has_signal("state_changed") and _chem_bench.is_connected("state_changed", callback):
+		_chem_bench.disconnect("state_changed", callback)
 	_chem_bench = chem_bench
 	_ensure_stabilization_overlay()
-	if _chem_bench != null and _chem_bench.has_method("get_available_recipes"):
-		_bench_recipes = _chem_bench.get_available_recipes()
-	elif _chem_bench != null and _chem_bench.has_method("get_active_recipe"):
-		var fallback_recipe: Dictionary = _chem_bench.get_active_recipe()
-		_bench_recipes = [fallback_recipe] if not fallback_recipe.is_empty() else []
-	_sync_active_recipe()
-	_refresh_recipe_copy()
-	_refresh_slot_visuals()
+	if is_instance_valid(_chem_bench) and _chem_bench.has_signal("state_changed") and not _chem_bench.is_connected("state_changed", callback):
+		_chem_bench.connect("state_changed", callback)
+	_refresh_from_bench()
 
 
 func open_ui() -> void:
+	_is_open = true
 	visible = true
 	root.visible = true
 	_ensure_stabilization_overlay()
+	_refresh_from_bench()
+	_layout_panel()
+	call_deferred("_finalize_open_ui_layout")
 
 
 func close_ui() -> void:
 	if _stabilization_active:
 		return
+	_is_open = false
 	root.visible = false
 	visible = false
 
 
+func is_open() -> bool:
+	return _is_open
+
+
+func can_accept_inventory_drop(global_mouse_position: Vector2, item_id: StringName, qty: int) -> bool:
+	if not visible or qty <= 0 or item_id.is_empty() or not is_instance_valid(_chem_bench):
+		return false
+
+	var slot_id := _get_drop_slot_id(global_mouse_position)
+	if slot_id.is_empty():
+		return false
+
+	var existing_item := StringName(_chem_bench.get_input(slot_id).get(&"item_id", &""))
+	if not existing_item.is_empty() and existing_item != item_id:
+		return false
+
+	if slot_id == &"catalyst":
+		return bool(_chem_bench.can_accept_catalyst(item_id))
+	return bool(_chem_bench.can_accept_reactant(item_id))
+
+
+func handle_inventory_drop(global_mouse_position: Vector2, item_id: StringName, qty: int) -> bool:
+	if not can_accept_inventory_drop(global_mouse_position, item_id, qty):
+		return false
+
+	var slot_id := _get_drop_slot_id(global_mouse_position)
+	if slot_id.is_empty():
+		return false
+
+	var accepted := bool(_chem_bench.set_input(slot_id, item_id, qty))
+	if accepted:
+		_refresh_from_bench()
+	return accepted
+
+
+func _refresh_from_bench() -> void:
+	if not is_instance_valid(_chem_bench):
+		return
+
+	var state: Dictionary = _chem_bench.get_ui_state()
+	_ratio_target_slot = _normalize_ratio_target_slot(StringName(state.get(&"ratio_target_slot", RATIO_TARGET_INPUT_B)))
+	ratio_slider.set_value_no_signal(float(state.get(&"ratio_percent", 50.0)))
+	temperature_slider.set_value_no_signal(float(state.get(&"temperature_c", 90.0)))
+	_update_ratio_target_button()
+	_update_ratio_label(ratio_slider.value)
+	_update_temperature_label(temperature_slider.value)
+
+	for slot_id: StringName in [&"input_a", &"input_b", &"catalyst"]:
+		var slot_state: Dictionary = state.get(slot_id, {})
+		_apply_slot_state(slot_id, slot_state)
+
+	_update_preview()
+
+
+func _apply_slot_state(slot_id: StringName, slot_state: Dictionary) -> void:
+	var refs: Dictionary = _slot_refs.get(slot_id, {})
+	if refs.is_empty():
+		return
+	var item_id := StringName(slot_state.get(&"item_id", &""))
+	var quantity := int(slot_state.get(&"quantity", 0))
+	var label: Label = refs.get("label")
+	var visual: Panel = refs.get("visual")
+	if item_id.is_empty() or quantity <= 0:
+		label.text = SLOT_EMPTY_TEXT.get(slot_id, "Empty")
+		_apply_slot_panel_style(visual, SLOT_PANEL_COLOR)
+		return
+
+	label.text = "%s x%d" % [_get_item_name(item_id), quantity]
+	_apply_slot_panel_style(visual, SLOT_FILLED_COLOR)
+
+
+func _update_preview() -> void:
+	if not is_instance_valid(_chem_bench):
+		return
+
+	var result: Dictionary = _chem_bench.evaluate_current_reaction()
+	var output_id := StringName(str(result.get("output_id", "")))
+	var notes := str(result.get("notes", ""))
+	var preview_label := str(result.get("preview_label", ""))
+	var requires_stabilization := bool(result.get("requires_stabilization", false))
+	var failure_reason := StringName(str(result.get("failure_reason", "")))
+
+	if not output_id.is_empty():
+		var preview_name := "%s" % _get_item_name(output_id)
+		if requires_stabilization:
+			preview_name = "%s [Stabilize]" % preview_name
+		output_name_label.text = preview_name
+		_apply_slot_panel_style(output_visual, SLOT_OUTPUT_READY_COLOR)
+	elif not failure_reason.is_empty():
+		output_name_label.text = preview_label if not preview_label.is_empty() else _format_failure_label(failure_reason)
+		_apply_slot_panel_style(output_visual, SLOT_OUTPUT_DANGER_COLOR)
+	else:
+		output_name_label.text = preview_label if not preview_label.is_empty() else SLOT_EMPTY_TEXT[&"output"]
+		_apply_slot_panel_style(output_visual, SLOT_OUTPUT_UNKNOWN_COLOR)
+
+	recipe_label.text = "Predicted Result"
+	summary_label.text = notes if not notes.is_empty() else "Load two reactants and tune the bench state."
+	action_hint_label.text = _build_action_hint(result)
+	react_button.text = "Stabilize" if requires_stabilization else "React"
+	react_button.disabled = _stabilization_active
+	footer_label.text = _build_footer_copy(result)
+
+
+func _build_action_hint(result: Dictionary) -> String:
+	var failure_reason := StringName(str(result.get("failure_reason", "")))
+	if not failure_reason.is_empty():
+		return "Warning: %s" % _format_failure_label(failure_reason)
+	if bool(result.get("requires_stabilization", false)):
+		return "Buffered but unstable. React, then hold the stabilization window."
+	var output_id := StringName(str(result.get("output_id", "")))
+	if not output_id.is_empty():
+		return "Window found. Execute now to lock in the reaction."
+	return "Tune ratio, temperature, and catalyst until the bench predicts a result."
+
+
+func _build_footer_copy(result: Dictionary) -> String:
+	if StringName(str(result.get("output_id", ""))) == &"sulfuric_bolt":
+		return "Limestone buffers sulfur chemistry. Without it, this mix vents toxic gas."
+	if StringName(str(result.get("output_id", ""))) == &"rust_bolt":
+		return "Controlled oxidation favors warm, wet iron without boiling off the water."
+	if StringName(str(result.get("output_id", ""))) == &"corrosive_slurry":
+		return "Sulfur-water slurry only holds if limestone keeps the mix from turning volatile."
+	return "ChemBench outcomes depend on inputs, selected ratio target, setpoint temperature, and catalyst choice."
+
+
+func _on_ratio_target_button_pressed() -> void:
+	_ratio_target_slot = RATIO_TARGET_INPUT_A if _ratio_target_slot == RATIO_TARGET_INPUT_B else RATIO_TARGET_INPUT_B
+	_update_ratio_target_button()
+	_update_ratio_label(ratio_slider.value)
+	if is_instance_valid(_chem_bench):
+		_chem_bench.set_ratio_target_slot(_ratio_target_slot)
+	_update_preview()
+
+
 func _on_ratio_slider_changed(value: float) -> void:
 	_update_ratio_label(value)
+	if is_instance_valid(_chem_bench):
+		_chem_bench.set_ratio_percent(value)
+	_update_preview()
+
+
+func _on_temperature_slider_changed(value: float) -> void:
+	_update_temperature_label(value)
+	if is_instance_valid(_chem_bench):
+		_chem_bench.set_temperature(value)
+	_update_preview()
 
 
 func _on_react_button_pressed() -> void:
-	if _stabilization_active:
-		return
-	if not _can_craft_active_recipe():
-		react_button.text = _get_missing_materials_text()
+	if _stabilization_active or not is_instance_valid(_chem_bench):
 		return
 
-	var output_item := _build_output_item()
-	var output_quantity := int(_active_recipe.get(&"output", {}).get(&"qty", 0))
-	if output_item.is_empty() or output_quantity <= 0:
-		react_button.text = "Invalid Recipe"
-		return
-	if not InventoryManager.can_add_item(output_item, output_quantity):
-		react_button.text = "Inventory Full"
+	var result: Dictionary = _chem_bench.evaluate_current_reaction()
+	var output_id := StringName(str(result.get("output_id", "")))
+	var failure_reason := StringName(str(result.get("failure_reason", "")))
+	if output_id.is_empty() and failure_reason.is_empty():
+		react_button.text = "No Reaction"
 		return
 
-	if bool(_active_recipe.get(&"requires_stabilization", false)):
-		_start_stabilization(output_item, output_quantity)
+	if bool(result.get("requires_stabilization", false)):
+		_start_stabilization(result)
 		return
 
-	if not InventoryManager.add_item(output_item, output_quantity):
-		react_button.text = "Inventory Full"
+	if not failure_reason.is_empty():
+		_apply_failure_result(result, failure_reason)
 		return
 
-	_complete_reaction_success(output_item, output_quantity)
+	_apply_success_result(result)
 
 
-func _complete_reaction_success(output_item: Dictionary, output_quantity: int) -> void:
-	_clear_inputs()
-	output_name_label.text = "%s x%d" % [str(output_item.get(&"display_name", "Output")), output_quantity]
-	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_READY_COLOR)
-	react_button.text = "%s Crafted" % str(output_item.get(&"display_name", "Item"))
-
-
-func _start_stabilization(output_item: Dictionary, output_quantity: int) -> void:
+func _start_stabilization(result: Dictionary) -> void:
 	_ensure_stabilization_overlay()
 	if _stabilization_overlay == null:
 		react_button.text = "Stabilizer Missing"
 		return
-	_pending_output_item = output_item.duplicate(true)
-	_pending_output_quantity = output_quantity
+	_pending_result = result.duplicate(true)
 	_stabilization_active = true
 	react_button.disabled = true
 	close_button.disabled = true
+	ratio_target_button.disabled = true
 	ratio_slider.editable = false
+	temperature_slider.editable = false
 	action_hint_label.text = "Stabilization in progress. Player controls are locked."
-	var recipe_name := str(_active_recipe.get(&"display_name", "Reaction"))
 	if _stabilization_overlay.has_method("start"):
-		_stabilization_overlay.call("start", recipe_name)
+		_stabilization_overlay.call("start", _get_item_name(StringName(str(result.get("output_id", "")))))
+
+
+func _on_stabilization_succeeded() -> void:
+	var result := _pending_result.duplicate(true)
+	_finish_stabilization_state()
+	if result.is_empty():
+		react_button.text = "Invalid Result"
+		return
+	_apply_success_result(result)
+
+
+func _on_stabilization_failed(reason: StringName) -> void:
+	var result := _pending_result.duplicate(true)
+	var inputs_log := _build_inputs_log()
+	var catalyst_id := _get_catalyst_id()
+	_finish_stabilization_state()
+	if result.is_empty():
+		return
+	result[&"failure_reason"] = reason
+	if _chem_bench != null and _chem_bench.has_method("trigger_stabilization_failure"):
+		_chem_bench.trigger_stabilization_failure(reason)
+	_consume_result_inputs(result, true)
+	_log_chem_bench_result(result, false, reason, inputs_log, catalyst_id)
+	output_name_label.text = _format_failure_label(reason)
+	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_DANGER_COLOR)
+	react_button.text = "Reaction Failed"
+	action_hint_label.text = _format_failure_label(reason)
+	_refresh_from_bench()
 
 
 func _finish_stabilization_state() -> void:
 	_stabilization_active = false
 	react_button.disabled = false
 	close_button.disabled = false
+	ratio_target_button.disabled = false
 	ratio_slider.editable = true
-	_pending_output_item = {}
-	_pending_output_quantity = 0
-	_refresh_recipe_copy()
+	temperature_slider.editable = true
+	_pending_result = {}
 
 
-func _on_stabilization_succeeded() -> void:
-	var output_item := _pending_output_item.duplicate(true)
-	var output_quantity := _pending_output_quantity
-	_finish_stabilization_state()
+func _apply_success_result(result: Dictionary) -> void:
+	var output_id := StringName(str(result.get("output_id", "")))
+	var output_quantity := int(result.get(&"output_qty", 1))
+	var output_item := _build_output_item(output_id)
+	var inputs_log := _build_inputs_log()
+	var catalyst_id := _get_catalyst_id()
 	if output_item.is_empty() or output_quantity <= 0:
-		react_button.text = "Invalid Recipe"
+		react_button.text = "Invalid Output"
 		return
+	if not InventoryManager.can_add_item(output_item, output_quantity):
+		react_button.text = "Inventory Full"
+		return
+
+	_consume_result_inputs(result, false)
 	if not InventoryManager.add_item(output_item, output_quantity):
 		react_button.text = "Inventory Full"
 		return
-	_complete_reaction_success(output_item, output_quantity)
+
+	_log_chem_bench_result(result, true, &"", inputs_log, catalyst_id)
+	output_name_label.text = "%s x%d" % [_get_item_name(output_id), output_quantity]
+	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_READY_COLOR)
+	react_button.text = "%s Crafted" % _get_item_name(output_id)
+	_refresh_from_bench()
 
 
-func _on_stabilization_failed(reason: StringName) -> void:
-	_finish_stabilization_state()
+func _apply_failure_result(result: Dictionary, failure_reason: StringName) -> void:
+	var inputs_log := _build_inputs_log()
+	var catalyst_id := _get_catalyst_id()
+	_consume_result_inputs(result, true)
 	if _chem_bench != null and _chem_bench.has_method("trigger_stabilization_failure"):
-		_chem_bench.trigger_stabilization_failure(reason)
-	_clear_inputs()
-	output_name_label.text = _format_stabilization_failure(reason)
-	_apply_slot_panel_style(output_visual, Color(0.42, 0.13, 0.10, 1.0))
+		_chem_bench.trigger_stabilization_failure(failure_reason)
+	_log_chem_bench_result(result, false, failure_reason, inputs_log, catalyst_id)
+	output_name_label.text = _format_failure_label(failure_reason)
+	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_DANGER_COLOR)
 	react_button.text = "Reaction Failed"
-	action_hint_label.text = _format_stabilization_failure(reason)
+	action_hint_label.text = _format_failure_label(failure_reason)
+	_refresh_from_bench()
+
+
+func _consume_result_inputs(result: Dictionary, include_failure_consumption: bool) -> void:
+	if not is_instance_valid(_chem_bench):
+		return
+	for consume_data: Dictionary in result.get(&"consumed_inputs", []):
+		var slot_id := StringName(consume_data.get(&"slot_id", &""))
+		var quantity := int(consume_data.get(&"quantity", 0))
+		if quantity > 0:
+			_chem_bench.consume_input(slot_id, quantity)
+	if include_failure_consumption or bool(result.get(&"consume_catalyst_on_success", false)):
+		var catalyst_quantity := int(result.get(&"consumed_catalyst", 0))
+		if catalyst_quantity > 0:
+			_chem_bench.consume_input(&"catalyst", catalyst_quantity)
+
+
+func _log_chem_bench_result(result: Dictionary, discover_output: bool, failure_reason: StringName = &"", inputs_log: Array = [], catalyst_id: StringName = &"") -> void:
+	if not DiscoveryLog.has_method("log_chemistry") or not is_instance_valid(_chem_bench):
+		return
+
+	var output_id := StringName(str(result.get("output_id", "")))
+	var output_quantity := int(result.get(&"output_qty", 1))
+	var output_name := ""
+	if discover_output and not output_id.is_empty():
+		output_name = "%s x%d" % [_get_item_name(output_id), output_quantity]
+	var ratio_percent := int(round(_chem_bench.get_ratio_percent()))
+	var ratio_target_slot := _normalize_ratio_target_slot(StringName(_chem_bench.get_ratio_target_slot()))
+	var ratio_target_label := "Input A" if ratio_target_slot == RATIO_TARGET_INPUT_A else "Input B"
+	var temperature_c := int(round(_chem_bench.get_temperature()))
+	var catalyst_name := _get_item_name(catalyst_id) if not catalyst_id.is_empty() else "none"
+	var conditions_summary := "Bench run at %d°C with %s ratio %d%% and catalyst %s. %s" % [
+		temperature_c,
+		ratio_target_label,
+		ratio_percent,
+		catalyst_name,
+		str(result.get("notes", "")),
+	]
+	if not failure_reason.is_empty():
+		conditions_summary = "%s Failure: %s." % [conditions_summary, _format_failure_label(failure_reason)]
+
+	var result_for_log := result.duplicate(true)
+	result_for_log[&"notes"] = conditions_summary
+	DiscoveryLog.log_chemistry(
+		result_for_log,
+		inputs_log,
+		conditions_summary,
+		output_name,
+		discover_output
+	)
+
+
+func _build_inputs_log() -> Array:
+	var inputs_log: Array = []
+	if not is_instance_valid(_chem_bench):
+		return inputs_log
+	for slot_id: StringName in [&"input_a", &"input_b", &"catalyst"]:
+		var slot_state: Dictionary = _chem_bench.get_input(slot_id)
+		var item_id := StringName(slot_state.get(&"item_id", &""))
+		var quantity := int(slot_state.get(&"quantity", 0))
+		if item_id.is_empty() or quantity <= 0:
+			continue
+		inputs_log.append({
+			"item_id": item_id,
+			"quantity": quantity,
+		})
+	return inputs_log
+
+
+func _get_catalyst_id() -> StringName:
+	if not is_instance_valid(_chem_bench):
+		return &""
+	return StringName(_chem_bench.get_input(&"catalyst").get(&"item_id", &""))
+
+
+func _build_output_item(output_id: StringName) -> Dictionary:
+	if output_id.is_empty():
+		return {}
+
+	var item_data := {
+		&"id": output_id,
+		&"display_name": _get_item_name(output_id),
+		&"category": InventoryManager.InventoryItemCategory.CONSUMABLE,
+	}
+	if output_id == &"rust_bolt":
+		item_data[&"weapon_type"] = "ranged"
+		item_data[&"projectile_id"] = "rust_bolt"
+		item_data[&"damage_type"] = "oxidation"
+		item_data[&"base_damage"] = 15.0
+	elif output_id == &"sulfuric_bolt":
+		item_data[&"weapon_type"] = "ranged"
+		item_data[&"projectile_id"] = "sulfuric_bolt"
+		item_data[&"damage_type"] = "chemical"
+		item_data[&"base_damage"] = 22.0
+	elif output_id == &"corrosive_slurry":
+		item_data[&"mixture_type"] = "corrosive_slurry"
+	return item_data
+
+
+func _format_failure_label(reason: StringName) -> String:
+	match reason:
+		&"heat_runaway":
+			return "Failure: heat runaway"
+		&"pressure_spike":
+			return "Failure: pressure spike"
+		&"timer_expiry":
+			return "Failure: toxic release"
+		_:
+			return "Failure: unstable reaction"
 
 
 func _ensure_stabilization_overlay() -> void:
@@ -192,57 +500,34 @@ func _ensure_stabilization_overlay() -> void:
 		_stabilization_overlay.stabilization_failed.connect(_on_stabilization_failed)
 
 
-func _format_stabilization_failure(reason: StringName) -> String:
-	match reason:
-		&"heat_runaway":
-			return "Failure: heat runaway"
-		&"pressure_spike":
-			return "Failure: pressure spike"
-		&"timer_expiry":
-			return "Failure: toxic release"
-		_:
-			return "Failure: unstable reaction"
-
-
 func _on_close_button_pressed() -> void:
 	if _stabilization_active:
 		return
 	emit_signal("ui_closed")
 
 
-func can_accept_inventory_drop(global_mouse_position: Vector2, item_id: StringName, qty: int) -> bool:
-	if not visible or qty <= 0 or item_id.is_empty():
-		return false
+func _layout_panel() -> void:
+	if panel == null:
+		return
 
-	var slot_id := _get_drop_slot_id(global_mouse_position)
-	if slot_id.is_empty():
-		return false
+	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	panel.pivot_offset = Vector2.ZERO
+	panel.size = panel.custom_minimum_size
+	panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
 
-	return _can_accept_drop_to_slot(slot_id, item_id, qty)
-
-
-func handle_inventory_drop(global_mouse_position: Vector2, item_id: StringName, qty: int) -> bool:
-	if not can_accept_inventory_drop(global_mouse_position, item_id, qty):
-		return false
-
-	var slot_id := _get_drop_slot_id(global_mouse_position)
-	if slot_id.is_empty():
-		return false
-
-	var existing_qty := int(_slot_state[slot_id].get(&"quantity", 0)) if _slot_state[slot_id].get(&"item_id", &"") == item_id or _slot_state[slot_id].get(&"item_id", &"").is_empty() else 0
-	_slot_state[slot_id] = {
-		&"item_id": item_id,
-		&"quantity": existing_qty + qty,
-	}
-	_sync_active_recipe()
-	_refresh_recipe_copy()
-	_refresh_slot_visuals()
-	react_button.text = _get_action_verb()
-	return true
+	var viewport_size := get_viewport().get_visible_rect().size
+	var scaled_size := panel.size * PANEL_VIEW_SCALE
+	panel.position = Vector2(
+		PANEL_MARGIN.x,
+		maxf(PANEL_MARGIN.y, (viewport_size.y - scaled_size.y) * 0.5)
+	)
 
 
-func _update_ratio_label(value: float) -> void:
-	ratio_value_label.text = "Bench Ratio: %.0f / %.0f" % [value, ratio_slider.max_value]
+func _finalize_open_ui_layout() -> void:
+	if not _is_open or panel == null:
+		return
+	_layout_panel()
+	panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
 
 
 func _apply_theme() -> void:
@@ -267,6 +552,7 @@ func _apply_theme() -> void:
 	summary_label.add_theme_color_override("font_color", Color(0.70, 0.72, 0.68, 1.0))
 	recipe_label.add_theme_color_override("font_color", Color(0.82, 0.66, 0.34, 1.0))
 	ratio_value_label.add_theme_color_override("font_color", Color(0.76, 0.81, 0.76, 1.0))
+	temperature_value_label.add_theme_color_override("font_color", Color(0.83, 0.77, 0.69, 1.0))
 
 	var react_style := StyleBoxFlat.new()
 	react_style.bg_color = Color(0.34, 0.22, 0.12, 1.0)
@@ -284,65 +570,33 @@ func _apply_theme() -> void:
 	react_button.add_theme_stylebox_override("pressed", react_style)
 
 
+func _update_ratio_label(value: float) -> void:
+	var target_label := "Input A" if _ratio_target_slot == RATIO_TARGET_INPUT_A else "Input B"
+	ratio_value_label.text = "%s Ratio: %d%%" % [target_label, int(round(value))]
+
+
+func _update_ratio_target_button() -> void:
+	ratio_target_button.text = "Target: %s" % ("Input A" if _ratio_target_slot == RATIO_TARGET_INPUT_A else "Input B")
+
+
+func _update_temperature_label(value: float) -> void:
+	var clamped := clampf(value, TEMPERATURE_MIN, TEMPERATURE_MAX)
+	temperature_value_label.text = "Setpoint: %d°C" % int(round(clamped))
+
+
+func _normalize_ratio_target_slot(slot_id: StringName) -> StringName:
+	if slot_id == RATIO_TARGET_INPUT_A:
+		return RATIO_TARGET_INPUT_A
+	return RATIO_TARGET_INPUT_B
+
+
 func _get_drop_slot_id(global_mouse_position: Vector2) -> StringName:
-	for slot_id: StringName in [&"input_a", &"input_b"]:
-		var slot_visual := _get_slot_visual(slot_id)
-		if slot_visual == null:
-			continue
-		if slot_visual.get_global_rect().has_point(global_mouse_position):
+	for slot_id: StringName in [&"input_a", &"input_b", &"catalyst"]:
+		var refs: Dictionary = _slot_refs.get(slot_id, {})
+		var visual: Panel = refs.get("visual")
+		if visual != null and visual.get_global_rect().has_point(global_mouse_position):
 			return slot_id
 	return &""
-
-
-func _can_accept_drop_to_slot(slot_id: StringName, item_id: StringName, qty: int) -> bool:
-	if qty <= 0 or item_id.is_empty():
-		return false
-
-	var existing: Dictionary = _slot_state.get(slot_id, {})
-	var current_item_id: StringName = existing.get(&"item_id", &"")
-	if not current_item_id.is_empty() and current_item_id != item_id:
-		return false
-
-	var test_state := _slot_state.duplicate(true)
-	var existing_qty := int(existing.get(&"quantity", 0))
-	test_state[slot_id] = {
-		&"item_id": item_id,
-		&"quantity": existing_qty + qty,
-	}
-	return not _get_matching_recipes(test_state, false).is_empty()
-
-
-func _can_craft_active_recipe() -> bool:
-	return not _active_recipe.is_empty() and _recipe_matches_state(_active_recipe, _slot_state, true)
-
-
-func _clear_inputs() -> void:
-	_slot_state[&"input_a"] = {&"item_id": &"", &"quantity": 0}
-	_slot_state[&"input_b"] = {&"item_id": &"", &"quantity": 0}
-	_sync_active_recipe()
-	_refresh_recipe_copy()
-	_refresh_slot_visuals()
-	react_button.text = _get_action_verb()
-
-
-func _refresh_slot_visuals() -> void:
-	_apply_slot_state(&"input_a", input_a_name_label, input_a_visual)
-	_apply_slot_state(&"input_b", input_b_name_label, input_b_visual)
-	if not _can_craft_active_recipe():
-		output_name_label.text = _get_output_placeholder_text()
-		_apply_slot_panel_style(output_visual, SLOT_PANEL_COLOR)
-
-
-func _apply_slot_state(slot_id: StringName, label: Label, visual: Panel) -> void:
-	var slot_state: Dictionary = _slot_state.get(slot_id, {})
-	var item_id: StringName = slot_state.get(&"item_id", &"")
-	var quantity := int(slot_state.get(&"quantity", 0))
-	if item_id.is_empty() or quantity <= 0:
-		label.text = _get_input_placeholder_text(slot_id)
-		_apply_slot_panel_style(visual, SLOT_PANEL_COLOR)
-		return
-	label.text = "%s x%d" % [_get_item_name(item_id), quantity]
-	_apply_slot_panel_style(visual, SLOT_FILLED_COLOR)
 
 
 func _apply_slot_panel_style(panel_node: Panel, bg_color: Color) -> void:
@@ -360,194 +614,10 @@ func _apply_slot_panel_style(panel_node: Panel, bg_color: Color) -> void:
 	panel_node.add_theme_stylebox_override("panel", style)
 
 
-func _get_slot_visual(slot_id: StringName) -> Panel:
-	match slot_id:
-		&"input_a":
-			return input_a_visual
-		&"input_b":
-			return input_b_visual
-	return null
-
-
 func _get_item_name(item_id: StringName) -> String:
+	if item_id.is_empty():
+		return "Unknown"
 	var element_data := ElementDatabase.get_element(item_id)
 	if not element_data.is_empty():
-		return str(element_data.get(&"display_name", item_id))
+		return str(element_data.get(&"display_name", String(item_id)))
 	return String(item_id).replace("_", " ").capitalize()
-
-
-func _get_recipe_input_for_slot(slot_id: StringName) -> Dictionary:
-	var inputs: Array = _active_recipe.get(&"inputs", [])
-	var input_index := 0 if slot_id == &"input_a" else 1
-	if input_index < 0 or input_index >= inputs.size():
-		return {}
-	return inputs[input_index]
-
-
-func _get_input_placeholder_text(slot_id: StringName) -> String:
-	var input_data := _get_recipe_input_for_slot(slot_id)
-	if input_data.is_empty():
-		return SLOT_EMPTY_TEXT[slot_id]
-	return _get_item_name(input_data.get(&"element_id", &""))
-
-
-func _get_output_placeholder_text() -> String:
-	var output: Dictionary = _active_recipe.get(&"output", {})
-	var output_id: StringName = output.get(&"item_id", &"")
-	if output_id.is_empty():
-		return SLOT_EMPTY_TEXT[&"output"]
-	return _get_item_name(output_id)
-
-
-func _get_missing_materials_text() -> String:
-	var parts: Array[String] = []
-	for input_data: Dictionary in _active_recipe.get(&"inputs", []):
-		parts.append("%d %s" % [
-			int(input_data.get(&"qty", 0)),
-			_get_item_name(input_data.get(&"element_id", &"")),
-		])
-	return "Need %s" % " + ".join(parts)
-
-
-func _build_output_item() -> Dictionary:
-	var output: Dictionary = _active_recipe.get(&"output", {})
-	var output_id: StringName = output.get(&"item_id", &"")
-	if output_id.is_empty():
-		return {}
-
-	var category := InventoryManager.InventoryItemCategory.CRAFTED
-	if output_id == &"distillation_kit":
-		category = InventoryManager.InventoryItemCategory.TOOL
-	if _active_recipe.get(&"durability") == null:
-		category = InventoryManager.InventoryItemCategory.CONSUMABLE
-
-	var item_data := {
-		&"id": output_id,
-		&"display_name": _get_item_name(output_id),
-		&"category": category,
-	}
-	var durability = _active_recipe.get(&"durability")
-	if durability != null:
-		var normalized_durability := clampf(float(durability), 0.0, 1.0)
-		item_data[&"durability"] = normalized_durability
-		item_data[&"max_durability"] = normalized_durability
-	if output_id == &"rust_bolt":
-		item_data[&"weapon_type"] = "ranged"
-		item_data[&"projectile_id"] = "rust_bolt"
-		item_data[&"damage_type"] = "oxidation"
-		item_data[&"base_damage"] = 15.0
-	elif output_id == &"sulfuric_bolt":
-		item_data[&"weapon_type"] = "ranged"
-		item_data[&"projectile_id"] = "sulfuric_bolt"
-		item_data[&"damage_type"] = "chemical"
-		item_data[&"base_damage"] = 22.0
-		item_data[&"requires_stabilization"] = bool(_active_recipe.get(&"requires_stabilization", false))
-	elif output_id == &"distillation_kit":
-		item_data[&"tool_type"] = "distillation_kit"
-	return item_data
-
-
-func _get_action_verb() -> String:
-	var reaction_type := String(_active_recipe.get(&"reaction_type", "")).to_lower()
-	match reaction_type:
-		"forging":
-			return "Forge"
-		_:
-			return "React"
-
-
-func _sync_active_recipe() -> void:
-	var exact_matches := _get_matching_recipes(_slot_state, true)
-	if exact_matches.size() == 1:
-		_active_recipe = exact_matches[0]
-		return
-
-	var partial_matches := _get_matching_recipes(_slot_state, false)
-	if partial_matches.size() == 1:
-		_active_recipe = partial_matches[0]
-		return
-
-	_active_recipe = {}
-
-
-func _refresh_recipe_copy() -> void:
-	if _active_recipe.is_empty():
-		recipe_label.text = "ACTIVE RECIPE: Awaiting Valid Inputs"
-		summary_label.text = "Load a matching material pair to reveal the bench recipe."
-		action_hint_label.text = _get_supported_recipe_hint()
-		react_button.text = "React"
-		return
-
-	var recipe_name := str(_active_recipe.get(&"display_name", "Unknown Recipe"))
-	recipe_label.text = "ACTIVE RECIPE: %s" % recipe_name
-	summary_label.text = str(_active_recipe.get(&"summary", ""))
-	action_hint_label.text = (
-		"Load both required materials, stabilize the reaction, then %s." % _get_action_verb().to_lower()
-		if bool(_active_recipe.get(&"requires_stabilization", false)) else
-		"Load both required materials, then %s." % _get_action_verb().to_lower()
-	)
-	react_button.text = _get_action_verb()
-
-
-func _get_matching_recipes(slot_state: Dictionary, require_exact_quantities: bool) -> Array[Dictionary]:
-	var matches: Array[Dictionary] = []
-	for recipe: Dictionary in _bench_recipes:
-		if _recipe_matches_state(recipe, slot_state, require_exact_quantities):
-			matches.append(recipe)
-	return matches
-
-
-func _recipe_matches_state(recipe: Dictionary, slot_state: Dictionary, require_exact_quantities: bool) -> bool:
-	var inputs: Array = recipe.get(&"inputs", [])
-	if inputs.size() < 2:
-		return false
-
-	var a_input: Dictionary = slot_state.get(&"input_a", {})
-	var b_input: Dictionary = slot_state.get(&"input_b", {})
-	var a_id: StringName = a_input.get(&"item_id", &"")
-	var a_qty := int(a_input.get(&"quantity", 0))
-	var b_id: StringName = b_input.get(&"item_id", &"")
-	var b_qty := int(b_input.get(&"quantity", 0))
-
-	var exp0_id: StringName = inputs[0].get(&"element_id", &"")
-	var exp0_qty := int(inputs[0].get(&"qty", 0))
-	var exp1_id: StringName = inputs[1].get(&"element_id", &"")
-	var exp1_qty := int(inputs[1].get(&"qty", 0))
-
-	var match_straight := _check_pair(a_id, a_qty, b_id, b_qty, exp0_id, exp0_qty, exp1_id, exp1_qty, require_exact_quantities)
-	var match_swapped := _check_pair(a_id, a_qty, b_id, b_qty, exp1_id, exp1_qty, exp0_id, exp0_qty, require_exact_quantities)
-	
-	return match_straight or match_swapped
-
-
-func _check_pair(act1_id: StringName, act1_qty: int, act2_id: StringName, act2_qty: int, exp1_id: StringName, exp1_qty: int, exp2_id: StringName, exp2_qty: int, req_exact: bool) -> bool:
-	if not _check_single(act1_id, act1_qty, exp1_id, exp1_qty, req_exact):
-		return false
-	if not _check_single(act2_id, act2_qty, exp2_id, exp2_qty, req_exact):
-		return false
-	return true
-
-
-func _check_single(act_id: StringName, act_qty: int, exp_id: StringName, exp_qty: int, req_exact: bool) -> bool:
-	if act_id.is_empty() or act_qty <= 0:
-		return not req_exact
-	if act_id != exp_id:
-		return false
-	if req_exact:
-		return act_qty == exp_qty
-	return act_qty <= exp_qty
-
-
-func _get_supported_recipe_hint() -> String:
-	var pair_labels: Array[String] = []
-	for recipe: Dictionary in _bench_recipes:
-		var inputs: Array = recipe.get(&"inputs", [])
-		if inputs.size() < 2:
-			continue
-		pair_labels.append("%s + %s" % [
-			_get_item_name(inputs[0].get(&"element_id", &"")),
-			_get_item_name(inputs[1].get(&"element_id", &"")),
-		])
-	if pair_labels.is_empty():
-		return "Load a matching material pair."
-	return "Supported pairs: %s." % ", or ".join(pair_labels)

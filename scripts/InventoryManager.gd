@@ -9,7 +9,7 @@ signal capacity_changed(current_weight: float, max_weight: float)
 signal weight_changed(total_weight: float, carry_capacity: float)
 signal volatile_risk_changed(risk_item_ids: Array[StringName])
 
-const DEFAULT_SLOT_COUNT := 20
+const DEFAULT_SLOT_COUNT := 5
 const DEFAULT_ITEM_WEIGHT := 1.0
 const DEFAULT_ITEM_PURITY := 1.0
 const DEFAULT_ITEM_DURABILITY := 1.0
@@ -239,6 +239,9 @@ func select_slot(slot_index: int) -> void:
 	var item = get_slot_item(slot_index)
 	if not item.is_empty():
 		set_held_item(StringName(str(item.get("id", ""))), true)
+		return
+
+	set_held_item(NO_HELD_ITEM, true)
 
 
 func swap_slots(from_slot: int, to_slot: int) -> void:

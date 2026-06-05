@@ -59,10 +59,20 @@ var _hit_timer := 0.0
 var _leash_timer := 0.0
 var _max_health: int = 120
 var _health_bar_hide_timer := 0.0
+var _base_move_speed: float = 0.0
+var _base_detection_radius: float = 0.0
 
 
 func _ready() -> void:
 	_max_health = health
+	_base_move_speed = move_speed
+	_base_detection_radius = detection_radius
+	
+	if GameManager.has_signal("day_started"):
+		GameManager.day_started.connect(_on_day_started)
+	if GameManager.has_signal("night_started"):
+		GameManager.night_started.connect(_on_night_started)
+		
 	add_to_group(&"enemy")
 	spawn_position = global_position
 	target_position = global_position
@@ -80,7 +90,19 @@ func _ready() -> void:
 	_build_alert_audio_stream()
 	_setup_health_bar()
 	_set_patrol_destination(_current_patrol_index)
+	
+	if GameManager.has_method("is_night") and GameManager.is_night():
+		_on_night_started()
 
+func _on_day_started() -> void:
+	move_speed = _base_move_speed
+	detection_radius = _base_detection_radius
+	_apply_detection_radius()
+
+func _on_night_started() -> void:
+	move_speed = 80.0
+	detection_radius = _base_detection_radius * 1.5
+	_apply_detection_radius()
 
 func _physics_process(delta: float) -> void:
 	if _attack_cooldown_timer > 0.0:

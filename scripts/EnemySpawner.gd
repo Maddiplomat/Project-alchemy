@@ -1,7 +1,8 @@
 extends Node2D
 
 const IRON_GOLEM_SCENE := preload("res://scenes/IronGolem.tscn")
-const RESPAWN_SECONDS := 300.0
+const DAY_RESPAWN_SECONDS := 300.0
+const NIGHT_RESPAWN_SECONDS := 180.0
 const SPAWN_EFFECT_LIFETIME := 0.45
 
 @export var spawn_position: Array[Vector2] = []
@@ -42,7 +43,6 @@ func _ensure_respawn_timer(index: int) -> Timer:
 
 	var timer := Timer.new()
 	timer.name = "RespawnTimer%d" % index
-	timer.wait_time = RESPAWN_SECONDS
 	timer.one_shot = true
 	timer.timeout.connect(_on_respawn_timeout.bind(index))
 	add_child(timer)
@@ -53,6 +53,12 @@ func _ensure_respawn_timer(index: int) -> Timer:
 func _on_golem_died(_golem: CharacterBody2D, index: int) -> void:
 	_active_golems.erase(index)
 	var timer := _ensure_respawn_timer(index)
+	
+	var wait_time := DAY_RESPAWN_SECONDS
+	if GameManager.has_method("is_night") and GameManager.is_night():
+		wait_time = NIGHT_RESPAWN_SECONDS
+		
+	timer.wait_time = wait_time
 	timer.start()
 
 

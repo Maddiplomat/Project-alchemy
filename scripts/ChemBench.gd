@@ -1,16 +1,25 @@
 extends StaticBody2D
 
 const CHEM_BENCH_UI_SCENE := preload("res://scenes/UI/ChemBenchUI.tscn")
-const CHEM_BENCH_STATION_ID := &"chem_bench"
 const CHEMICAL_EXPLOSION_SCENE := preload("res://scenes/ChemicalExplosion.tscn")
 const SHRAPNEL_BURST_SCENE := preload("res://scenes/ShrapnelBurst.tscn")
 const TOXIC_CLOUD_SCENE := preload("res://scenes/ToxicCloud.tscn")
 const DISTILLATION_KIT_ITEM_ID := &"distillation_kit"
+const SLOT_INPUT_A := &"input_a"
+const SLOT_INPUT_B := &"input_b"
+const SLOT_CATALYST := &"catalyst"
+const RATIO_TARGET_INPUT_A := SLOT_INPUT_A
+const RATIO_TARGET_INPUT_B := SLOT_INPUT_B
+const DEFAULT_RATIO_PERCENT := 50.0
+const DEFAULT_TEMPERATURE_C := 90.0
+const MIN_TEMPERATURE_C := 20.0
+const MAX_TEMPERATURE_C := 260.0
 
 signal player_entered_range
 signal player_exited_range
 signal interaction_started
 signal interaction_ended
+signal state_changed
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var interaction_area: Area2D = $InteractionArea
@@ -22,6 +31,14 @@ var _interact_locked_until_release := false
 var _player: Node = null
 var _chem_bench_ui
 var _purpose_hint_learned := false
+var _slot_state: Dictionary[StringName, Dictionary] = {
+	SLOT_INPUT_A: {&"item_id": &"", &"quantity": 0},
+	SLOT_INPUT_B: {&"item_id": &"", &"quantity": 0},
+	SLOT_CATALYST: {&"item_id": &"", &"quantity": 0},
+}
+var _ratio_target_slot: StringName = RATIO_TARGET_INPUT_B
+var _ratio_percent := DEFAULT_RATIO_PERCENT
+var _temperature_c := DEFAULT_TEMPERATURE_C
 
 
 func _ready() -> void:
@@ -73,21 +90,124 @@ func close_ui() -> void:
 	interaction_ended.emit()
 
 
-func get_available_recipes() -> Array[Dictionary]:
-	var results: Array[Dictionary] = []
-	for recipe_id: StringName in RecipeDatabase.get_all_recipes().keys():
-		var recipe := RecipeDatabase.get_recipe(recipe_id)
-		if recipe.get(&"station", null) != CHEM_BENCH_STATION_ID:
+func get_input(slot_id: StringName) -> Dictionary:
+	if not _slot_state.has(slot_id):
+		return {}
+	return _slot_state[slot_id].duplicate(true)
+
+
+func set_input(slot_id: StringName, item_id: StringName, qty: int) -> bool:
+	if qty <= 0 or item_id.is_empty():
+		return false
+	if not _slot_state.has(slot_id):
+		return false
+	if slot_id == SLOT_CATALYST:
+		if not _can_accept_catalyst_item(item_id):
+			return false
+	elif not _can_accept_reactant_item(item_id):
+		return false
+
+	var slot_state: Dictionary = _slot_state[slot_id]
+	var current_item_id: StringName = slot_state.get(&"item_id", &"")
+	if not current_item_id.is_empty() and current_item_id != item_id:
+		return false
+
+	slot_state[&"item_id"] = item_id
+	slot_state[&"quantity"] = int(slot_state.get(&"quantity", 0)) + qty
+	_slot_state[slot_id] = slot_state
+	_emit_state_changed()
+	return true
+
+
+func consume_input(slot_id: StringName, qty: int) -> int:
+	if qty <= 0 or not _slot_state.has(slot_id):
+		return 0
+
+	var slot_state: Dictionary = _slot_state[slot_id]
+	var item_id: StringName = slot_state.get(&"item_id", &"")
+	var current_quantity := int(slot_state.get(&"quantity", 0))
+	if item_id.is_empty() or current_quantity <= 0:
+		return 0
+
+	var consumed_qty := mini(qty, current_quantity)
+	var remaining_qty := current_quantity - consumed_qty
+	if remaining_qty <= 0:
+		_slot_state[slot_id] = {&"item_id": &"", &"quantity": 0}
+	else:
+		slot_state[&"quantity"] = remaining_qty
+		_slot_state[slot_id] = slot_state
+	_emit_state_changed()
+	return consumed_qty
+
+
+func clear_input(slot_id: StringName) -> void:
+	if not _slot_state.has(slot_id):
+		return
+	if int(_slot_state[slot_id].get(&"quantity", 0)) <= 0 and StringName(_slot_state[slot_id].get(&"item_id", &"")).is_empty():
+		return
+	_slot_state[slot_id] = {&"item_id": &"", &"quantity": 0}
+	_emit_state_changed()
+
+
+func clear_all_inputs() -> void:
+	var changed := false
+	for slot_id: StringName in _slot_state.keys():
+		var item_id := StringName(_slot_state[slot_id].get(&"item_id", &""))
+		var quantity := int(_slot_state[slot_id].get(&"quantity", 0))
+		if item_id.is_empty() and quantity <= 0:
 			continue
-		_apply_recipe_metadata(recipe)
-		results.append(recipe)
-	results.sort_custom(_sort_recipe_by_unlock_order)
-	return results
+		_slot_state[slot_id] = {&"item_id": &"", &"quantity": 0}
+		changed = true
+	if changed:
+		_emit_state_changed()
 
 
-func get_active_recipe() -> Dictionary:
-	var recipes := get_available_recipes()
-	return recipes[0] if not recipes.is_empty() else {}
+func get_ratio_percent() -> float:
+	return _ratio_percent
+
+
+func get_ratio_target_slot() -> StringName:
+	return _ratio_target_slot
+
+
+func set_ratio_target_slot(slot_id: StringName) -> void:
+	var normalized_slot := _normalize_ratio_target_slot(slot_id)
+	if _ratio_target_slot == normalized_slot:
+		return
+	_ratio_target_slot = normalized_slot
+	_emit_state_changed()
+
+
+func set_ratio_percent(value: float) -> void:
+	var clamped := clampf(value, 0.0, 100.0)
+	if is_equal_approx(_ratio_percent, clamped):
+		return
+	_ratio_percent = clamped
+	_emit_state_changed()
+
+
+func get_temperature() -> float:
+	return _temperature_c
+
+
+func set_temperature(value: float) -> void:
+	var clamped := clampf(value, MIN_TEMPERATURE_C, MAX_TEMPERATURE_C)
+	if is_equal_approx(_temperature_c, clamped):
+		return
+	_temperature_c = clamped
+	_emit_state_changed()
+
+
+func evaluate_current_reaction() -> Dictionary:
+	return ChemistryEngine.evaluate_chem_bench_reaction(_build_reaction_state())
+
+
+func can_accept_reactant(item_id: StringName) -> bool:
+	return _can_accept_reactant_item(item_id)
+
+
+func can_accept_catalyst(item_id: StringName) -> bool:
+	return _can_accept_catalyst_item(item_id)
 
 
 func trigger_stabilization_failure(reason: StringName) -> void:
@@ -108,6 +228,53 @@ func trigger_stabilization_failure(reason: StringName) -> void:
 			var toxic_cloud := TOXIC_CLOUD_SCENE.instantiate() as Node2D
 			current_scene.add_child(toxic_cloud)
 			toxic_cloud.global_position = global_position
+
+
+func get_ui_state() -> Dictionary:
+	var result: Dictionary = {
+		&"ratio_target_slot": _ratio_target_slot,
+		&"ratio_percent": _ratio_percent,
+		&"temperature_c": _temperature_c,
+	}
+	for slot_id: StringName in _slot_state.keys():
+		result[slot_id] = get_input(slot_id)
+	return result
+
+
+func _build_reaction_state() -> Dictionary:
+	return {
+		&"input_a": get_input(SLOT_INPUT_A),
+		&"input_b": get_input(SLOT_INPUT_B),
+		&"catalyst": get_input(SLOT_CATALYST),
+		&"ratio_target_slot": _ratio_target_slot,
+		&"ratio_percent": _ratio_percent,
+		&"temperature_c": _temperature_c,
+	}
+
+
+func _can_accept_reactant_item(item_id: StringName) -> bool:
+	var element_data := ElementDatabase.get_element(item_id)
+	if element_data.is_empty():
+		return false
+	return ChemistryEngine.can_use_chem_bench_reactant(item_id)
+
+
+func _can_accept_catalyst_item(item_id: StringName) -> bool:
+	var element_data := ElementDatabase.get_element(item_id)
+	if element_data.is_empty():
+		return false
+	return str(element_data.get(&"category", "")) == "catalyst"
+
+
+func _normalize_ratio_target_slot(slot_id: StringName) -> StringName:
+	if slot_id == RATIO_TARGET_INPUT_A:
+		return RATIO_TARGET_INPUT_A
+	return RATIO_TARGET_INPUT_B
+
+
+func _emit_state_changed() -> void:
+	GameManager.mark_dirty()
+	state_changed.emit()
 
 
 func _start_interaction() -> void:
@@ -185,36 +352,6 @@ func _on_ui_closed() -> void:
 
 func _apply_visual_identity() -> void:
 	sprite.offset = Vector2(0.0, -4.0)
-
-
-func _apply_recipe_metadata(recipe: Dictionary) -> void:
-	var recipe_id: StringName = recipe.get(&"id", &"")
-	match recipe_id:
-		&"rust_bolt":
-			recipe[&"display_name"] = "Rust Bolt"
-			recipe[&"summary"] = "Oxidize iron with water to produce throwable rust bolts."
-		&"sulfuric_bolt":
-			recipe[&"display_name"] = "Sulfuric Bolt"
-			recipe[&"summary"] = "Combine sulfur and iron into unstable acid payload bolts. The 50/50 ratio is forgiving; stabilization is the real challenge."
-		&"distillation_kit":
-			recipe[&"display_name"] = "Distillation Kit"
-			recipe[&"summary"] = "Workbench-grade extraction kit required to safely collect Sulfur."
-
-
-func _sort_recipe_by_unlock_order(a: Dictionary, b: Dictionary) -> bool:
-	return _get_recipe_sort_order(a.get(&"id", &"")) < _get_recipe_sort_order(b.get(&"id", &""))
-
-
-func _get_recipe_sort_order(recipe_id: StringName) -> int:
-	match recipe_id:
-		&"rust_bolt":
-			return 0
-		&"sulfuric_bolt":
-			return 1
-		&"distillation_kit":
-			return 2
-		_:
-			return 100
 
 
 func _build_placeholder_texture() -> Texture2D:

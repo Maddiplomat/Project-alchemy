@@ -44,6 +44,82 @@ const DEFAULT_GHOST_SIZE := Vector2i(32, 32)
 const GHOST_VALID_COLOR := Color(0.36, 0.92, 0.48, 0.6)
 const GHOST_INVALID_COLOR := Color(0.92, 0.28, 0.24, 0.6)
 const PLACED_OBJECT_GROUP := &"placed_objects"
+const BUILD_MENU_PANEL_SIZE := Vector2(472.0, 548.0)
+const BUILD_MENU_SECTION_ORDER: Array[StringName] = [&"buildables", &"tools", &"weapons", &"smelting"]
+const BUILD_MENU_TAB_TITLES := {
+	&"buildables": "Build",
+	&"tools": "Tools",
+	&"weapons": "Weapons",
+	&"smelting": "Smelting",
+}
+const MANUAL_RECIPE_DEFINITIONS := {
+	&"iron_axe": {
+		&"display_name": "Iron Axe",
+		&"station": "Furnace Forge",
+		&"inputs": [{&"item_id": &"iron", &"qty": 2}, {&"item_id": &"wood", &"qty": 2}],
+		&"summary": "Forged harvesting axe. Cuts wood faster than hand gathering.",
+	},
+	&"steel_axe": {
+		&"display_name": "Steel Axe",
+		&"station": "Furnace Forge",
+		&"inputs": [{&"item_id": &"steel", &"qty": 2}, {&"item_id": &"wood", &"qty": 2}],
+		&"summary": "Best axe tier. Delivers one wood per chop.",
+	},
+	&"iron_pickaxe": {
+		&"display_name": "Iron Pickaxe",
+		&"station": "Furnace Forge",
+		&"inputs": [{&"item_id": &"iron", &"qty": 2}, {&"item_id": &"wood", &"qty": 2}],
+		&"summary": "Forged mining tool for stone, iron, and limestone.",
+	},
+	&"steel_pickaxe": {
+		&"display_name": "Steel Pickaxe",
+		&"station": "Furnace Forge",
+		&"inputs": [{&"item_id": &"steel", &"qty": 2}, {&"item_id": &"wood", &"qty": 2}],
+		&"summary": "Best mining tier. Delivers one unit per swing.",
+	},
+	&"steel_sword": {
+		&"display_name": "Steel Sword",
+		&"station": "Furnace Forge",
+		&"inputs": [{&"item_id": &"steel", &"qty": 1}],
+		&"summary": "Primary melee weapon. Reliable physical sharp damage.",
+	},
+	&"charcoal": {
+		&"display_name": "Charcoal",
+		&"station": "Furnace Smelt",
+		&"inputs": [{&"item_id": &"wood", &"qty": 1}],
+		&"summary": "Carbonise wood at 400-699C for furnace-grade carbon.",
+	},
+	&"slag": {
+		&"display_name": "Slag",
+		&"station": "Furnace Smelt",
+		&"inputs": [{&"item_id": &"wood", &"qty": 1}],
+		&"summary": "Overburn result. At 700C or above wood collapses into slag.",
+	},
+	&"wrought_iron": {
+		&"display_name": "Wrought Iron",
+		&"station": "Furnace Smelt",
+		&"inputs": [{&"item_id": &"iron", &"qty": 1}, {&"item_id": &"charcoal", &"qty": 1}],
+		&"summary": "Smelt at 1200-1599C with low carbon ratio under 0.5.",
+	},
+	&"steel": {
+		&"display_name": "Steel",
+		&"station": "Furnace Smelt",
+		&"inputs": [{&"item_id": &"iron", &"qty": 1}, {&"item_id": &"charcoal", &"qty": 1}],
+		&"summary": "Optimal alloy window: 1200-1599C with carbon ratio from 0.5 to 2.1.",
+	},
+	&"cast_iron": {
+		&"display_name": "Cast Iron",
+		&"station": "Furnace Smelt",
+		&"inputs": [{&"item_id": &"iron", &"qty": 1}, {&"item_id": &"charcoal", &"qty": 1}],
+		&"summary": "High-carbon result. Use 1200-1599C with ratio above 2.1 up to 4.5.",
+	},
+	&"coke_slag": {
+		&"display_name": "Coke Slag",
+		&"station": "Furnace Smelt",
+		&"inputs": [{&"item_id": &"iron", &"qty": 1}, {&"item_id": &"charcoal", &"qty": 2}],
+		&"summary": "Waste output when carbon overwhelms the iron above a 4.5 ratio.",
+	},
+}
 
 @export var selected_prefab: PackedScene
 @export var selected_buildable_id: StringName = &"wall"
@@ -54,7 +130,11 @@ var _selected_prefab_index := 0
 var _ghost: Sprite2D = null
 var _build_menu_layer: CanvasLayer = null
 var _build_menu_panel: PanelContainer = null
-var _build_menu_label: Label = null
+var _build_menu_title: Label = null
+var _build_menu_hint: Label = null
+var _build_menu_tabs: TabContainer = null
+var _build_menu_buildables_text: RichTextLabel = null
+var _build_menu_section_lists: Dictionary[StringName, VBoxContainer] = {}
 var _ghost_texture: Texture2D = null
 var _placement_shape: Shape2D = null
 var _placement_shape_transform := Transform2D.IDENTITY
@@ -68,6 +148,8 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_ensure_prefab_configuration()
 	_ensure_build_menu()
+	if has_node("/root/InventoryManager"):
+		InventoryManager.inventory_changed.connect(_refresh_build_menu)
 	_select_prefab_by_index(_selected_prefab_index)
 	_set_build_mode(false)
 
@@ -102,6 +184,8 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
 		if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
+			if _is_pointer_over_build_menu():
+				return
 			if _last_placement_valid:
 				_place_selected_prefab()
 			get_viewport().set_input_as_handled()
@@ -415,45 +499,74 @@ func _ensure_build_menu() -> void:
 	_build_menu_panel = PanelContainer.new()
 	_build_menu_panel.offset_left = 16.0
 	_build_menu_panel.offset_top = 16.0
-	_build_menu_panel.offset_right = 248.0
-	_build_menu_panel.offset_bottom = 132.0
+	_build_menu_panel.custom_minimum_size = BUILD_MENU_PANEL_SIZE
+	_build_menu_panel.offset_right = 16.0 + BUILD_MENU_PANEL_SIZE.x
+	_build_menu_panel.offset_bottom = 16.0 + BUILD_MENU_PANEL_SIZE.y
 	_build_menu_layer.add_child(_build_menu_panel)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 10)
-	margin.add_theme_constant_override("margin_top", 8)
-	margin.add_theme_constant_override("margin_right", 10)
-	margin.add_theme_constant_override("margin_bottom", 8)
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
 	_build_menu_panel.add_child(margin)
 
-	_build_menu_label = Label.new()
-	_build_menu_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	margin.add_child(_build_menu_label)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 8)
+	margin.add_child(content)
+
+	_build_menu_title = Label.new()
+	_build_menu_title.add_theme_font_size_override("font_size", 20)
+	content.add_child(_build_menu_title)
+
+	_build_menu_hint = Label.new()
+	_build_menu_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	content.add_child(_build_menu_hint)
+
+	_build_menu_tabs = TabContainer.new()
+	_build_menu_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(_build_menu_tabs)
+
+	for section_id: StringName in BUILD_MENU_SECTION_ORDER:
+		var scroll := ScrollContainer.new()
+		scroll.name = str(BUILD_MENU_TAB_TITLES.get(section_id, String(section_id).capitalize()))
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		_build_menu_tabs.add_child(scroll)
+
+		if section_id == &"buildables":
+			var text := RichTextLabel.new()
+			text.bbcode_enabled = false
+			text.fit_content = true
+			text.scroll_active = false
+			text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			text.selection_enabled = false
+			text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			scroll.add_child(text)
+			_build_menu_buildables_text = text
+		else:
+			var list := VBoxContainer.new()
+			list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			list.add_theme_constant_override("separation", 8)
+			scroll.add_child(list)
+			_build_menu_section_lists[section_id] = list
 
 
 func _refresh_build_menu() -> void:
-	if _build_menu_label == null:
+	if _build_menu_title == null or _build_menu_hint == null:
 		return
 
-	var lines: Array[String] = [
-		"Build Mode",
-		"B / Esc: Cancel",
-		"Tab: Cycle Buildable",
-	]
+	_build_menu_title.text = "Build Mode"
+	_build_menu_hint.text = "B or Esc closes. Tab cycles placeables. Recipes live here now; station lines tell you where each one is made."
 
-	if _buildable_ids.is_empty():
-		lines.append("No buildables configured")
-	else:
-		for i in range(_buildable_ids.size()):
-			var marker := "> " if i == _selected_prefab_index else "  "
-			var buildable_id := _buildable_ids[i]
-			lines.append("%s%s (%s)" % [
-				marker,
-				_get_buildable_display_name(buildable_id),
-				_format_cost(_get_buildable_cost(buildable_id)),
-			])
+	if _build_menu_buildables_text != null:
+		_build_menu_buildables_text.text = _build_buildables_text()
 
-	_build_menu_label.text = "\n".join(lines)
+	for section_id: StringName in _build_menu_section_lists.keys():
+		var section_list: VBoxContainer = _build_menu_section_lists[section_id]
+		if section_list == null:
+			continue
+		_populate_recipe_section(section_id, section_list)
 
 
 func _get_selected_buildable_prefab() -> PackedScene:
@@ -487,6 +600,296 @@ func _format_cost(cost: Dictionary) -> String:
 		parts.append("%s x%d" % [String(item_id).capitalize(), int(cost[item_id])])
 	parts.sort()
 	return ", ".join(parts)
+
+
+func _build_buildables_text() -> String:
+	var lines: Array[String] = [
+		"Placeables",
+		"",
+	]
+
+	if _buildable_ids.is_empty():
+		lines.append("No buildables configured.")
+		return "\n".join(lines)
+
+	for i in range(_buildable_ids.size()):
+		var buildable_id := _buildable_ids[i]
+		var is_selected := i == _selected_prefab_index
+		var cost := _get_buildable_cost(buildable_id)
+		lines.append("%s%s" % ["> " if is_selected else "  ", _get_buildable_display_name(buildable_id)])
+		lines.append("  Cost: %s" % _format_cost(cost))
+		lines.append("  Status: %s" % ("Ready to place" if _can_afford_cost(cost) else "Missing materials"))
+		lines.append("")
+
+	return "\n".join(lines)
+
+
+func _populate_recipe_section(section_id: StringName, section_list: VBoxContainer) -> void:
+	for child in section_list.get_children():
+		child.queue_free()
+
+	var entries := _get_recipe_browser_entries(section_id)
+	if entries.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "No entries."
+		section_list.add_child(empty_label)
+		return
+
+	for entry: Dictionary in entries:
+		section_list.add_child(_create_recipe_entry_card(entry))
+
+
+func _get_recipe_browser_entries(section_id: StringName) -> Array[Dictionary]:
+	match section_id:
+		&"tools":
+			return _get_tool_recipe_entries()
+		&"weapons":
+			return _get_weapon_recipe_entries()
+		&"smelting":
+			return _get_smelting_recipe_entries()
+		_:
+			return []
+
+
+func _get_tool_recipe_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	var distillation_recipe := _get_recipe_entry_from_database(&"distillation_kit")
+	if not distillation_recipe.is_empty():
+		entries.append(distillation_recipe)
+	for output_id: StringName in [&"iron_axe", &"steel_axe", &"iron_pickaxe", &"steel_pickaxe"]:
+		entries.append(_get_manual_recipe_entry(output_id))
+	return entries
+
+
+func _get_weapon_recipe_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for recipe_id: StringName in [&"rust_bolt", &"sulfuric_bolt"]:
+		var recipe_entry := _get_recipe_entry_from_database(recipe_id)
+		if not recipe_entry.is_empty():
+			entries.append(recipe_entry)
+	entries.append(_get_manual_recipe_entry(&"steel_sword"))
+	return entries
+
+
+func _get_smelting_recipe_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for output_id: StringName in [&"charcoal", &"slag", &"wrought_iron", &"steel", &"cast_iron", &"coke_slag"]:
+		entries.append(_get_manual_recipe_entry(output_id))
+	return entries
+
+
+func _get_recipe_entry_from_database(recipe_id: StringName) -> Dictionary:
+	var recipe := RecipeDatabase.get_recipe(recipe_id)
+	if recipe.is_empty():
+		return {}
+
+	var output: Dictionary = recipe.get(&"output", {})
+	var output_id: StringName = output.get(&"item_id", &"")
+	var station_id: StringName = &""
+	if recipe.get(&"station", null) != null:
+		station_id = StringName(recipe.get(&"station", &""))
+	var entry := {
+		&"recipe_id": recipe_id,
+		&"display_name": _get_database_recipe_display_name(recipe_id, output_id),
+		&"station_id": station_id,
+		&"station": _get_station_label(station_id),
+		&"inputs": (recipe.get(&"inputs", []) as Array).duplicate(true),
+		&"output_id": output_id,
+		&"output_qty": int(output.get(&"qty", 1)),
+		&"summary": _get_database_recipe_summary(recipe_id),
+		&"status_text": "Use station" if not station_id.is_empty() else ("Ready now" if CraftingManager.can_craft(recipe_id) else "Missing materials"),
+		&"can_execute_from_menu": station_id.is_empty(),
+	}
+	return entry
+
+
+func _get_manual_recipe_entry(output_id: StringName) -> Dictionary:
+	var recipe: Dictionary = MANUAL_RECIPE_DEFINITIONS.get(output_id, {})
+	if recipe.is_empty():
+		return {}
+
+	var inputs: Array = recipe.get(&"inputs", [])
+	return {
+		&"recipe_id": &"",
+		&"display_name": str(recipe.get(&"display_name", _format_item_name(output_id))),
+		&"station_id": StringName(str(recipe.get(&"station", ""))),
+		&"station": str(recipe.get(&"station", "")),
+		&"inputs": inputs.duplicate(true),
+		&"output_id": output_id,
+		&"output_qty": 1,
+		&"summary": str(recipe.get(&"summary", "")),
+		&"status_text": "Use station" if _has_required_inputs(inputs) else "Missing materials",
+		&"can_execute_from_menu": false,
+	}
+
+
+func _has_required_inputs(inputs: Array) -> bool:
+	for input_data in inputs:
+		if not (input_data is Dictionary):
+			return false
+		var item_id: StringName = input_data.get(&"item_id", input_data.get(&"element_id", &""))
+		var quantity := int(input_data.get(&"qty", input_data.get(&"quantity", 0)))
+		if item_id.is_empty() or quantity <= 0:
+			return false
+		if not InventoryManager.has_item(item_id, quantity):
+			return false
+	return true
+
+
+func _format_recipe_inputs(inputs: Array) -> String:
+	var parts: Array[String] = []
+	for input_data in inputs:
+		if not (input_data is Dictionary):
+			continue
+		var item_id: StringName = input_data.get(&"item_id", input_data.get(&"element_id", &""))
+		var quantity := int(input_data.get(&"qty", input_data.get(&"quantity", 0)))
+		if item_id.is_empty() or quantity <= 0:
+			continue
+		parts.append("%s x%d" % [_format_item_name(item_id), quantity])
+	return ", ".join(parts)
+
+
+func _create_recipe_entry_card(entry: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.13, 0.14, 0.16, 0.96)
+	style.border_color = Color(0.29, 0.31, 0.36, 1.0)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
+	panel.add_theme_stylebox_override("panel", style)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 6)
+	margin.add_child(content)
+
+	var title := Label.new()
+	title.text = str(entry.get(&"display_name", "Unknown"))
+	title.add_theme_font_size_override("font_size", 15)
+	content.add_child(title)
+
+	var recipe_line := Label.new()
+	recipe_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	recipe_line.text = "%s -> %s x%d" % [
+		_format_recipe_inputs(entry.get(&"inputs", [])),
+		_format_item_name(entry.get(&"output_id", &"")),
+		int(entry.get(&"output_qty", 1)),
+	]
+	content.add_child(recipe_line)
+
+	var station := str(entry.get(&"station", ""))
+	if not station.is_empty():
+		var station_label := Label.new()
+		station_label.text = "Station: %s" % station
+		content.add_child(station_label)
+
+	var summary := str(entry.get(&"summary", ""))
+	if not summary.is_empty():
+		var summary_label := Label.new()
+		summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		summary_label.text = summary
+		content.add_child(summary_label)
+
+	var footer := HBoxContainer.new()
+	footer.alignment = BoxContainer.ALIGNMENT_END
+	footer.add_theme_constant_override("separation", 10)
+	content.add_child(footer)
+
+	var status_label := Label.new()
+	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_label.text = "Status: %s" % str(entry.get(&"status_text", ""))
+	footer.add_child(status_label)
+
+	var action_button := Button.new()
+	action_button.custom_minimum_size = Vector2(116, 28)
+	footer.add_child(action_button)
+
+	var can_execute_from_menu := bool(entry.get(&"can_execute_from_menu", false))
+	var recipe_id := StringName(entry.get(&"recipe_id", &""))
+	var station_id := StringName(entry.get(&"station_id", &""))
+
+	if can_execute_from_menu and not recipe_id.is_empty():
+		action_button.text = "Craft"
+		action_button.disabled = not CraftingManager.can_craft(recipe_id)
+		action_button.pressed.connect(_on_recipe_action_pressed.bind(recipe_id))
+	else:
+		action_button.text = "Use %s" % _get_station_label(station_id) if not station_id.is_empty() else "Unavailable"
+		action_button.disabled = true
+
+	return panel
+
+
+func _on_recipe_action_pressed(recipe_id: StringName) -> void:
+	if recipe_id.is_empty():
+		return
+	if not CraftingManager.craft(recipe_id):
+		_refresh_build_menu()
+		return
+	_refresh_build_menu()
+
+
+func _format_item_name(item_id: StringName) -> String:
+	var element_data := ElementDatabase.get_element(item_id)
+	if not element_data.is_empty():
+		return str(element_data.get(&"display_name", item_id))
+	var words := String(item_id).split("_", false)
+	for i in range(words.size()):
+		words[i] = words[i].capitalize()
+	return " ".join(words)
+
+
+func _get_station_label(station_id: StringName) -> String:
+	if station_id.is_empty():
+		return ""
+	match station_id:
+		&"chem_bench":
+			return "Chem Bench"
+		&"furnace":
+			return "Furnace"
+		_:
+			return _format_item_name(station_id)
+
+
+func _get_database_recipe_display_name(recipe_id: StringName, output_id: StringName) -> String:
+	match recipe_id:
+		&"rust_bolt":
+			return "Rust Bolt"
+		&"sulfuric_bolt":
+			return "Sulfuric Bolt"
+		&"distillation_kit":
+			return "Distillation Kit"
+		_:
+			return _format_item_name(output_id)
+
+
+func _get_database_recipe_summary(recipe_id: StringName) -> String:
+	match recipe_id:
+		&"rust_bolt":
+			return "A low-tier chemistry lead. The pair matters, but the bench conditions decide what you actually get."
+		&"sulfuric_bolt":
+			return "A volatile chemistry lead. Expect multiple outcomes depending on ratio, heat, and whether the reaction stays under control."
+		&"distillation_kit":
+			return "Workbench extraction kit required for safe sulfur pickup."
+		_:
+			return ""
+
+
+func _is_pointer_over_build_menu() -> bool:
+	return is_instance_valid(_build_menu_panel) and _build_menu_panel.get_global_rect().has_point(get_viewport().get_mouse_position())
 
 
 func _can_afford_cost(cost: Dictionary) -> bool:

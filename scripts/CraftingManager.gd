@@ -9,6 +9,8 @@ func can_craft(recipe_id: StringName) -> bool:
 	var recipe := RecipeDatabase.get_recipe(recipe_id)
 	if recipe.is_empty():
 		return false
+	if not _is_inventory_recipe(recipe):
+		return false
 
 	for input_data: Dictionary in recipe.get(&"inputs", []):
 		var element_id: StringName = input_data.get(&"element_id", &"")
@@ -63,8 +65,10 @@ func _build_output_item_data(recipe: Dictionary) -> Dictionary:
 	var item_data := {
 		&"id": item_id,
 		&"display_name": _format_item_name(item_id),
-		&"category": InventoryManager.InventoryItemCategory.CRAFTED,
+		&"category": InventoryManager.InventoryItemCategory.TOOL if item_id == &"distillation_kit" else InventoryManager.InventoryItemCategory.CRAFTED,
 	}
+	if item_id == &"distillation_kit":
+		item_data[&"tool_type"] = "distillation_kit"
 	var durability = recipe.get(&"durability")
 	if durability != null:
 		var normalized_durability := clampf(float(durability), 0.0, 1.0)
@@ -78,3 +82,10 @@ func _format_item_name(item_id: StringName) -> String:
 	for i in range(words.size()):
 		words[i] = words[i].capitalize()
 	return " ".join(words)
+
+
+func _is_inventory_recipe(recipe: Dictionary) -> bool:
+	var station = recipe.get(&"station", null)
+	if station == null:
+		return true
+	return StringName(station) == &""

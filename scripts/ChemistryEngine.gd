@@ -5,6 +5,16 @@ extends Node
 
 signal reaction_evaluated(result: Dictionary)
 
+const CHEM_BENCH_REACTION_DATA_PATH := "res://data/chemistry/chem_bench_reactions.json"
+
+var _chem_bench_reaction_families: Array[Dictionary] = []
+var _chem_bench_reactant_ids: Array[StringName] = []
+
+
+func _ready() -> void:
+	_load_chem_bench_reactions()
+
+
 func evaluate_reaction(element_a, element_b, ratio_b_pct: float, temp: float) -> Dictionary:
 	var result = {
 		"output_id": null,
@@ -38,20 +48,14 @@ func evaluate_reaction(element_a, element_b, ratio_b_pct: float, temp: float) ->
 		carbon_ratio = (100.0 - ratio_b_pct) * carbon_pct_a
 
 	if is_valid_pair:
-		# Use carbon_ratio for the rest of the logic
 		var ratio := carbon_ratio
-		# TEMPERATURE OVERRIDE: Explosion
 		if temp >= 1600.0:
 			result.output_id = "explosion"
 			result.quality = 0.0
 			result.tier = "danger"
 			result.notes = "If heat > 1600°C — radius 2 tiles"
-		
-		# MINIMUM TEMPERATURE CHECK
 		elif temp < 1200.0:
 			result.notes = "Heat too low for reaction (1200°C-1600°C required)"
-		
-		# REACTION LOGIC (1200°C - 1600°C)
 		else:
 			if ratio < 0.5:
 				result.output_id = "wrought_iron"
@@ -73,9 +77,74 @@ func evaluate_reaction(element_a, element_b, ratio_b_pct: float, temp: float) ->
 				result.quality = 0.0
 				result.tier = "waste"
 				result.notes = "Useless — logs as 'Unknown compound'"
-	
+
 	reaction_evaluated.emit(result)
 	return result
+
+
+func evaluate_chem_bench_reaction(state: Dictionary) -> Dictionary:
+	_ensure_chem_bench_reactions_loaded()
+	var input_a := _normalize_bench_slot_state(state.get(&"input_a", {}))
+	var input_b := _normalize_bench_slot_state(state.get(&"input_b", {}))
+	var catalyst := _normalize_bench_slot_state(state.get(&"catalyst", {}))
+	var ratio_target_slot := _normalize_ratio_target_slot(StringName(state.get(&"ratio_target_slot", &"input_b")))
+	var ratio_percent := clampf(float(state.get(&"ratio_percent", 50.0)), 0.0, 100.0)
+	var temperature_c := clampf(float(state.get(&"temperature_c", 90.0)), 0.0, 260.0)
+
+	var base_result := _build_chem_bench_result()
+	base_result[&"temperature"] = temperature_c
+	base_result[&"ratio_percent"] = ratio_percent
+	base_result[&"ratio_target_slot"] = ratio_target_slot
+
+	if int(input_a.get(&"quantity", 0)) <= 0 or int(input_b.get(&"quantity", 0)) <= 0:
+		base_result[&"preview_label"] = "Load two reactants"
+		base_result[&"notes"] = "The bench needs two reactive materials before chemistry can begin."
+		return base_result
+
+	var input_a_id := StringName(input_a.get(&"item_id", &""))
+	var input_b_id := StringName(input_b.get(&"item_id", &""))
+	var family := _find_chem_bench_family(input_a_id, input_b_id)
+	if family.is_empty():
+		base_result[&"preview_label"] = "Unsupported pair"
+		base_result[&"notes"] = "This pair does not map to a known chem-bench reaction family."
+		return base_result
+
+	var ratio_item_id := StringName(family.get(&"ratio_item_id", &""))
+	var target_item_id := input_b_id if ratio_target_slot == &"input_b" else input_a_id
+	var effective_b_ratio := ratio_percent if target_item_id == ratio_item_id else 100.0 - ratio_percent
+	var catalyst_id := StringName(catalyst.get(&"item_id", &""))
+
+	for outcome: Dictionary in family.get(&"outcomes", []):
+		if not _outcome_matches(outcome, effective_b_ratio, temperature_c, catalyst_id):
+			continue
+		var result := _build_chem_bench_result()
+		result[&"output_id"] = StringName(outcome.get(&"output_id", &""))
+		result[&"output_qty"] = int(outcome.get(&"output_qty", 1))
+		result[&"quality"] = float(outcome.get(&"quality", 0.0))
+		result[&"tier"] = str(outcome.get(&"tier", "unknown"))
+		result[&"notes"] = str(outcome.get(&"notes", ""))
+		result[&"preview_label"] = str(outcome.get(&"preview_label", ""))
+		result[&"requires_stabilization"] = bool(outcome.get(&"requires_stabilization", false))
+		result[&"failure_reason"] = StringName(outcome.get(&"failure_reason", &""))
+		result[&"temperature"] = temperature_c
+		result[&"ratio_percent"] = ratio_percent
+		result[&"ratio_target_slot"] = ratio_target_slot
+		result[&"consumed_inputs"] = [
+			{&"slot_id": &"input_a", &"quantity": 1},
+			{&"slot_id": &"input_b", &"quantity": 1},
+		]
+		result[&"consumed_catalyst"] = int(outcome.get(&"consumed_catalyst", 0))
+		result[&"consume_catalyst_on_success"] = bool(outcome.get(&"consume_catalyst_on_success", false))
+		return result
+
+	base_result[&"preview_label"] = "No reaction"
+	base_result[&"notes"] = "The pair is valid, but the current ratio, temperature, and catalyst state fall outside any known reaction window."
+	return base_result
+
+
+func can_use_chem_bench_reactant(item_id: StringName) -> bool:
+	_ensure_chem_bench_reactions_loaded()
+	return _chem_bench_reactant_ids.has(item_id)
 
 
 func get_carbon_percentage(element_ref) -> float:
@@ -98,6 +167,135 @@ func get_fuel_value(element_ref) -> float:
 
 	var properties: Dictionary = element_data.get(&"properties", {})
 	return maxf(float(properties.get(&"fuel_value", 0.0)), 0.0)
+
+
+func _ensure_chem_bench_reactions_loaded() -> void:
+	if not _chem_bench_reaction_families.is_empty():
+		return
+	_load_chem_bench_reactions()
+
+
+func _load_chem_bench_reactions() -> void:
+	_chem_bench_reaction_families.clear()
+	_chem_bench_reactant_ids.clear()
+
+	var file := FileAccess.open(CHEM_BENCH_REACTION_DATA_PATH, FileAccess.READ)
+	if file == null:
+		push_warning("Unable to open chem bench reaction data file: %s" % CHEM_BENCH_REACTION_DATA_PATH)
+		return
+
+	var parsed = JSON.parse_string(file.get_as_text())
+	if not parsed is Array:
+		push_warning("Skipping invalid chem bench reaction data file: %s" % CHEM_BENCH_REACTION_DATA_PATH)
+		return
+
+	for raw_family in parsed:
+		if not raw_family is Dictionary:
+			continue
+		var family := _normalize_chem_bench_family(raw_family)
+		if family.is_empty():
+			continue
+		_chem_bench_reaction_families.append(family)
+		for item_id: StringName in family.get(&"pair", []):
+			if not _chem_bench_reactant_ids.has(item_id):
+				_chem_bench_reactant_ids.append(item_id)
+
+
+func _normalize_chem_bench_family(raw_family: Dictionary) -> Dictionary:
+	var raw_pair: Variant = raw_family.get(&"pair", [])
+	var raw_outcomes: Variant = raw_family.get(&"outcomes", [])
+	if not raw_pair is Array or raw_pair.size() != 2 or not raw_outcomes is Array or raw_outcomes.is_empty():
+		return {}
+
+	var pair: Array[StringName] = []
+	for item_id in raw_pair:
+		pair.append(StringName(str(item_id)))
+	pair.sort()
+	var ratio_item_id := StringName(str(raw_pair[1]))
+
+	var outcomes: Array[Dictionary] = []
+	for raw_outcome in raw_outcomes:
+		if not raw_outcome is Dictionary:
+			continue
+		outcomes.append({
+			&"ratio_min": float(raw_outcome.get(&"ratio_min", 0.0)),
+			&"ratio_max": float(raw_outcome.get(&"ratio_max", 100.0)),
+			&"temp_min": float(raw_outcome.get(&"temp_min", 0.0)),
+			&"temp_max": float(raw_outcome.get(&"temp_max", 9999.0)),
+			&"catalyst": StringName(str(raw_outcome.get(&"catalyst", "any"))),
+			&"output_id": StringName(str(raw_outcome.get(&"output_id", ""))),
+			&"output_qty": int(raw_outcome.get(&"output_qty", 1)),
+			&"quality": float(raw_outcome.get(&"quality", 0.0)),
+			&"tier": str(raw_outcome.get(&"tier", "unknown")),
+			&"notes": str(raw_outcome.get(&"notes", "")),
+			&"preview_label": str(raw_outcome.get(&"preview_label", "")),
+			&"requires_stabilization": bool(raw_outcome.get(&"requires_stabilization", false)),
+			&"failure_reason": StringName(str(raw_outcome.get(&"failure_reason", ""))),
+			&"consumed_catalyst": int(raw_outcome.get(&"consumed_catalyst", 0)),
+			&"consume_catalyst_on_success": bool(raw_outcome.get(&"consume_catalyst_on_success", false)),
+		})
+
+	return {
+		&"id": StringName(str(raw_family.get(&"id", ""))),
+		&"pair": pair,
+		&"ratio_item_id": ratio_item_id,
+		&"outcomes": outcomes,
+	}
+
+
+func _find_chem_bench_family(input_a_id: StringName, input_b_id: StringName) -> Dictionary:
+	var pair: Array[StringName] = [input_a_id, input_b_id]
+	pair.sort()
+	for family: Dictionary in _chem_bench_reaction_families:
+		if family.get(&"pair", []) == pair:
+			return family
+	return {}
+
+
+func _outcome_matches(outcome: Dictionary, effective_b_ratio: float, temperature_c: float, catalyst_id: StringName) -> bool:
+	var catalyst_mode := StringName(outcome.get(&"catalyst", &"any"))
+	if catalyst_mode == &"none":
+		if not catalyst_id.is_empty():
+			return false
+	elif catalyst_mode != &"any" and catalyst_mode != catalyst_id:
+		return false
+
+	return (
+		effective_b_ratio >= float(outcome.get(&"ratio_min", 0.0))
+		and effective_b_ratio <= float(outcome.get(&"ratio_max", 100.0))
+		and temperature_c >= float(outcome.get(&"temp_min", 0.0))
+		and temperature_c <= float(outcome.get(&"temp_max", 9999.0))
+	)
+
+
+func _normalize_bench_slot_state(slot_state: Dictionary) -> Dictionary:
+	return {
+		&"item_id": StringName(slot_state.get(&"item_id", &"")),
+		&"quantity": int(slot_state.get(&"quantity", 0)),
+	}
+
+
+func _build_chem_bench_result() -> Dictionary:
+	return {
+		&"output_id": &"",
+		&"output_qty": 0,
+		&"quality": 0.0,
+		&"tier": "unknown",
+		&"notes": "",
+		&"preview_label": "",
+		&"requires_stabilization": false,
+		&"failure_reason": &"",
+		&"ratio_target_slot": &"input_b",
+		&"consumed_inputs": [],
+		&"consumed_catalyst": 0,
+		&"consume_catalyst_on_success": false,
+	}
+
+
+func _normalize_ratio_target_slot(slot_id: StringName) -> StringName:
+	if slot_id == &"input_a":
+		return &"input_a"
+	return &"input_b"
 
 
 func _get_element_data(element_ref) -> Dictionary:

@@ -1,0 +1,18 @@
+{
+	"id": "limestone",
+	"symbol": "CaCO3",
+	"display_name": "Limestone",
+	"category": "catalyst",
+	"weight": 0.8,
+	"stress_multiplier": 1.0,
+	"extraction_tool": null,
+	"flammability": 0.0,
+	"reactivity": 0.1,
+	"properties": {
+		"toxicity": 0.0,
+		"chem_bench_buffer": 1.0
+	},
+	"carrier_risk": null,
+	"environmental_hint": "White powdery deposits on damp cave walls — chalky to the touch",
+	"biome_spawn": ["forest_cave_edge", "iron_hills"]
+}

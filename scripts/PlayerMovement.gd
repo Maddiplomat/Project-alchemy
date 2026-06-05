@@ -8,12 +8,12 @@ const STEEL_SWORD_COOLDOWN := 0.3
 const STEEL_SWORD_SWING_DURATION := 0.2
 const WORLD_DROP_DISTANCE := 18.0
 
-@export var max_speed: float = 200.0
+@export var max_speed: float = 180.0
 @export var acceleration: float = 600.0
 @export var friction: float = 1200.0
 
 const OVER_CAPACITY_SPEED_MULTIPLIER := 0.5
-const SPRINT_SPEED_MULTIPLIER := 1.5
+const SPRINT_SPEED_MULTIPLIER := 1.4
 @export var sprint_drop_chance: float = 0.002
 
 signal drop_item(slot_index: int)
@@ -35,6 +35,10 @@ var _attack_cooldown_remaining := 0.0
 var _melee_swing_active := false
 var _melee_hit_targets: Dictionary[int, bool] = {}
 
+var stamina: float = 100.0
+const STAMINA_MAX: float = 100.0
+const STAMINA_RECOVERY_RATE: float = 15.0
+const STAMINA_DRAIN_RATE: float = 25.0
 
 func _ready() -> void:
 	add_to_group("player")
@@ -61,7 +65,17 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	_sprint_multiplier = SPRINT_SPEED_MULTIPLIER if Input.is_action_pressed(&'sprint') else 1.0
+	if Input.is_action_pressed(&'sprint') and stamina > 0.0:
+		_sprint_multiplier = SPRINT_SPEED_MULTIPLIER
+		stamina = maxf(0.0, stamina - STAMINA_DRAIN_RATE * delta)
+	else:
+		_sprint_multiplier = 1.0
+		var recovery_rate = STAMINA_RECOVERY_RATE
+		if "cold_level" in GameManager:
+			var cold_ratio = clampf(float(GameManager.get("cold_level")) / 100.0, 0.0, 1.0)
+			recovery_rate *= (1.0 - cold_ratio * 0.8)
+		stamina = minf(STAMINA_MAX, stamina + recovery_rate * delta)
+
 	_handle_sprint_risk()
 	_update_terrain_speed_multiplier()
 	var input_direction := Input.get_vector(

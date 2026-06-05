@@ -5,6 +5,7 @@ extends CanvasLayer
 @onready var weight_bar: ProgressBar = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightBar
 @onready var weight_label: Label = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightLabel
 @onready var select_keybind_label: Label = $InventoryPanel/KeybindStrip/SelectKeybindLabel
+@onready var crafting_panel: Control = $InventoryPanel/PanelContent/CraftingPanel
 @onready var crafting_hint_label: Label = $InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/CraftingHint
 @onready var recipes_list: VBoxContainer = $InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/RecipesScroll/RecipesList
 @onready var tooltip_panel: Panel = $TooltipPanel
@@ -16,7 +17,7 @@ extends CanvasLayer
 @onready var crafting_pulse_player: AnimationPlayer = $InventoryPanel/PanelContent/CraftingPanel/CraftingPulsePlayer
 
 const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
-const SLOT_COUNT := 20
+const SLOT_COUNT := InventoryManager.DEFAULT_SLOT_COUNT
 const TOOLTIP_DELAY := 0.3
 const TOOLTIP_OFFSET := Vector2(18, 18)
 const CRAFTING_PULSE_ANIMATION_NAME := "crafting_pulse"
@@ -29,7 +30,7 @@ const RECIPE_ROW_BG_COLOR := Color(0.14, 0.16, 0.19, 0.9)
 const RECIPE_ROW_BORDER_COLOR := Color(0.29, 0.31, 0.36, 1.0)
 const RECIPE_DURABILITY_COLOR := Color(0.75, 0.86, 0.43, 1.0)
 const ITEM_ICON_SIZE := Vector2(34, 34)
-const SELECT_KEYBIND_BASE_TEXT := "1-9: select active item"
+const SELECT_KEYBIND_BASE_TEXT := "1-5: select active item"
 const DRAG_QUANTITY_HINT_TEXT := "Wheel or Up/Down or Q/E to adjust qty, drag outside panel to drop"
 const WORLD_DROP_DISTANCE := 22.0
 const DISTILLATION_KIT_ITEM_ID := &"distillation_kit"
@@ -82,9 +83,9 @@ func _ready():
 		CarrierRiskSystem.carrier_risk_warning.connect(_on_carrier_risk_warning)
 		CarrierRiskSystem.carrier_risk_cleared.connect(_on_carrier_risk_cleared)
 		CarrierRiskSystem.carrier_risk_ignition.connect(_on_carrier_risk_ignition)
-	_setup_crafting_pulse_animation()
+	if crafting_panel != null:
+		crafting_panel.visible = false
 	_ensure_tooltip_hint_label()
-	_build_recipe_rows()
 	refresh_grid()
 	_update_weight_display(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	_update_drag_hint_label()
@@ -124,8 +125,8 @@ func _input(event):
 				get_viewport().set_input_as_handled()
 				return
 
-	# Hotkeys 1-9 for slots 0-8
-	for i in range(1, 10):
+	# Hotkeys for visible inventory slots.
+	for i in range(1, mini(SLOT_COUNT, 9) + 1):
 		if event.is_action_pressed("slot_%d" % i):
 			InventoryManager.select_slot(i - 1)
 			return
@@ -150,10 +151,8 @@ func toggle_inventory():
 		panel.visible = true
 		target_x = vp_size.x - panel.size.x - 50
 		refresh_grid()
-		_update_crafting_highlight()
 	else:
 		_hide_tooltip()
-		_stop_highlight()
 
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -170,6 +169,9 @@ func _is_inventory_toggle_blocked() -> bool:
 	if build_system != null and build_system.has_method("is_build_mode_active"):
 		if bool(build_system.call("is_build_mode_active")):
 			return true
+	for station_ui in get_tree().get_nodes_in_group(&"station_inventory_drop_target"):
+		if station_ui != null and station_ui.has_method("is_open") and bool(station_ui.is_open()):
+			return false
 	var current_scene := get_tree().current_scene
 	if current_scene == null:
 		return false
@@ -194,9 +196,6 @@ func refresh_grid():
 		_show_tooltip_for_slot(hover_slot_index)
 	elif hover_slot_index == -1:
 		_hide_tooltip()
-
-	_refresh_recipe_states()
-	_refresh_crafting_hint()
 
 
 func _on_carrier_risk_warning(element_id: StringName, _seconds_remaining: int) -> void:
@@ -580,9 +579,21 @@ func _update_tooltip_hint(item_data: Dictionary, element_data: Dictionary, item_
 		var primary_use := str(element_data.get(&"primary_use", "")).strip_edges()
 		if not primary_use.is_empty():
 			tooltip_hint = primary_use
+			
+	if item_id == _carrier_risk_item_id and CarrierRiskSystem.has_method("get_active_risk_reason"):
+		var active_risk_reason = CarrierRiskSystem.get_active_risk_reason(item_id)
+		if not active_risk_reason.is_empty():
+			if tooltip_hint.is_empty():
+				tooltip_hint = "[DANGER] " + active_risk_reason
+			else:
+				tooltip_hint += "\n\n[DANGER] " + active_risk_reason
 
 	_tooltip_hint_label.text = tooltip_hint
 	_tooltip_hint_label.visible = not tooltip_hint.is_empty()
+	if tooltip_hint.contains("[DANGER]"):
+		_tooltip_hint_label.add_theme_color_override("font_color", Color.RED)
+	else:
+		_tooltip_hint_label.add_theme_color_override("font_color", Color(0.80, 0.84, 0.72, 1.0))
 
 
 func _ensure_tooltip_hint_label() -> void:
@@ -611,6 +622,8 @@ func _build_recipe_rows() -> void:
 		var recipe_id := StringName(recipe_id_text)
 		var recipe := RecipeDatabase.get_recipe(recipe_id)
 		if recipe.is_empty():
+			continue
+		if recipe.get(&"station", null) != null and StringName(recipe.get(&"station", &"")) != &"":
 			continue
 
 		var row := PanelContainer.new()

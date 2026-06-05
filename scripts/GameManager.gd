@@ -36,8 +36,9 @@ var playtime_seconds: int = 0
 var autosave_interval_seconds: int = 300
 
 var current_day: int = 1
-var time_of_day: float = 0.0
-var day_length_seconds: float = 900.0
+var time_of_day: float = 0.25
+var day_duration_seconds: float = 450.0
+var night_duration_seconds: float = 300.0
 var night_start_time: float = 0.75
 var day_start_time: float = 0.25
 
@@ -45,16 +46,96 @@ var max_player_health: int = 100
 var player_health: int = 100
 var player_status_effects: Array[StringName] = []
 var player_health_system: Node = null
+var is_player_warmed: bool = false
+var cold_level: float = 0.0
+const COLD_BUILDUP_RATE: float = 2.0
+const COLD_DECAY_RATE: float = 5.0
+const COLD_MAX: float = 100.0
+const COLD_DAMAGE_TICK_RATE: float = 2.0
 
 var is_paused: bool = false
 var active_environmental_warnings: Array[StringName] = []
 
 var _seconds_since_autosave_request: int = 0
 var _is_night: bool = false
+var _cold_damage_timer: float = 0.0
 
+var _night_canvas_modulate: CanvasModulate = null
+var _frost_rect: TextureRect = null
 
 func _ready() -> void:
 	_is_night = _is_time_night(time_of_day)
+	_setup_night_modulate()
+	_setup_frost_overlay()
+
+func _setup_frost_overlay() -> void:
+	var canvas_layer = CanvasLayer.new()
+	canvas_layer.layer = 100
+	
+	_frost_rect = TextureRect.new()
+	_frost_rect.name = "FrostOverlay"
+	_frost_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_frost_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_frost_rect.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	
+	var gradient = Gradient.new()
+	gradient.add_point(0.0, Color(0.8, 0.9, 1.0, 0.0))
+	gradient.add_point(0.7, Color(0.8, 0.9, 1.0, 0.1))
+	gradient.add_point(1.0, Color(0.6, 0.8, 1.0, 0.6))
+	
+	var texture = GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.fill = GradientTexture2D.FILL_RADIAL
+	texture.fill_from = Vector2(0.5, 0.5)
+	texture.fill_to = Vector2(1.0, 1.0)
+	texture.width = 1280
+	texture.height = 720
+	
+	_frost_rect.texture = texture
+	canvas_layer.add_child(_frost_rect)
+	add_child(canvas_layer)
+
+func _setup_night_modulate() -> void:
+	_night_canvas_modulate = CanvasModulate.new()
+	_night_canvas_modulate.name = "NightModulate"
+	_night_canvas_modulate.color = Color(1.0, 1.0, 1.0, 1.0)
+	add_child(_night_canvas_modulate)
+	_update_night_modulate()
+
+func _update_night_modulate() -> void:
+	if _night_canvas_modulate == null:
+		return
+	if _is_night:
+		_night_canvas_modulate.color = Color(0.6, 0.6, 0.7, 1.0)
+	else:
+		_night_canvas_modulate.color = Color(1.0, 1.0, 1.0, 1.0)
+
+func is_night() -> bool:
+	return _is_night
+
+func _process(delta: float) -> void:
+	if game_state == GameState.PLAYING and not is_paused:
+		var new_time := _advance_time_of_day(delta)
+		set_time_of_day(new_time)
+		
+	_update_cold_level(delta)
+
+func _update_cold_level(delta: float) -> void:
+	if is_player_warmed or not _is_night:
+		cold_level = maxf(0.0, cold_level - COLD_DECAY_RATE * delta)
+	else:
+		cold_level = minf(COLD_MAX, cold_level + COLD_BUILDUP_RATE * delta)
+		
+	if _frost_rect != null:
+		_frost_rect.modulate.a = (cold_level / COLD_MAX) * 0.95
+		
+	if cold_level >= COLD_MAX and not is_player_warmed:
+		_cold_damage_timer += delta
+		if _cold_damage_timer >= COLD_DAMAGE_TICK_RATE:
+			damage_player(2)
+			_cold_damage_timer = 0.0
+	else:
+		_cold_damage_timer = 0.0
 
 
 func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -> void:
@@ -62,7 +143,7 @@ func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -
 	set_active_save_slot(slot_id)
 	current_day = 1
 	day_changed.emit(current_day)
-	time_of_day = 0.0
+	time_of_day = day_start_time
 	_is_night = _is_time_night(time_of_day)
 	time_of_day_changed.emit(time_of_day)
 	playtime_seconds = 0
@@ -182,13 +263,12 @@ func set_time_of_day(value: float) -> void:
 	time_of_day_changed.emit(time_of_day)
 	mark_dirty()
 
-	if was_night == _is_night:
-		return
-
-	if _is_night:
-		night_started.emit()
-	else:
-		day_started.emit()
+	if was_night != _is_night:
+		if _is_night:
+			night_started.emit()
+		else:
+			day_started.emit()
+		_update_night_modulate()
 
 
 func add_playtime(seconds: int) -> void:
@@ -339,3 +419,61 @@ func _is_time_night(value: float) -> bool:
 		return value >= night_start_time or value < day_start_time
 
 	return value >= night_start_time and value < day_start_time
+
+
+func _advance_time_of_day(delta: float) -> float:
+	var current_time := time_of_day
+	var remaining_delta := maxf(delta, 0.0)
+
+	while remaining_delta > 0.0:
+		if _is_time_night(current_time):
+			var seconds_per_cycle_unit := _get_night_seconds_per_cycle_unit()
+			var segment_end := day_start_time
+			var distance_to_boundary := _distance_to_cycle_boundary(current_time, segment_end)
+			var segment_seconds_remaining := distance_to_boundary * seconds_per_cycle_unit
+			if remaining_delta >= segment_seconds_remaining and segment_seconds_remaining > 0.0:
+				current_time = segment_end
+				remaining_delta -= segment_seconds_remaining
+				continue
+			current_time = wrapf(current_time + (remaining_delta / seconds_per_cycle_unit), 0.0, 1.0)
+			remaining_delta = 0.0
+		else:
+			var seconds_per_cycle_unit := _get_day_seconds_per_cycle_unit()
+			var segment_end := night_start_time
+			var distance_to_boundary := _distance_to_cycle_boundary(current_time, segment_end)
+			var segment_seconds_remaining := distance_to_boundary * seconds_per_cycle_unit
+			if remaining_delta >= segment_seconds_remaining and segment_seconds_remaining > 0.0:
+				current_time = segment_end
+				remaining_delta -= segment_seconds_remaining
+				continue
+			current_time = wrapf(current_time + (remaining_delta / seconds_per_cycle_unit), 0.0, 1.0)
+			remaining_delta = 0.0
+
+	if current_time >= 1.0:
+		current_time -= 1.0
+
+	if current_time < time_of_day:
+		advance_day()
+
+	return current_time
+
+
+func _get_day_seconds_per_cycle_unit() -> float:
+	var day_span := _distance_to_cycle_boundary(day_start_time, night_start_time)
+	if day_span <= 0.0:
+		return maxf(day_duration_seconds, 1.0)
+	return maxf(day_duration_seconds, 1.0) / day_span
+
+
+func _get_night_seconds_per_cycle_unit() -> float:
+	var night_span := _distance_to_cycle_boundary(night_start_time, day_start_time)
+	if night_span <= 0.0:
+		return maxf(night_duration_seconds, 1.0)
+	return maxf(night_duration_seconds, 1.0) / night_span
+
+
+func _distance_to_cycle_boundary(from_time: float, to_time: float) -> float:
+	var distance := to_time - from_time
+	if distance < 0.0:
+		distance += 1.0
+	return distance

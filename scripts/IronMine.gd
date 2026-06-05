@@ -24,6 +24,7 @@ var _mine_progress := 0.0
 
 
 func _ready() -> void:
+	add_to_group(&"scannable_resource")
 	_build_visuals()
 	_build_interaction_area()
 	_build_label()
@@ -81,9 +82,7 @@ func _get_mine_profile() -> Dictionary:
 		return {&"can_harvest": true, &"progress": IRON_PICKAXE_PROGRESS, &"item_id": held_item_id}
 	if held_item_id == STEEL_PICKAXE_ITEM_ID:
 		return {&"can_harvest": true, &"progress": STEEL_PICKAXE_PROGRESS, &"item_id": held_item_id}
-	if int(held_item.get("category", InventoryManager.InventoryItemCategory.GENERIC)) == InventoryManager.InventoryItemCategory.ELEMENT:
-		return {&"can_harvest": true, &"progress": HAND_MINE_PROGRESS, &"item_id": &""}
-	return {&"can_harvest": false, &"progress": 0.0, &"item_id": &""}
+	return {&"can_harvest": true, &"progress": HAND_MINE_PROGRESS, &"item_id": &""}
 
 
 func _build_visuals() -> void:
@@ -182,15 +181,15 @@ func _refresh_label() -> void:
 func _on_body_entered(body: Node) -> void:
 	if body.is_in_group(&"player"):
 		_player_in_range = true
-		if _label != null:
-			_label.visible = true
 
 
 func _on_body_exited(body: Node) -> void:
 	if body.is_in_group(&"player"):
 		_player_in_range = false
-		if _label != null:
-			_label.visible = false
+
+
+func get_scannable_element_id() -> StringName:
+	return &"iron"
 
 
 func _flash_rocks() -> void:

@@ -6,6 +6,7 @@ signal charge_level_changed(current_charge: float, max_charge: float)
 
 const MAX_CHARGE: float = 60.0
 const DRAIN_PER_SECOND: float = 1.0 / 60.0
+const NIGHT_DRAIN_MULTIPLIER: float = 2.0
 
 var charge_level: float = 0.0
 var _is_powered: bool = false
@@ -13,7 +14,11 @@ var _is_powered: bool = false
 
 func _process(delta: float) -> void:
 	if charge_level > 0.0:
-		charge_level = maxf(0.0, charge_level - DRAIN_PER_SECOND * delta)
+		var current_drain = DRAIN_PER_SECOND
+		if GameManager.has_method("is_night") and GameManager.is_night():
+			current_drain *= NIGHT_DRAIN_MULTIPLIER
+			
+		charge_level = maxf(0.0, charge_level - current_drain * delta)
 		charge_level_changed.emit(charge_level, MAX_CHARGE)
 		
 		if charge_level <= 0.0 and _is_powered:

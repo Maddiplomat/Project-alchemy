@@ -473,6 +473,12 @@ custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "Forge"
 
+[node name="RecipeCycleButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+text = "Recipe"
+visible = false
+
 [node name="FireToggleButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2

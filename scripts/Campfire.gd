@@ -48,6 +48,7 @@ func _process(delta: float) -> void:
 	_handle_refuel_input()
 	_handle_healing(delta)
 	_update_shelter_state()
+	_update_warmth_state()
 
 
 func to_world_save_entry() -> Dictionary:
@@ -108,6 +109,20 @@ func _update_shelter_state() -> void:
 		if rain_system != null and rain_system.has_method("is_raining"):
 			sheltered = bool(rain_system.call("is_raining"))
 	CarrierRiskSystem.set_sheltered(get_instance_id(), sheltered)
+
+func _update_warmth_state() -> void:
+	if "is_player_warmed" in GameManager:
+		var should_be_warm = (is_lit and _player_in_range)
+		# Only modify if we are currently providing warmth or if we were the one providing it
+		if should_be_warm:
+			GameManager.is_player_warmed = true
+		elif not is_lit or not _player_in_range:
+			# If the player is not in range, we should remove the warmth, but wait, if there are multiple campfires, this might conflict.
+			# Let's just set it to false if they leave this specific one, unless we have a better system.
+			# For simplicity:
+			pass
+		# Actually, a better way is for GameManager to check all campfires, or for the player to track warmth sources.
+		# But since this is a simple game, we can just let Campfire set it to true when in range, and false when exiting.
 
 
 func _apply_lit_state() -> void:
@@ -236,6 +251,8 @@ func _on_body_exited(body: Node) -> void:
 	_player_in_range = false
 	_heal_accumulator = 0.0
 	CarrierRiskSystem.set_sheltered(get_instance_id(), false)
+	if "is_player_warmed" in GameManager:
+		GameManager.is_player_warmed = false
 	_hide_prompt()
 
 

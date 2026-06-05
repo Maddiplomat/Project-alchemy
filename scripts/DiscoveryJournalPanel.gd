@@ -29,7 +29,6 @@ const DANGER_COLOR := Color(0.54, 0.13, 0.10, 1.0)
 
 var _filter_buttons: Dictionary[String, Button] = {}
 var _active_filter := FILTER_ALL
-var _note_editors: Dictionary[int, LineEdit] = {}
 
 
 func _ready() -> void:
@@ -76,7 +75,6 @@ func _wire_events() -> void:
 	failures_button.pressed.connect(func() -> void: _set_filter(FILTER_FAILURES))
 	unknowns_button.pressed.connect(func() -> void: _set_filter(FILTER_UNKNOWNS))
 	DiscoveryLog.entry_added.connect(_on_log_changed)
-	DiscoveryLog.entry_note_changed.connect(_on_entry_note_changed)
 
 
 func _set_filter(filter_id: String) -> void:
@@ -88,15 +86,6 @@ func _set_filter(filter_id: String) -> void:
 
 func _on_log_changed(_entry: Dictionary) -> void:
 	_refresh_entries()
-
-
-func _on_entry_note_changed(timestamp: int, note: String) -> void:
-	var editor: LineEdit = _note_editors.get(timestamp)
-	if editor == null:
-		return
-	if editor.text == note:
-		return
-	editor.text = note
 
 
 func _refresh_entries() -> void:
@@ -112,7 +101,7 @@ func _refresh_entries() -> void:
 		entries_list.add_child(_build_entry_card(entry))
 
 	title_label.text = "Discovery Journal"
-	subtitle_label.text = "Press J to close. Field notes save per entry."
+	subtitle_label.text = "Press J to close."
 	footer_label.text = (
 		"%d entries shown" % filtered_count
 		if filtered_count > 0 else
@@ -123,7 +112,6 @@ func _refresh_entries() -> void:
 func _clear_entries() -> void:
 	for child in entries_list.get_children():
 		child.queue_free()
-	_note_editors.clear()
 
 
 func _matches_filter(entry: Dictionary) -> bool:
@@ -140,7 +128,7 @@ func _matches_filter(entry: Dictionary) -> bool:
 
 func _is_success(entry: Dictionary) -> bool:
 	var tier := str(entry.get("tier", "unknown"))
-	return tier == "optimal" or tier == "medium" or tier == "low"
+	return tier == "optimal" or tier == "medium" or tier == "low" or tier == "success"
 
 
 func _is_failure(entry: Dictionary) -> bool:
@@ -220,21 +208,6 @@ func _build_entry_card(entry: Dictionary) -> PanelContainer:
 	conditions_label.text = _format_conditions(entry)
 	layout.add_child(conditions_label)
 
-	var note_edit := LineEdit.new()
-	note_edit.placeholder_text = "Personal note"
-	note_edit.text = str(entry.get("personal_note", ""))
-	note_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	note_edit.add_theme_color_override("font_color", INK_COLOR)
-	note_edit.add_theme_color_override("font_placeholder_color", Color(0.46, 0.34, 0.22, 0.72))
-	note_edit.add_theme_stylebox_override("normal", _build_note_style())
-	note_edit.add_theme_stylebox_override("focus", _build_note_style(Color(0.61, 0.42, 0.24, 1.0)))
-	var timestamp := int(entry.get("timestamp", -1))
-	_note_editors[timestamp] = note_edit
-	note_edit.text_changed.connect(func(new_text: String) -> void:
-		DiscoveryLog.set_personal_note(timestamp, new_text)
-	)
-	layout.add_child(note_edit)
-
 	return card
 
 
@@ -255,6 +228,8 @@ func _format_pair(entry: Dictionary) -> String:
 
 func _format_conditions(entry: Dictionary) -> String:
 	if str(entry.get("entry_type", "")) == "environment":
+		return str(entry.get("notes", ""))
+	if str(entry.get("entry_type", "")) == "chem_bench":
 		return str(entry.get("notes", ""))
 	var output_id := StringName(str(entry.get("output_id", "")))
 	var notes := str(entry.get("notes", ""))
@@ -301,6 +276,8 @@ func _get_badge_color(entry: Dictionary) -> Color:
 			return Color(0.55, 0.40, 0.21, 1.0)
 		"low":
 			return Color(0.44, 0.39, 0.24, 1.0)
+		"success":
+			return SUCCESS_COLOR
 		"waste":
 			return FAILURE_COLOR
 		"danger":
@@ -376,17 +353,3 @@ func _build_badge_style(color: Color) -> StyleBoxFlat:
 	style.content_margin_bottom = 4.0
 	return style
 
-
-func _build_note_style(border_color: Color = Color(0.57, 0.42, 0.27, 0.96)) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.98, 0.95, 0.87, 1.0)
-	style.border_color = border_color
-	style.border_width_left = 1
-	style.border_width_top = 1
-	style.border_width_right = 1
-	style.border_width_bottom = 1
-	style.corner_radius_top_left = 8
-	style.corner_radius_top_right = 8
-	style.corner_radius_bottom_right = 8
-	style.corner_radius_bottom_left = 8
-	return style

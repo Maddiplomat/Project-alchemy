@@ -1,0 +1,176 @@
+[
+  {
+    "id": "iron_water_oxidation",
+    "pair": ["iron", "water"],
+    "outcomes": [
+      {
+        "ratio_min": 25.0,
+        "ratio_max": 45.0,
+        "temp_min": 40.0,
+        "temp_max": 120.0,
+        "catalyst": "any",
+        "output_id": "rust_bolt",
+        "output_qty": 8,
+        "quality": 1.0,
+        "tier": "optimal",
+        "notes": "Controlled oxidation roughens the iron into usable rust bolts.",
+        "preview_label": "Rust Bolt",
+        "requires_stabilization": false
+      },
+      {
+        "ratio_min": 60.0,
+        "ratio_max": 100.0,
+        "temp_min": 40.0,
+        "temp_max": 160.0,
+        "catalyst": "any",
+        "output_id": "slag",
+        "output_qty": 1,
+        "quality": 0.0,
+        "tier": "waste",
+        "notes": "Too much water quenches the iron into useless sludge.",
+        "preview_label": "Slag",
+        "requires_stabilization": false
+      },
+      {
+        "ratio_min": 0.0,
+        "ratio_max": 100.0,
+        "temp_min": 160.0,
+        "temp_max": 260.0,
+        "catalyst": "any",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "Boiling the oxidation bath spikes pressure through the flask neck.",
+        "preview_label": "Pressure spike",
+        "failure_reason": "pressure_spike"
+      },
+      {
+        "ratio_min": 0.0,
+        "ratio_max": 100.0,
+        "temp_min": 20.0,
+        "temp_max": 39.0,
+        "catalyst": "any",
+        "quality": 0.0,
+        "tier": "unknown",
+        "notes": "The bath is too cold to oxidize the iron.",
+        "preview_label": "No reaction"
+      }
+    ]
+  },
+  {
+    "id": "iron_sulfur_sulfurization",
+    "pair": ["iron", "sulfur"],
+    "outcomes": [
+      {
+        "ratio_min": 45.0,
+        "ratio_max": 55.0,
+        "temp_min": 90.0,
+        "temp_max": 150.0,
+        "catalyst": "limestone",
+        "output_id": "sulfuric_bolt",
+        "output_qty": 6,
+        "quality": 1.0,
+        "tier": "optimal",
+        "notes": "Buffered sulfurization charges the bolt cores, but the mix still needs live stabilization.",
+        "preview_label": "Sulfuric Bolt",
+        "requires_stabilization": true
+      },
+      {
+        "ratio_min": 45.0,
+        "ratio_max": 55.0,
+        "temp_min": 90.0,
+        "temp_max": 150.0,
+        "catalyst": "none",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "Without a limestone buffer, sulfur vapors escape as a toxic release.",
+        "preview_label": "Toxic release",
+        "failure_reason": "timer_expiry"
+      },
+      {
+        "ratio_min": 0.0,
+        "ratio_max": 34.999,
+        "temp_min": 20.0,
+        "temp_max": 190.0,
+        "catalyst": "any",
+        "output_id": "slag",
+        "output_qty": 1,
+        "quality": 0.0,
+        "tier": "waste",
+        "notes": "The sulfur charge is too weak and leaves only dirty waste.",
+        "preview_label": "Slag",
+        "requires_stabilization": false
+      },
+      {
+        "ratio_min": 65.0,
+        "ratio_max": 100.0,
+        "temp_min": 20.0,
+        "temp_max": 260.0,
+        "catalyst": "any",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "Excess sulfur pushes the batch into runaway chemistry.",
+        "preview_label": "Heat runaway",
+        "failure_reason": "heat_runaway",
+        "consumed_catalyst": 1
+      },
+      {
+        "ratio_min": 0.0,
+        "ratio_max": 100.0,
+        "temp_min": 190.0,
+        "temp_max": 260.0,
+        "catalyst": "any",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "The sulfur reaction flashes over into an exothermic runaway.",
+        "preview_label": "Heat runaway",
+        "failure_reason": "heat_runaway",
+        "consumed_catalyst": 1
+      }
+    ]
+  },
+  {
+    "id": "sulfur_water_corrosive",
+    "pair": ["sulfur", "water"],
+    "outcomes": [
+      {
+        "ratio_min": 35.0,
+        "ratio_max": 55.0,
+        "temp_min": 60.0,
+        "temp_max": 110.0,
+        "catalyst": "limestone",
+        "output_id": "corrosive_slurry",
+        "output_qty": 1,
+        "quality": 0.8,
+        "tier": "optimal",
+        "notes": "Limestone keeps the sulfur suspension barely stable enough to bottle.",
+        "preview_label": "Corrosive Slurry",
+        "requires_stabilization": false
+      },
+      {
+        "ratio_min": 35.0,
+        "ratio_max": 55.0,
+        "temp_min": 60.0,
+        "temp_max": 110.0,
+        "catalyst": "none",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "The slurry vents corrosive gas unless limestone buffers the batch.",
+        "preview_label": "Toxic release",
+        "failure_reason": "timer_expiry"
+      },
+      {
+        "ratio_min": 0.0,
+        "ratio_max": 100.0,
+        "temp_min": 140.0,
+        "temp_max": 260.0,
+        "catalyst": "any",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "The sulfur-water suspension flashes into runaway corrosion at this heat.",
+        "preview_label": "Heat runaway",
+        "failure_reason": "heat_runaway",
+        "consumed_catalyst": 1
+      }
+    ]
+  }
+]

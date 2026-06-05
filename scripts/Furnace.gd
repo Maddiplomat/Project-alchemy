@@ -249,6 +249,9 @@ func open_ui() -> void:
 		_player.pause_input()
 	_ensure_ui()
 	if _furnace_ui != null:
+		if _furnace_ui.has_method("is_initialized") and not bool(_furnace_ui.is_initialized()):
+			call_deferred("open_ui")
+			return
 		if _furnace_ui.has_method("bind_furnace"):
 			_furnace_ui.bind_furnace(self)
 		_furnace_ui.open_ui()

@@ -27,15 +27,13 @@ mouse_filter = 2
 color = Color(0, 0, 0, 0.10)
 
 [node name="PanelContainer" type="PanelContainer" parent="Root"]
-custom_minimum_size = Vector2(360, 340)
+custom_minimum_size = Vector2(520, 430)
 layout_mode = 1
 anchors_preset = 0
 offset_left = 24.0
-offset_top = 370.0
-offset_right = 384.0
-offset_bottom = 710.0
-grow_horizontal = 0
-grow_vertical = 0
+offset_top = 330.0
+offset_right = 544.0
+offset_bottom = 760.0
 
 [node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer"]
 layout_mode = 2
@@ -55,7 +53,7 @@ theme_override_constants/separation = 8
 [node name="TitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 15
-text = "ChemBench Prototype4"
+text = "ChemBench Reactor"
 
 [node name="Spacer" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
 layout_mode = 2
@@ -64,12 +62,12 @@ size_flags_horizontal = 3
 [node name="StatusLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "P4"
+text = "VC1"
 
 [node name="SummaryLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "Prototype4 bench. Active recipe loads from the bench configuration."
+text = "Load two reactants, tune temperature and ratio, and use limestone to buffer unstable chemistry."
 autowrap_mode = 3
 
 [node name="RecipePlate" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
@@ -78,19 +76,18 @@ layout_mode = 2
 [node name="RecipeLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/RecipePlate"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "ACTIVE RECIPE: Unknown Recipe"
+text = "Predicted Result"
 horizontal_alignment = 1
 
 [node name="HSeparator" type="HSeparator" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
 
-[node name="InstrumentRow" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+[node name="InstrumentRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
-size_flags_vertical = 3
 theme_override_constants/separation = 8
 
 [node name="InputVialA" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
-custom_minimum_size = Vector2(0, 68)
+custom_minimum_size = Vector2(0, 112)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -108,11 +105,11 @@ theme_override_constants/separation = 3
 [node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialA/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-text = "INPUT VIAL A"
+text = "INPUT A"
 horizontal_alignment = 1
 
 [node name="VialVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialA/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 20)
+custom_minimum_size = Vector2(0, 28)
 layout_mode = 2
 
 [node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialA/MarginContainer/VBoxContainer"]
@@ -120,9 +117,10 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 11
 text = "Input A"
 horizontal_alignment = 1
+autowrap_mode = 3
 
 [node name="InputVialB" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
-custom_minimum_size = Vector2(0, 68)
+custom_minimum_size = Vector2(0, 112)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -140,11 +138,11 @@ theme_override_constants/separation = 3
 [node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialB/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-text = "INPUT VIAL B"
+text = "INPUT B"
 horizontal_alignment = 1
 
 [node name="VialVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialB/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 20)
+custom_minimum_size = Vector2(0, 28)
 layout_mode = 2
 
 [node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/InputVialB/MarginContainer/VBoxContainer"]
@@ -152,9 +150,10 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 11
 text = "Input B"
 horizontal_alignment = 1
+autowrap_mode = 3
 
 [node name="ControlColumn" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
-custom_minimum_size = Vector2(0, 100)
+custom_minimum_size = Vector2(0, 168)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -172,25 +171,38 @@ theme_override_constants/separation = 6
 [node name="ActionLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-text = "RATIO CONTROL"
+text = "REACTOR CONTROLS"
 horizontal_alignment = 1
+
+[node name="RatioTargetButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+text = "Target: Input B"
 
 [node name="RatioSlider" type="HSlider" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
 layout_mode = 2
-min_value = 1.0
-max_value = 5.0
+max_value = 100.0
 step = 1.0
-value = 2.0
+value = 50.0
 
 [node name="RatioValueLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-text = "Bench Ratio: 2 / 5"
+text = "Input B Ratio: 50%"
 horizontal_alignment = 1
 
-[node name="SpacerTop" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
+[node name="TemperatureSlider" type="HSlider" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 4)
+min_value = 20.0
+max_value = 260.0
+step = 5.0
+value = 90.0
+
+[node name="TemperatureValueLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "Setpoint: 90°C"
+horizontal_alignment = 1
 
 [node name="ReactButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 28)
@@ -200,12 +212,12 @@ text = "React"
 [node name="ActionHintLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-text = "Load both required materials."
+text = "Tune ratio, temperature, and catalyst until the bench predicts a result."
 horizontal_alignment = 1
 autowrap_mode = 3
 
 [node name="OutputFlask" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
-custom_minimum_size = Vector2(0, 68)
+custom_minimum_size = Vector2(0, 112)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -223,62 +235,59 @@ theme_override_constants/separation = 3
 [node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-text = "OUTPUT FLASK"
+text = "OUTPUT"
 horizontal_alignment = 1
 
 [node name="FlaskVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 20)
+custom_minimum_size = Vector2(0, 28)
 layout_mode = 2
 
 [node name="ItemNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/OutputFlask/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-text = "Output"
+text = "Awaiting reaction"
 horizontal_alignment = 1
+autowrap_mode = 3
 
-[node name="LockedRack" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
-custom_minimum_size = Vector2(0, 94)
+[node name="CatalystRack" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow"]
+custom_minimum_size = Vector2(0, 112)
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack"]
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack"]
 layout_mode = 2
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer"]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer"]
+[node name="SlotTitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-text = "PROTOTYPE5 CHANNELS"
+text = "CATALYST"
 horizontal_alignment = 1
 
-[node name="LockedSlotA" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 26)
+[node name="CatalystVisual" type="Panel" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 28)
 layout_mode = 2
 
-[node name="LockLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer/LockedSlotA"]
+[node name="CatalystNameLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "Catalyst"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="CatalystHintLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 10
-text = "LOCK  Catalyst vial"
+text = "Limestone buffers sulfur chemistry."
 horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="LockedSlotB" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 26)
-layout_mode = 2
-
-[node name="LockLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/LockedRack/MarginContainer/VBoxContainer/LockedSlotB"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 10
-text = "LOCK  Auxiliary flask"
-horizontal_alignment = 1
-vertical_alignment = 1
+autowrap_mode = 3
 
 [node name="FooterRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
@@ -288,7 +297,8 @@ theme_override_constants/separation = 10
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 11
-text = "Other channels unlock in Prototype5."
+text = "Bench outcomes depend on ratio, setpoint temperature, and catalyst choice."
+autowrap_mode = 3
 
 [node name="CloseButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow"]
 layout_mode = 2

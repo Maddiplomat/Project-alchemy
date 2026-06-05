@@ -25,6 +25,8 @@ const CHARRED_SKELETON_PROP_SCENE := preload("res://scenes/CharredSkeletonProp.t
 const SCORCHED_CRATE_NOTE_SCENE := preload("res://scenes/ScorchedCrateNote.tscn")
 const STONE_QUARRY_SCENE := preload("res://scenes/StoneQuarry.tscn")
 const IRON_MINE_SCENE := preload("res://scenes/IronMine.tscn")
+const LIMESTONE_MINE_SCENE := preload("res://scenes/LimestoneMine.tscn")
+const ACID_CRAWLER_SPAWNER_SCENE := preload("res://scenes/AcidCrawlerSpawner.tscn")
 const BATTERY_STATION_SCENE := preload("res://scenes/BatteryStation.tscn")
 const TREE_RESOURCE_SCENE := preload("res://scenes/TreeResource.tscn")
 const WATER_RESPAWN_SECONDS := 120.0
@@ -94,8 +96,10 @@ func generate_world(world_seed: int) -> void:
 	_place_sulfur_flats_zone()
 	_place_iron_hills_lithium_zone()
 	_place_river_cluster(world_seed)
+	_place_acid_crawler_spawn(world_seed)
 	_place_stone_quarry(world_seed)
 	_place_iron_mines(world_seed)
+	_place_limestone_mine(world_seed)
 	_place_battery_station(world_seed)
 	_spawn_interactive_trees(world_seed)
 	_spawn_elements(world_seed)
@@ -292,6 +296,107 @@ func _place_iron_mines(world_seed: int) -> void:
 	var mine := IRON_MINE_SCENE.instantiate()
 	mine.position = ground_layer.to_global(ground_layer.map_to_local(IRON_MINE_COORDS))
 	generated_zone_props.add_child(mine)
+
+
+func _place_limestone_mine(world_seed: int) -> void:
+	if generated_zone_props == null or _river_tile_coords.is_empty():
+		return
+	
+	var min_x := MAP_SIZE.x
+	var target_y := MAP_SIZE.y / 2
+	for coords in _river_tile_coords:
+		if coords.x < min_x:
+			min_x = coords.x
+			target_y = coords.y
+
+	# Place it to the left of the river
+	var mine_x := maxi(min_x - 4, 3)
+	var coords := Vector2i(mine_x, target_y)
+
+	# Clear surrounding objects (like trees)
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			var clear_coords := coords + Vector2i(dx, dy)
+			if not _is_edge(clear_coords):
+				objects_layer.erase_cell(clear_coords)
+
+	var mine := LIMESTONE_MINE_SCENE.instantiate()
+	mine.position = ground_layer.to_global(ground_layer.map_to_local(coords))
+	generated_zone_props.add_child(mine)
+
+
+func _place_acid_crawler_spawn(world_seed: int) -> void:
+	if generated_zone_props == null or ACID_CRAWLER_SPAWNER_SCENE == null:
+		return
+	if _river_tile_coords.is_empty():
+		return
+
+	var spawn_coords := _find_acid_crawler_spawn_tile(world_seed)
+	if spawn_coords == Vector2i(-1, -1):
+		return
+
+	_clear_tree_patch(spawn_coords, 1, 1)
+	var spawn_world_position := ground_layer.to_global(ground_layer.map_to_local(spawn_coords))
+	var spawner := ACID_CRAWLER_SPAWNER_SCENE.instantiate()
+	spawner.name = "AcidCrawlerSpawner"
+	spawner.position = spawn_world_position
+	spawner.set("spawn_position", spawn_world_position)
+	generated_zone_props.add_child(spawner)
+
+
+func _find_acid_crawler_spawn_tile(world_seed: int) -> Vector2i:
+	var sulfur_origin := MAP_SIZE - SULFUR_FLATS_SIZE
+	var south_band_min_y := MAP_SIZE.y - 12
+	var river_anchor := Vector2i(-1, -1)
+	for coords: Vector2i in _river_tile_coords:
+		if coords.y < south_band_min_y:
+			continue
+		if coords.x > river_anchor.x:
+			river_anchor = coords
+
+	var min_x := maxi(river_anchor.x + 3, sulfur_origin.x - 12)
+	var max_x := sulfur_origin.x - 2
+	if min_x > max_x:
+		min_x = sulfur_origin.x - 8
+		max_x = sulfur_origin.x - 2
+
+	var candidates: Array[Vector2i] = []
+	for y in range(MAP_SIZE.y - 5, south_band_min_y - 1, -1):
+		for x in range(min_x, max_x + 1):
+			var coords := Vector2i(x, y)
+			if not _can_place_acid_crawler_at(coords):
+				continue
+			candidates.append(coords)
+
+	if candidates.is_empty():
+		return Vector2i(-1, -1)
+
+	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var a_score := _score_acid_crawler_spawn_tile(a, sulfur_origin)
+		var b_score := _score_acid_crawler_spawn_tile(b, sulfur_origin)
+		if is_equal_approx(a_score, b_score):
+			return a.x > b.x
+		return a_score > b_score
+	)
+	return candidates[0]
+
+
+func _score_acid_crawler_spawn_tile(coords: Vector2i, sulfur_origin: Vector2i) -> float:
+	var sulfur_bias := float(coords.x - sulfur_origin.x)
+	var south_bias := float(coords.y)
+	return sulfur_bias * 3.0 + south_bias
+
+
+func _can_place_acid_crawler_at(coords: Vector2i) -> bool:
+	if _is_edge(coords) or _is_spawn_area(coords):
+		return false
+	if _river_tile_coords.has(coords):
+		return false
+	if _get_all_blocked_tiles().has(coords):
+		return false
+	if objects_layer.get_cell_source_id(coords) != -1:
+		return false
+	return true
 
 
 func _spawn_interactive_trees(world_seed: int) -> void:

@@ -37,6 +37,7 @@ var _harvest_progress := 0.0
 func _ready() -> void:
 	input_pickable = true
 	add_to_group(&"harvestable_trees")
+	add_to_group(&"scannable_resource")
 	_build_visuals()
 	_health_bar_fill_max_width = health_bar_fill.size.x
 	_refresh_health_bar()
@@ -106,16 +107,13 @@ func _get_yield_profile() -> Dictionary:
 		return {&"can_harvest": true, &"progress": HAND_HARVEST_PROGRESS, &"item_id": &""}
 
 	var held_item_id := StringName(str(held_item.get("id", "")))
-	var held_category := int(held_item.get("category", InventoryManager.InventoryItemCategory.GENERIC))
 	match held_item_id:
 		IRON_AXE_ITEM_ID:
 			return {&"can_harvest": true, &"progress": IRON_AXE_PROGRESS, &"item_id": held_item_id}
 		STEEL_AXE_ITEM_ID:
 			return {&"can_harvest": true, &"progress": STEEL_AXE_PROGRESS, &"item_id": held_item_id}
 		_:
-			if held_category == InventoryManager.InventoryItemCategory.ELEMENT:
-				return {&"can_harvest": true, &"progress": HAND_HARVEST_PROGRESS, &"item_id": &""}
-			return {&"can_harvest": false, &"progress": 0.0, &"item_id": &""}
+			return {&"can_harvest": true, &"progress": HAND_HARVEST_PROGRESS, &"item_id": &""}
 
 
 func _can_player_harvest() -> bool:
@@ -159,6 +157,10 @@ func _resolve_player() -> Node2D:
 	if player_nodes.is_empty():
 		return null
 	return player_nodes[0] as Node2D
+
+
+func get_scannable_element_id() -> StringName:
+	return &"wood"
 
 
 func _refresh_health_bar() -> void:

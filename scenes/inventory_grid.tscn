@@ -7,26 +7,26 @@ layer = 10
 script = ExtResource("1_pkvtp")
 
 [node name="InventoryPanel" type="Panel" parent="." unique_id=582636693]
-custom_minimum_size = Vector2(620, 440)
+custom_minimum_size = Vector2(392, 216)
 
 [node name="PanelContent" type="HBoxContainer" parent="InventoryPanel" unique_id=181028481]
 layout_mode = 0
 offset_left = 16.0
 offset_top = 16.0
-offset_right = 604.0
-offset_bottom = 364.0
+offset_right = 376.0
+offset_bottom = 118.0
 theme_override_constants/separation = 18
 
 [node name="InventoryColumn" type="VBoxContainer" parent="InventoryPanel/PanelContent" unique_id=1442415162]
-custom_minimum_size = Vector2(220, 0)
+custom_minimum_size = Vector2(330, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 14
 
 [node name="Grid" type="GridContainer" parent="InventoryPanel/PanelContent/InventoryColumn" unique_id=123695224]
-custom_minimum_size = Vector2(256, 320)
+custom_minimum_size = Vector2(330, 64)
 layout_mode = 2
-columns = 4
+columns = 5
 
 [node name="WeightRow" type="HBoxContainer" parent="InventoryPanel/PanelContent/InventoryColumn" unique_id=1977411127]
 layout_mode = 2
@@ -49,6 +49,7 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="CraftingPanel" type="PanelContainer" parent="InventoryPanel/PanelContent" unique_id=944136859]
+visible = false
 custom_minimum_size = Vector2(332, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -95,10 +96,10 @@ mouse_filter = 2
 [node name="KeybindStrip" type="HBoxContainer" parent="InventoryPanel" unique_id=1814229381]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 374.0
-offset_right = 604.0
-offset_bottom = 406.0
-theme_override_constants/separation = 24
+offset_top = 140.0
+offset_right = 376.0
+offset_bottom = 172.0
+theme_override_constants/separation = 18
 
 [node name="InventoryKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1822337350]
 layout_mode = 2
@@ -106,7 +107,7 @@ text = "Tab: open inventory"
 
 [node name="SelectKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1590047737]
 layout_mode = 2
-text = "1-9: select active item"
+text = "1-5: select active item"
 
 [node name="TooltipPanel" type="Panel" parent="." unique_id=391146286]
 visible = false

@@ -40,7 +40,6 @@
       "item_id": "distillation_kit",
       "qty": 1
     },
-    "station": "chem_bench",
     "required_temp": null,
     "reaction_type": "",
     "durability": 1.0

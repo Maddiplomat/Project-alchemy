@@ -6,7 +6,6 @@ extends Node
 
 signal discovery_made(entry: Dictionary)
 signal entry_added(entry: Dictionary)
-signal entry_note_changed(timestamp: int, note: String)
 
 ## Maximum number of entries kept in memory.
 const MAX_LOG_SIZE := 500
@@ -53,26 +52,37 @@ func log_smelt(result: Dictionary, inputs: Array, temp: float) -> void:
 		"notes": notes,
 		"temperature": temp,
 		"inputs": inputs.duplicate(true),
-		"personal_note": "",
 		"is_first_discovery": false,
 	}
+	_append_entry(entry, true)
 
-	# Flag first-ever occurrence of this output.
-	if not output_id.is_empty() and not _seen_outputs.get(output_id, false):
-		entry["is_first_discovery"] = true
-		_seen_outputs[output_id] = true
-		# Notify ElementDatabase so it marks the element discovered.
-		if ElementDatabase.has_element(output_id):
-			ElementDatabase.discover_element(output_id)
 
-	log_entries.append(entry)
-	if log_entries.size() > MAX_LOG_SIZE:
-		log_entries.pop_front()
-
-	discovery_made.emit(entry)
-	entry_added.emit(entry)
-
-	_print_entry(entry)
+func log_chemistry(
+	result: Dictionary,
+	inputs: Array,
+	conditions_summary: String,
+	output_name_override: String = "",
+	discover_output: bool = true
+) -> void:
+	var output_id := StringName(str(result.get("output_id", "")))
+	var tier_str := str(result.get("tier", "unknown"))
+	var notes := str(result.get("notes", ""))
+	var output_name := output_name_override if not output_name_override.is_empty() else _pretty_name(output_id)
+	var entry := {
+		"timestamp": Time.get_ticks_msec(),
+		"output_id": output_id,
+		"output_name": output_name,
+		"tier": tier_str,
+		"tier_enum": _tier_from_string(tier_str),
+		"quality": float(result.get("quality", 0.0)),
+		"notes": conditions_summary if not conditions_summary.is_empty() else notes,
+		"temperature": float(result.get("temperature", 0.0)),
+		"inputs": inputs.duplicate(true),
+		"is_first_discovery": false,
+		"entry_type": "chem_bench",
+		"station": "chem_bench",
+	}
+	_append_entry(entry, discover_output)
 
 
 ## Return all entries in reverse-chronological order.
@@ -123,31 +133,11 @@ func log_environment(entry_id: StringName, title: String, notes: String, one_tim
 		"notes": notes,
 		"temperature": 0.0,
 		"inputs": [],
-		"personal_note": "",
 		"is_first_discovery": false,
 		"entry_type": "environment",
 	}
-
-	log_entries.append(entry)
-	if log_entries.size() > MAX_LOG_SIZE:
-		log_entries.pop_front()
-
-	discovery_made.emit(entry)
-	entry_added.emit(entry)
-	_print_entry(entry)
+	_append_entry(entry, false)
 	return true
-
-
-func set_personal_note(timestamp: int, note: String) -> void:
-	for index in range(log_entries.size()):
-		var entry: Dictionary = log_entries[index]
-		if int(entry.get("timestamp", -1)) != timestamp:
-			continue
-
-		entry["personal_note"] = note
-		log_entries[index] = entry
-		entry_note_changed.emit(timestamp, note)
-		return
 
 
 func seed_debug_entries(count: int, clear_existing: bool = true) -> void:
@@ -235,7 +225,6 @@ func seed_debug_entries(count: int, clear_existing: bool = true) -> void:
 			"notes": str(sample.get("notes", "")),
 			"temperature": float(sample.get("temp", 0.0)),
 			"inputs": (sample.get("inputs", []) as Array).duplicate(true),
-			"personal_note": "Sample note %d" % (index + 1) if index % 3 == 0 else "",
 			"is_first_discovery": false,
 		}
 		log_entries.append(entry)
@@ -255,6 +244,23 @@ func _pretty_name(output_id: StringName) -> String:
 	if not element_data.is_empty():
 		return str(element_data.get("display_name", String(output_id).capitalize()))
 	return String(output_id).replace("_", " ").capitalize()
+
+
+func _append_entry(entry: Dictionary, discover_output: bool) -> void:
+	var output_id := StringName(str(entry.get("output_id", "")))
+	if discover_output and not output_id.is_empty() and not _seen_outputs.get(output_id, false):
+		entry["is_first_discovery"] = true
+		_seen_outputs[output_id] = true
+		if ElementDatabase.has_element(output_id):
+			ElementDatabase.discover_element(output_id)
+
+	log_entries.append(entry)
+	if log_entries.size() > MAX_LOG_SIZE:
+		log_entries.pop_front()
+
+	discovery_made.emit(entry)
+	entry_added.emit(entry)
+	_print_entry(entry)
 
 
 func _tier_from_string(tier: String) -> int:

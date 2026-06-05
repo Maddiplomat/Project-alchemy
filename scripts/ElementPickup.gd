@@ -34,7 +34,7 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _player_in_range == null or not prompt_label.visible:
+	if _player_in_range == null:
 		return
 
 	if event.is_action_pressed("interact"):
@@ -46,8 +46,7 @@ func _on_body_entered(body: Node) -> void:
 		return
 
 	_player_in_range = body
-	_refresh_prompt_state()
-	prompt_label.visible = true
+	prompt_label.visible = false
 
 
 func _on_body_exited(body: Node) -> void:
@@ -64,7 +63,7 @@ func _attempt_pickup() -> void:
 		return
 
 	if not _can_extract_pickup(item_data):
-		_refresh_prompt_state()
+		prompt_label.visible = false
 		return
 
 	if not InventoryManager.receive_world_pickup(item_data, pickup_quantity):
@@ -129,6 +128,12 @@ func _setup_animations() -> void:
 	anim_stone.length = 1.5
 	anim_stone.loop_mode = Animation.LOOP_LINEAR
 	lib.add_animation("idle_stone", anim_stone)
+
+	# Limestone: none
+	var anim_limestone := Animation.new()
+	anim_limestone.length = 1.5
+	anim_limestone.loop_mode = Animation.LOOP_LINEAR
+	lib.add_animation("idle_limestone", anim_limestone)
 
 	# Iron: glint pulse
 	var anim_iron := Animation.new()
@@ -222,10 +227,7 @@ func _apply_visual_identity() -> void:
 	if pickup_quantity > 1:
 		pickup_display_name = "%s x%d" % [pickup_display_name, pickup_quantity]
 
-	if display_name.is_empty():
-		prompt_label.text = "Press E"
-	else:
-		prompt_label.text = "%s (%s)" % [pickup_display_name, symbol] if not symbol.is_empty() else pickup_display_name
+	prompt_label.text = ""
 
 	sprite.texture = _get_pickup_texture(String(resolved_item_id))
 	sprite.modulate = _get_pickup_modulate(item_data, resolved_item_id)
@@ -246,7 +248,7 @@ func _apply_visual_identity() -> void:
 		_configure_sulfur_particles()
 		sulfur_particles.visible = true
 		sulfur_particles.emitting = true
-	_refresh_prompt_state()
+	prompt_label.visible = false
 
 
 func _get_pickup_modulate(item_data: Dictionary, item_id: StringName) -> Color:
@@ -305,6 +307,8 @@ func _get_pickup_texture(element_key: String) -> Texture2D:
 			_build_sulfur_texture(image)
 		"lithium":
 			_build_lithium_texture(image)
+		"limestone":
+			_build_limestone_texture(image)
 		_:
 			_build_generic_texture(image)
 
@@ -441,21 +445,8 @@ func _build_sulfur_particle_texture() -> Texture2D:
 
 
 func _refresh_prompt_state() -> void:
-	var item_data := _get_pickup_item_data()
-	if item_data.is_empty():
-		prompt_label.text = "Press E"
-		return
-
-	var resolved_element_id: StringName = item_data.get(&"id", &"")
-	if resolved_element_id == &"sulfur" and not InventoryManager.has_item(DISTILLATION_KIT_ITEM_ID, 1):
-		prompt_label.text = "Requires Distillation Kit"
-		return
-
-	var display_name := str(item_data.get(&"display_name", resolved_element_id))
-	if pickup_quantity > 1:
-		display_name = "%s x%d" % [display_name, pickup_quantity]
-	var symbol := str(item_data.get(&"symbol", ""))
-	prompt_label.text = "%s (%s)" % [display_name, symbol] if not symbol.is_empty() else display_name
+	prompt_label.text = ""
+	prompt_label.visible = false
 
 
 func _can_extract_pickup(item_data: Dictionary) -> bool:
@@ -492,6 +483,17 @@ func _build_stone_texture(image: Image) -> void:
 				image.set_pixel(x, y, body)
 	for pos in [Vector2i(6, 5), Vector2i(9, 6), Vector2i(7, 9), Vector2i(10, 10)]:
 		image.set_pixel(pos.x, pos.y, edge)
+
+
+func _build_limestone_texture(image: Image) -> void:
+	var body := Color(0.85, 0.85, 0.85, 1.0)
+	var shadow := Color(0.65, 0.65, 0.65, 1.0)
+	for y in range(3, 13):
+		for x in range(3, 13):
+			if abs(x - 8) + abs(y - 8) <= 6:
+				image.set_pixel(x, y, body)
+	for pos in [Vector2i(5, 5), Vector2i(8, 6), Vector2i(6, 9), Vector2i(9, 10), Vector2i(4, 8), Vector2i(10, 7)]:
+		image.set_pixel(pos.x, pos.y, shadow)
 
 
 func _build_iron_texture(image: Image) -> void:

@@ -87,6 +87,7 @@ const TOOL_RECIPE_DEFINITIONS := {
 @onready var close_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/CloseButton
 @onready var smelt_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/SmeltButton
 @onready var forge_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ForgeButton
+@onready var recipe_cycle_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/RecipeCycleButton
 @onready var fire_toggle_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/FireToggleButton
 @onready var action_hint_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ActionHintLabel
 @onready var fuel_cost_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/FuelCostLabel
@@ -131,6 +132,8 @@ var warning_display_text := ""
 var _slot_refs: Dictionary[StringName, Dictionary] = {}
 var _burn_enabled := true
 var _fuel_cost_state: Dictionary = {&"item_id": &"", &"burned_units": 0.0}
+var _available_forge_output_ids: Array[StringName] = []
+var _selected_forge_output_index := 0
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
 	&"input_b": {&"item_id": &"", &"quantity": 0},
@@ -145,6 +148,7 @@ func _ready() -> void:
 	close_button.pressed.connect(_on_close_pressed)
 	smelt_button.pressed.connect(_on_smelt_pressed)
 	forge_button.pressed.connect(_on_forge_pressed)
+	recipe_cycle_button.pressed.connect(_on_recipe_cycle_pressed)
 	fire_toggle_button.pressed.connect(_on_fire_toggle_pressed)
 	ratio_slider.value_changed.connect(_on_ratio_slider_changed)
 	get_viewport().size_changed.connect(_layout_panel)
@@ -184,10 +188,16 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func open_ui() -> void:
+	if not _is_initialized:
+		call_deferred("open_ui")
+		return
 	_is_open = true
+	if is_instance_valid(_bound_furnace):
+		_pull_state_from_furnace()
 	_update_mode_state(_should_use_carbonisation_mode())
 	_layout_panel()
 	root.visible = true
+	call_deferred("_finalize_open_ui_layout")
 	close_button.grab_focus()
 
 
@@ -203,6 +213,10 @@ func is_open() -> bool:
 	return _is_open
 
 
+func is_initialized() -> bool:
+	return _is_initialized
+
+
 func _layout_panel() -> void:
 	if panel == null:
 		return
@@ -213,11 +227,18 @@ func _layout_panel() -> void:
 	panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
 
 	var viewport_size := get_viewport().get_visible_rect().size
-	var scaled_size := panel.custom_minimum_size * PANEL_VIEW_SCALE
+	var scaled_size := panel.size * PANEL_VIEW_SCALE
 	panel.position = Vector2(
 		PANEL_MARGIN.x,
 		maxf(PANEL_MARGIN.y, (viewport_size.y - scaled_size.y) * 0.5)
 	)
+
+
+func _finalize_open_ui_layout() -> void:
+	if not _is_open or panel == null:
+		return
+	_layout_panel()
+	panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
 
 
 func bind_furnace(furnace: Node) -> void:
@@ -308,6 +329,15 @@ func _on_smelt_pressed() -> void:
 func _on_forge_pressed() -> void:
 	_evaluate_forge_request()
 	forge_requested.emit()
+
+
+func _on_recipe_cycle_pressed() -> void:
+	var forge_outputs := _get_matching_forge_output_ids()
+	if forge_outputs.size() <= 1:
+		return
+	_selected_forge_output_index = (_selected_forge_output_index + 1) % forge_outputs.size()
+	_refresh_probable_output()
+	_update_recipe_cycle_button()
 
 
 func _on_fire_toggle_pressed() -> void:
@@ -413,6 +443,7 @@ func _apply_theme() -> void:
 
 	_style_button(smelt_button, SMELT_BUTTON_COLOR)
 	_style_button(forge_button, FORGE_BUTTON_COLOR)
+	_style_button(recipe_cycle_button, BUTTON_IDLE_COLOR)
 	_style_button(fire_toggle_button, BUTTON_IDLE_COLOR)
 	_style_button(close_button, BUTTON_IDLE_COLOR)
 	title_label.add_theme_color_override("font_color", Color(0.94, 0.95, 0.97, 1.0))
@@ -553,7 +584,16 @@ func _refresh_probable_output() -> void:
 	if not forge_output_id.is_empty():
 		_slot_state[&"output"] = {&"item_id": forge_output_id, &"quantity": 1}
 		_apply_slot_visual(&"output", forge_output_id, 1, "Awaiting recipe")
-		action_hint_label.text = "Use Forge for %s." % _get_item_label(forge_output_id)
+		var forge_outputs := _get_matching_forge_output_ids()
+		if forge_outputs.size() > 1:
+			action_hint_label.text = "Use Forge for %s. Cycle recipe to choose (%d/%d)." % [
+				_get_item_label(forge_output_id),
+				_selected_forge_output_index + 1,
+				forge_outputs.size(),
+			]
+		else:
+			action_hint_label.text = "Use Forge for %s." % _get_item_label(forge_output_id)
+		_update_recipe_cycle_button()
 		return
 
 	if input_b_qty <= 0 and input_a_id == &"wood":
@@ -592,6 +632,7 @@ func _update_action_button_states() -> void:
 	smelt_button.disabled = has_forge_recipe or (
 		not can_run_carbonisation if carbonisation_mode else (input_a_qty <= 0 or input_b_qty <= 0)
 	)
+	_update_recipe_cycle_button()
 	_update_fire_toggle_button()
 
 
@@ -1100,13 +1141,14 @@ func _build_explosion_result(notes: String) -> Dictionary:
 	}
 
 
-func _get_matching_tool_recipe_output_id() -> StringName:
+func _get_matching_tool_recipe_output_ids() -> Array[StringName]:
 	var input_a: Dictionary = _slot_state.get(&"input_a", {})
 	var input_b: Dictionary = _slot_state.get(&"input_b", {})
 	var input_a_id: StringName = input_a.get(&"item_id", &"")
 	var input_b_id: StringName = input_b.get(&"item_id", &"")
 	var input_a_qty := int(input_a.get(&"quantity", 0))
 	var input_b_qty := int(input_b.get(&"quantity", 0))
+	var matches: Array[StringName] = []
 
 	for output_id: StringName in TOOL_RECIPE_DEFINITIONS.keys():
 		var recipe: Dictionary = TOOL_RECIPE_DEFINITIONS[output_id]
@@ -1122,17 +1164,57 @@ func _get_matching_tool_recipe_output_id() -> StringName:
 			input_a_id == &"wood" and input_a_qty >= wood_qty
 		)
 		if matches_straight or matches_swapped:
-			return output_id
-	return &""
+			matches.append(output_id)
+	return matches
+
+
+func _get_matching_forge_output_ids() -> Array[StringName]:
+	var forge_outputs := _get_matching_tool_recipe_output_ids()
+	if _is_steel_sword_forge_ready():
+		forge_outputs.append(STEEL_SWORD_RECIPE_OUTPUT)
+	return forge_outputs
+
+
+func _sync_forge_selection() -> void:
+	var forge_outputs := _get_matching_forge_output_ids()
+	var previous_selection: StringName = &""
+	if not _available_forge_output_ids.is_empty() and _selected_forge_output_index < _available_forge_output_ids.size():
+		previous_selection = _available_forge_output_ids[_selected_forge_output_index]
+	_available_forge_output_ids = forge_outputs
+	if forge_outputs.is_empty():
+		_selected_forge_output_index = 0
+		return
+	if not previous_selection.is_empty():
+		var selected_index := forge_outputs.find(previous_selection)
+		if selected_index != -1:
+			_selected_forge_output_index = selected_index
+			return
+	_selected_forge_output_index = clampi(_selected_forge_output_index, 0, forge_outputs.size() - 1)
 
 
 func _get_matching_forge_output_id() -> StringName:
-	var tool_output_id := _get_matching_tool_recipe_output_id()
-	if not tool_output_id.is_empty():
-		return tool_output_id
-	if _is_steel_sword_forge_ready():
-		return STEEL_SWORD_RECIPE_OUTPUT
-	return &""
+	_sync_forge_selection()
+	if _available_forge_output_ids.is_empty():
+		return &""
+	return _available_forge_output_ids[_selected_forge_output_index]
+
+
+func _update_recipe_cycle_button() -> void:
+	if not _is_initialized or recipe_cycle_button == null:
+		return
+	var forge_outputs := _get_matching_forge_output_ids()
+	var has_multiple_outputs := forge_outputs.size() > 1
+	recipe_cycle_button.visible = has_multiple_outputs
+	recipe_cycle_button.disabled = not has_multiple_outputs
+	if not has_multiple_outputs:
+		recipe_cycle_button.text = "Recipe"
+		return
+	var selected_output_id := _get_matching_forge_output_id()
+	recipe_cycle_button.text = "Recipe: %s (%d/%d)" % [
+		_get_item_label(selected_output_id),
+		_selected_forge_output_index + 1,
+		forge_outputs.size(),
+	]
 
 
 func _forge_tool(output_id: StringName, current_temp: float) -> void:

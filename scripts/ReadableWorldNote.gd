@@ -12,6 +12,7 @@ const PANEL_SUBTEXT := Color(0.78, 0.70, 0.59, 1.0)
 @export var discovery_title := "Sulfur Flats Warning"
 @export_multiline var discovery_notes := "Left the sulfur in my pack. Got low on health near the vents. Never made it back."
 
+@onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var prompt_label: Label = $PromptLabel
 
@@ -41,6 +42,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 
+	if _player_in_range != null and not _is_player_still_in_range():
+		_player_in_range = null
+		prompt_label.visible = false
+
 	if _player_in_range == null:
 		return
 	if event.is_action_pressed("interact"):
@@ -49,9 +54,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-	if not body is CharacterBody2D:
+	if not _is_player_body(body):
 		return
-	_player_in_range = body
+	_player_in_range = body as CharacterBody2D
 	if not _note_visible:
 		prompt_label.visible = true
 
@@ -84,6 +89,29 @@ func _close_note() -> void:
 	if _player_in_range != null and _player_in_range.has_method("resume_input"):
 		_player_in_range.resume_input()
 	prompt_label.visible = _player_in_range != null
+
+
+func _is_player_body(body: Node) -> bool:
+	return body is CharacterBody2D and (body.name == "Player" or body.is_in_group(&"player"))
+
+
+func _is_player_still_in_range() -> bool:
+	if _player_in_range == null or not is_instance_valid(_player_in_range):
+		return false
+	var max_distance := _get_interaction_range()
+	return global_position.distance_to(_player_in_range.global_position) <= max_distance
+
+
+func _get_interaction_range() -> float:
+	if collision_shape == null or collision_shape.shape == null:
+		return 40.0
+	if collision_shape.shape is RectangleShape2D:
+		var rect_shape := collision_shape.shape as RectangleShape2D
+		return rect_shape.size.length() * 0.5 + 12.0
+	if collision_shape.shape is CircleShape2D:
+		var circle_shape := collision_shape.shape as CircleShape2D
+		return circle_shape.radius + 12.0
+	return 40.0
 
 
 func _ensure_note_overlay() -> void:

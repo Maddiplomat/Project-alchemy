@@ -1,15 +1,15 @@
 extends Node2D
 
-signal stone_mined(amount: int)
+signal limestone_mined(amount: int)
 
 const MAX_STOCK := 30
-const REGEN_RATE := 1           # stone per regen tick
-const REGEN_INTERVAL := 20.0    # seconds between regen ticks
-const MINE_COOLDOWN := 0.5      # seconds between clicks
+const REGEN_RATE := 1
+const REGEN_INTERVAL := 24.0
+const MINE_COOLDOWN := 0.6
 const HAND_MINE_PROGRESS := 0.2
 const IRON_PICKAXE_PROGRESS := 0.5
 const STEEL_PICKAXE_PROGRESS := 1.0
-const INTERACTION_RADIUS := 48.0
+const INTERACTION_RADIUS := 52.0
 const IRON_PICKAXE_ITEM_ID := &"iron_pickaxe"
 const STEEL_PICKAXE_ITEM_ID := &"steel_pickaxe"
 const PICKAXE_DURABILITY_LOSS := 0.05
@@ -57,14 +57,14 @@ func _do_mine() -> void:
 	if yield_amount <= 0:
 		return
 
-	InventoryManager.add_element("stone", yield_amount, 1.0)
+	InventoryManager.add_element("limestone", yield_amount, 1.0)
 	var pickaxe_item_id := mine_profile.get(&"item_id", &"") as StringName
 	if not pickaxe_item_id.is_empty():
 		InventoryManager.degrade_item(pickaxe_item_id, PICKAXE_DURABILITY_LOSS)
 	_mine_progress = maxf(_mine_progress - float(yield_amount), 0.0)
 	_stock -= yield_amount
 	_mine_cooldown_remaining = MINE_COOLDOWN
-	stone_mined.emit(yield_amount)
+	limestone_mined.emit(yield_amount)
 	_flash_rocks()
 	_refresh_label()
 
@@ -86,16 +86,14 @@ func _get_mine_profile() -> Dictionary:
 
 
 func _build_visuals() -> void:
-	# Main quarry face — several large grey-brown polygon rocks
-	var rock_shapes: Array[Array] = [
-		# [offset, polygon points, color]
-		[Vector2(-18, 4), [Vector2(-12,-10), Vector2(4,-14), Vector2(14,-6), Vector2(10,8), Vector2(-8,10), Vector2(-14,2)], Color(0.48, 0.46, 0.44)],
-		[Vector2(14, 0), [Vector2(-8,-8), Vector2(6,-12), Vector2(12,-2), Vector2(8,10), Vector2(-6,8)], Color(0.44, 0.42, 0.40)],
-		[Vector2(-4, 10), [Vector2(-10,-6), Vector2(8,-8), Vector2(12,4), Vector2(4,10), Vector2(-12,6)], Color(0.52, 0.50, 0.47)],
-		[Vector2(2, -14), [Vector2(-6,-6), Vector2(6,-8), Vector2(10,2), Vector2(4,8), Vector2(-8,4)], Color(0.56, 0.53, 0.50)],
+	var ore_shapes: Array[Array] = [
+		[Vector2(-16, 5), [Vector2(-13,-10), Vector2(2,-15), Vector2(13,-8), Vector2(10,6), Vector2(-6,12), Vector2(-15,2)], Color(0.70, 0.70, 0.72)],
+		[Vector2(14, 0), [Vector2(-9,-9), Vector2(5,-13), Vector2(13,-2), Vector2(9,11), Vector2(-7,8)], Color(0.65, 0.65, 0.68)],
+		[Vector2(-2, 11), [Vector2(-11,-6), Vector2(8,-9), Vector2(13,4), Vector2(3,11), Vector2(-12,7)], Color(0.72, 0.72, 0.75)],
+		[Vector2(1, -14), [Vector2(-7,-6), Vector2(7,-9), Vector2(10,2), Vector2(4,9), Vector2(-8,5)], Color(0.68, 0.68, 0.70)],
 	]
 
-	for shape_data in rock_shapes:
+	for shape_data in ore_shapes:
 		var poly := Polygon2D.new()
 		poly.position = shape_data[0]
 		poly.polygon = PackedVector2Array(shape_data[1])
@@ -104,27 +102,36 @@ func _build_visuals() -> void:
 		add_child(poly)
 		_rocks.append(poly)
 
-	# Highlight vein lines for mineral appearance
-	var vein1 := Line2D.new()
-	vein1.default_color = Color(0.70, 0.68, 0.65, 0.7)
-	vein1.width = 1.2
-	vein1.z_index = 2
-	vein1.points = PackedVector2Array([Vector2(-14, -2), Vector2(-4, -6), Vector2(6, -4)])
-	add_child(vein1)
+	var seam1 := Line2D.new()
+	seam1.default_color = Color(0.85, 0.85, 0.85, 0.9)
+	seam1.width = 1.4
+	seam1.z_index = 2
+	seam1.points = PackedVector2Array([Vector2(-15, -2), Vector2(-5, -7), Vector2(7, -3)])
+	add_child(seam1)
 
-	var vein2 := Line2D.new()
-	vein2.default_color = Color(0.62, 0.60, 0.57, 0.6)
-	vein2.width = 1.0
-	vein2.z_index = 2
-	vein2.points = PackedVector2Array([Vector2(2, 8), Vector2(10, 2), Vector2(16, 6)])
-	add_child(vein2)
+	var seam2 := Line2D.new()
+	seam2.default_color = Color(0.80, 0.80, 0.82, 0.82)
+	seam2.width = 1.2
+	seam2.z_index = 2
+	seam2.points = PackedVector2Array([Vector2(-1, 8), Vector2(8, 2), Vector2(16, 7)])
+	add_child(seam2)
 
-	# Shadow base
+	var metallic_glint := Polygon2D.new()
+	metallic_glint.polygon = PackedVector2Array([
+		Vector2(-6.0, -8.0),
+		Vector2(1.0, -11.0),
+		Vector2(6.0, -7.0),
+		Vector2(1.0, -3.0),
+	])
+	metallic_glint.color = Color(0.83, 0.71, 0.58, 0.35)
+	metallic_glint.z_index = 3
+	add_child(metallic_glint)
+
 	var shadow := Polygon2D.new()
 	shadow.polygon = PackedVector2Array([
-		Vector2(-22, 14), Vector2(22, 14), Vector2(26, 20), Vector2(-26, 20)
+		Vector2(-24, 14), Vector2(24, 14), Vector2(29, 21), Vector2(-28, 21)
 	])
-	shadow.color = Color(0.20, 0.18, 0.16, 0.35)
+	shadow.color = Color(0.16, 0.10, 0.09, 0.38)
 	shadow.z_index = 0
 	add_child(shadow)
 
@@ -149,10 +156,10 @@ func _build_interaction_area() -> void:
 
 func _build_label() -> void:
 	_label = Label.new()
-	_label.position = Vector2(-32, -36)
+	_label.position = Vector2(-28, -38)
 	_label.z_index = 10
 	_label.add_theme_font_size_override("font_size", 9)
-	_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.85))
+	_label.add_theme_color_override("font_color", Color(0.96, 0.86, 0.77))
 	_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
 	_label.add_theme_constant_override("outline_size", 3)
 	_label.visible = false
@@ -164,24 +171,11 @@ func _refresh_label() -> void:
 	if _label == null:
 		return
 	if _stock <= 0:
-		_label.text = "Stone Quarry\n[Depleted]"
-		_label.add_theme_color_override("font_color", Color(0.7, 0.5, 0.5))
+		_label.text = "Limestone Mine\n[Depleted]"
+		_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.58))
 	else:
-		var key_hint := "Left Click"
-		_label.text = "Stone Quarry  (%d)\n[%s] Mine" % [_stock, key_hint]
-		_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.85))
-
-
-func _has_mine_action_key() -> bool:
-	return InputMap.has_action("mine")
-
-
-func _get_mine_action_key() -> String:
-	if InputMap.has_action("mine"):
-		var events := InputMap.action_get_events("mine")
-		if not events.is_empty():
-			return events[0].as_text()
-	return "Z"
+		_label.text = "Limestone Mine  (%d)\n[Left Click] Mine" % _stock
+		_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.87))
 
 
 func _on_body_entered(body: Node) -> void:
@@ -195,14 +189,14 @@ func _on_body_exited(body: Node) -> void:
 
 
 func get_scannable_element_id() -> StringName:
-	return &"stone"
+	return &"limestone"
 
 
 func _flash_rocks() -> void:
 	for rock in _rocks:
 		if rock is Polygon2D:
 			var original_color: Color = rock.color
-			rock.color = Color(0.80, 0.78, 0.75)
+			rock.color = Color(0.9, 0.9, 0.92)
 			var timer := get_tree().create_timer(0.1)
 			timer.timeout.connect(func(): rock.color = original_color)
 
