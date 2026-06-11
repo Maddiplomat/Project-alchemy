@@ -36,6 +36,10 @@ var _reaction_time_remaining := REACTION_DURATION_SECONDS
 var _pressure_target := 50.0
 var _pressure_pause_remaining := 0.0
 var _pressure_value := 50.0
+var _runtime_safe_min := PRESSURE_SAFE_MIN
+var _runtime_safe_max := PRESSURE_SAFE_MAX
+var _runtime_vent_cooldown_seconds := HEAT_VENT_COOLDOWN_SECONDS
+var _runtime_reaction_duration_seconds := REACTION_DURATION_SECONDS
 
 
 func _ready() -> void:
@@ -48,7 +52,8 @@ func _ready() -> void:
 	set_process(true)
 
 
-func start(recipe_name: String = "Stabilization") -> void:
+func start(recipe_name: String = "Stabilization", config: Dictionary = {}) -> void:
+	_apply_runtime_config(config)
 	_reset_state()
 	title_label.text = "%s Stabilization" % recipe_name
 	status_label.text = "Hold heat below the limit and finish with pressure centered."
@@ -91,7 +96,7 @@ func _process(delta: float) -> void:
 		_fail(&"pressure_spike")
 		return
 	if _reaction_time_remaining <= 0.0:
-		if _pressure_value >= PRESSURE_SAFE_MIN and _pressure_value <= PRESSURE_SAFE_MAX:
+		if _pressure_value >= _runtime_safe_min and _pressure_value <= _runtime_safe_max:
 			_succeed()
 		else:
 			_fail(&"timer_expiry")
@@ -101,7 +106,7 @@ func _on_vent_button_pressed() -> void:
 	if not _active or _vent_cooldown_remaining > 0.0:
 		return
 	_heat = maxf(0.0, _heat - HEAT_VENT_DROP)
-	_vent_cooldown_remaining = HEAT_VENT_COOLDOWN_SECONDS
+	_vent_cooldown_remaining = _runtime_vent_cooldown_seconds
 	_refresh_ui()
 
 func _on_pressure_slider_value_changed(value: float) -> void:
@@ -115,7 +120,7 @@ func _pick_new_pressure_target() -> void:
 func _reset_state() -> void:
 	_heat = 20.0
 	_vent_cooldown_remaining = 0.0
-	_reaction_time_remaining = REACTION_DURATION_SECONDS
+	_reaction_time_remaining = _runtime_reaction_duration_seconds
 	_pressure_pause_remaining = 0.0
 	pressure_slider.min_value = PRESSURE_MIN
 	pressure_slider.max_value = PRESSURE_MAX
@@ -137,14 +142,25 @@ func _refresh_ui() -> void:
 		"Vent ready"
 	)
 
-	pressure_value_label.text = "Pressure %.1f | Safe 45-55" % _pressure_value
+	pressure_value_label.text = "Pressure %.1f | Safe %.0f-%.0f" % [_pressure_value, _runtime_safe_min, _runtime_safe_max]
 	pressure_target_label.text = "Spike target %.0f" % _pressure_target
-	var pressure_in_safe_zone := _pressure_value >= PRESSURE_SAFE_MIN and _pressure_value <= PRESSURE_SAFE_MAX
+	var pressure_in_safe_zone := _pressure_value >= _runtime_safe_min and _pressure_value <= _runtime_safe_max
 	pressure_value_label.modulate = Color(0.64, 0.90, 0.68, 1.0) if pressure_in_safe_zone else Color(0.95, 0.74, 0.38, 1.0)
 
-	timer_gauge.max_value = REACTION_DURATION_SECONDS
+	timer_gauge.max_value = _runtime_reaction_duration_seconds
 	timer_gauge.value = _reaction_time_remaining
 	timer_value_label.text = "Reaction %.1fs" % _reaction_time_remaining
+
+
+func _apply_runtime_config(config: Dictionary) -> void:
+	_runtime_safe_min = float(config.get(&"pressure_safe_min", PRESSURE_SAFE_MIN))
+	_runtime_safe_max = float(config.get(&"pressure_safe_max", PRESSURE_SAFE_MAX))
+	if _runtime_safe_max < _runtime_safe_min:
+		var swap := _runtime_safe_min
+		_runtime_safe_min = _runtime_safe_max
+		_runtime_safe_max = swap
+	_runtime_vent_cooldown_seconds = maxf(0.1, float(config.get(&"vent_cooldown_seconds", HEAT_VENT_COOLDOWN_SECONDS)))
+	_runtime_reaction_duration_seconds = maxf(1.0, float(config.get(&"reaction_duration_seconds", REACTION_DURATION_SECONDS)))
 
 
 func _succeed() -> void:

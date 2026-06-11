@@ -15,9 +15,40 @@
     "station": "chem_bench",
     "reaction_type": "chemical",
     "requires_stabilization": true,
+    "discovery_gate": {
+      "entry_id": "distillation_kit",
+      "hint": "Discover the Distillation Kit before attempting sulfur chemistry.",
+      "locked_name": "???"
+    },
     "ratio": {
       "sulfur": 0.5,
       "iron": 0.5
+    },
+    "durability": null
+  },
+  {
+    "id": "corrosive_slurry",
+    "inputs": [
+      {
+        "sulfur": 1
+      },
+      {
+        "water": 1
+      }
+    ],
+    "output": {
+      "corrosive_slurry": 1
+    },
+    "station": "chem_bench",
+    "reaction_type": "chemical",
+    "discovery_gate": {
+      "entry_id": "stabilization_success",
+      "hint": "Achieve a successful stabilization to identify buffered sulfur chemistry.",
+      "locked_name": "???"
+    },
+    "ratio": {
+      "sulfur": 0.5,
+      "water": 0.5
     },
     "durability": null
   }

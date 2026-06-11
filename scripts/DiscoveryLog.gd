@@ -25,6 +25,7 @@ var log_entries: Array[Dictionary] = []
 
 ## Set of output_ids already logged — prevents duplicate "first discovery" pings.
 var _seen_outputs: Dictionary[StringName, bool] = {}
+var _seen_discoveries: Dictionary[StringName, bool] = {}
 var _seen_environment_entries: Dictionary[StringName, bool] = {}
 
 
@@ -104,13 +105,85 @@ func get_entries() -> Array[Dictionary]:
 
 ## True if this output_id has been smelted at least once.
 func has_seen(output_id: StringName) -> bool:
-	return _seen_outputs.get(output_id, false)
+	return has_discovery(output_id)
+
+
+func has_discovery(entry_id: StringName) -> bool:
+	if entry_id.is_empty():
+		return false
+	return _seen_discoveries.get(entry_id, false)
+
+
+func is_recipe_unlocked(recipe: Dictionary) -> bool:
+	if recipe.is_empty():
+		return false
+	var gate: Dictionary = recipe.get(&"discovery_gate", {})
+	if gate.is_empty():
+		return true
+	var entry_id := StringName(gate.get(&"entry_id", &""))
+	if entry_id.is_empty():
+		return true
+	return has_discovery(entry_id)
+
+
+func get_recipe_gate_hint(recipe: Dictionary) -> String:
+	var gate: Dictionary = recipe.get(&"discovery_gate", {})
+	return str(gate.get(&"hint", ""))
+
+
+func get_recipe_locked_name(recipe: Dictionary) -> String:
+	var gate: Dictionary = recipe.get(&"discovery_gate", {})
+	return str(gate.get(&"locked_name", "???"))
+
+
+func log_progression_discovery(entry_id: StringName, title: String, notes: String) -> bool:
+	if entry_id.is_empty():
+		return false
+	if has_discovery(entry_id):
+		return false
+
+	var entry := {
+		"timestamp": Time.get_ticks_msec(),
+		"output_id": entry_id,
+		"output_name": title if not title.is_empty() else _pretty_name(entry_id),
+		"tier": "progression",
+		"tier_enum": OutcomeTier.UNKNOWN,
+		"quality": 1.0,
+		"notes": notes,
+		"temperature": 0.0,
+		"inputs": [],
+		"is_first_discovery": false,
+		"entry_type": "progression",
+	}
+	_append_entry(entry, true)
+	return true
+
+
+func get_all_discoveries() -> Array[StringName]:
+	var result: Array[StringName] = []
+	for entry_id: StringName in _seen_discoveries.keys():
+		result.append(entry_id)
+	result.sort()
+	return result
+
+
+func restore_discoveries(discoveries: Array) -> void:
+	_seen_outputs.clear()
+	_seen_discoveries.clear()
+	if ElementDatabase != null:
+		ElementDatabase.discovered_elements.clear()
+	for raw_entry_id in discoveries:
+		var entry_id := StringName(str(raw_entry_id))
+		if entry_id.is_empty():
+			continue
+		_record_discovery(entry_id)
 
 
 ## Clear all history (for new-game resets).
 func clear() -> void:
 	log_entries.clear()
 	_seen_outputs.clear()
+	_seen_discoveries.clear()
 	_seen_environment_entries.clear()
 
 
@@ -248,11 +321,9 @@ func _pretty_name(output_id: StringName) -> String:
 
 func _append_entry(entry: Dictionary, discover_output: bool) -> void:
 	var output_id := StringName(str(entry.get("output_id", "")))
-	if discover_output and not output_id.is_empty() and not _seen_outputs.get(output_id, false):
+	if discover_output and not output_id.is_empty() and not has_discovery(output_id):
 		entry["is_first_discovery"] = true
-		_seen_outputs[output_id] = true
-		if ElementDatabase.has_element(output_id):
-			ElementDatabase.discover_element(output_id)
+		_record_discovery(output_id)
 
 	log_entries.append(entry)
 	if log_entries.size() > MAX_LOG_SIZE:
@@ -289,3 +360,12 @@ func _print_entry(entry: Dictionary) -> void:
 		"[DiscoveryLog] %s%s (%s) @ %s — %s"
 		% [flag, name_str, tier_str, temp_str, notes_str]
 	)
+
+
+func _record_discovery(entry_id: StringName) -> void:
+	if entry_id.is_empty() or _seen_discoveries.get(entry_id, false):
+		return
+	_seen_discoveries[entry_id] = true
+	_seen_outputs[entry_id] = true
+	if ElementDatabase.has_element(entry_id):
+		ElementDatabase.discover_element(entry_id)

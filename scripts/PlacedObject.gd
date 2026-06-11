@@ -34,7 +34,12 @@ func to_world_save_entry() -> Dictionary:
 		&"object_type": object_type,
 		&"placed_at": placed_at,
 		&"scene_path": scene_file_path,
+		&"placed_rotation_degrees": rotation_degrees,
 	}
+
+
+func get_occupied_tile_coords() -> Array[Vector2i]:
+	return [placed_at]
 
 
 func export_to_world_save_data(world_save_data) -> void:

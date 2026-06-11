@@ -135,6 +135,17 @@ func _normalize_recipe(raw_recipe: Dictionary) -> Dictionary:
 	else:
 		durability = 1.0
 
+	var discovery_gate: Dictionary = {}
+	var raw_discovery_gate = raw_recipe.get(&"discovery_gate", {})
+	if raw_discovery_gate is Dictionary:
+		var gate_entry_id := StringName(str(raw_discovery_gate.get(&"entry_id", "")))
+		if not gate_entry_id.is_empty():
+			discovery_gate = {
+				&"entry_id": gate_entry_id,
+				&"hint": str(raw_discovery_gate.get(&"hint", "")),
+				&"locked_name": str(raw_discovery_gate.get(&"locked_name", "???")),
+			}
+
 	return {
 		&"id": StringName(str(raw_recipe.get(&"id"))),
 		&"inputs": normalized_inputs,
@@ -149,6 +160,7 @@ func _normalize_recipe(raw_recipe: Dictionary) -> Dictionary:
 		&"required_temp": raw_recipe.get(&"required_temp"),
 		&"reaction_type": StringName(str(raw_recipe.get(&"reaction_type", ""))),
 		&"requires_stabilization": bool(raw_recipe.get(&"requires_stabilization", false)),
+		&"discovery_gate": discovery_gate,
 	}
 
 

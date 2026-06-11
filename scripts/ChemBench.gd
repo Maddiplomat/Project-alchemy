@@ -14,6 +14,7 @@ const DEFAULT_RATIO_PERCENT := 50.0
 const DEFAULT_TEMPERATURE_C := 90.0
 const MIN_TEMPERATURE_C := 20.0
 const MAX_TEMPERATURE_C := 260.0
+const POWER_CELL_DURATION_SECONDS := 480.0
 
 signal player_entered_range
 signal player_exited_range
@@ -39,6 +40,7 @@ var _slot_state: Dictionary[StringName, Dictionary] = {
 var _ratio_target_slot: StringName = RATIO_TARGET_INPUT_B
 var _ratio_percent := DEFAULT_RATIO_PERCENT
 var _temperature_c := DEFAULT_TEMPERATURE_C
+var _power_cell_charge_remaining := 0.0
 
 
 func _ready() -> void:
@@ -52,6 +54,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	_drain_power_bonus(_delta)
 	if _interact_locked_until_release:
 		if not Input.is_action_pressed("interact"):
 			_interact_locked_until_release = false
@@ -235,10 +238,38 @@ func get_ui_state() -> Dictionary:
 		&"ratio_target_slot": _ratio_target_slot,
 		&"ratio_percent": _ratio_percent,
 		&"temperature_c": _temperature_c,
+		&"power_state": get_power_state(),
 	}
 	for slot_id: StringName in _slot_state.keys():
 		result[slot_id] = get_input(slot_id)
 	return result
+
+
+func insert_power_cell() -> bool:
+	if has_power_bonus():
+		return false
+	if not InventoryManager.has_item(&"energy_cell", 1):
+		return false
+	InventoryManager.remove_item(&"energy_cell", 1)
+	_power_cell_charge_remaining = POWER_CELL_DURATION_SECONDS
+	_emit_state_changed()
+	return true
+
+
+func has_power_bonus() -> bool:
+	return _power_cell_charge_remaining > 0.0
+
+
+func get_power_state() -> Dictionary:
+	return {
+		&"has_cell": has_power_bonus(),
+		&"charge_remaining_seconds": _power_cell_charge_remaining,
+	}
+
+
+func restore_power_state(data: Dictionary) -> void:
+	_power_cell_charge_remaining = clampf(float(data.get(&"charge_remaining_seconds", 0.0)), 0.0, POWER_CELL_DURATION_SECONDS)
+	_emit_state_changed()
 
 
 func _build_reaction_state() -> Dictionary:
@@ -275,6 +306,16 @@ func _normalize_ratio_target_slot(slot_id: StringName) -> StringName:
 func _emit_state_changed() -> void:
 	GameManager.mark_dirty()
 	state_changed.emit()
+
+
+func _drain_power_bonus(delta: float) -> void:
+	if not has_power_bonus() or not _is_interacting:
+		return
+	var previous_charge := _power_cell_charge_remaining
+	_power_cell_charge_remaining = maxf(0.0, _power_cell_charge_remaining - delta)
+	if is_equal_approx(previous_charge, _power_cell_charge_remaining):
+		return
+	_emit_state_changed()
 
 
 func _start_interaction() -> void:

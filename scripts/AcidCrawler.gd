@@ -26,6 +26,9 @@ const ATTACK_COOLDOWN_SECONDS := 1.35
 const HEALTH_BAR_HIDE_DELAY := 2.0
 
 @export var health: int = 48
+@export var resistances: Dictionary = {
+	&"chemical": 0.0,
+}
 
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
 @onready var sprite: Sprite2D = $Sprite2D
@@ -155,7 +158,12 @@ func _step_state(delta: float) -> void:
 
 
 func _update_patrol_state(delta: float) -> void:
-	if _player_target != null and global_position.distance_to(_player_target.global_position) <= DETECTION_RADIUS:
+	var effective_detection_radius := _get_effective_detection_radius()
+	if effective_detection_radius <= 0.0:
+		_report_lit_zone_presence()
+		return
+	if _player_target != null and global_position.distance_to(_player_target.global_position) <= effective_detection_radius:
+		_report_lit_zone_presence()
 		_begin_burrow(_get_player_tile_center())
 		return
 
@@ -210,6 +218,10 @@ func _update_attack_state() -> void:
 		return
 
 	var distance_to_player := global_position.distance_to(_player_target.global_position)
+	if _get_effective_detection_radius() <= 0.0:
+		_report_lit_zone_presence()
+		_begin_burrow(spawn_position, true)
+		return
 	if distance_to_player > REBURROW_RADIUS:
 		_begin_burrow(spawn_position, true)
 		return
@@ -341,6 +353,20 @@ func _find_player() -> CharacterBody2D:
 	if player is CharacterBody2D:
 		return player as CharacterBody2D
 	return null
+
+
+func _get_effective_detection_radius() -> float:
+	if not _night_active or BaseDefenseSystem == null or not BaseDefenseSystem.has_method("get_detection_multiplier_at"):
+		return DETECTION_RADIUS
+	return DETECTION_RADIUS * float(BaseDefenseSystem.get_detection_multiplier_at(global_position))
+
+
+func _report_lit_zone_presence() -> void:
+	if not _night_active or BaseDefenseSystem == null or not BaseDefenseSystem.has_method("is_position_in_powered_light"):
+		return
+	if not BaseDefenseSystem.is_position_in_powered_light(global_position):
+		return
+	BaseDefenseSystem.report_night_threat(get_instance_id(), global_position)
 
 
 func _get_player_tile_center() -> Vector2:

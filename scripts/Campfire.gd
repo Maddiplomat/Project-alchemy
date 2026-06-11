@@ -1,12 +1,17 @@
 extends "res://scripts/PlacedObject.gd"
 
 const BURN_DURATION_SECONDS := 600.0
+const CHARCOAL_CYCLE_SECONDS := 120.0
+const CHARCOAL_STATUS_SHOW_SECONDS := 1.6
+const CHARCOAL_ITEM_ID := &"charcoal"
 const REFUEL_COST_ITEM_ID := &"wood"
 const REFUEL_COST_QUANTITY := 2
+const RELIGHT_COST_QUANTITY := 2
 const HEAL_PER_SECOND := 1.5
-const SUPPORT_RADIUS := 48.0
+const SUPPORT_RADIUS := 42.0
 const LIGHT_ENERGY_LIT := 0.7
 const LIGHT_ENERGY_UNLIT := 0.0
+const LIGHT_TEXTURE_SCALE := 0.44
 const CAMPFIRE_WOOD := Color(0.36, 0.22, 0.10, 1.0)
 const CAMPFIRE_WOOD_DARK := Color(0.22, 0.14, 0.07, 1.0)
 const CAMPFIRE_STONE := Color(0.48, 0.46, 0.44, 1.0)
@@ -25,7 +30,14 @@ const CAMPFIRE_FLAME := Color(1.0, 0.76, 0.20, 0.95)
 var _player_in_range := false
 var _player: CharacterBody2D = null
 var _interact_locked_until_release := false
+var _extinguish_locked_until_release := false
+var _pickup_locked_until_release := false
 var _heal_accumulator := 0.0
+var _refuel_wood_units_loaded := 0
+var _charcoal_progress_seconds := 0.0
+var _pending_output_charcoal := 0
+var _charcoal_status_text := ""
+var _charcoal_status_seconds := 0.0
 
 
 func _ready() -> void:
@@ -33,6 +45,7 @@ func _ready() -> void:
 	save_bucket = SaveBucket.STATIONS
 	super()
 	_build_visual_identity()
+	_configure_support_area()
 	_configure_light()
 	_configure_particles()
 	_configure_prompt_label()
@@ -43,9 +56,16 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_sync_player_range_state()
 	_update_burn(delta)
+	_update_charcoal_processing(delta)
+	_update_charcoal_status(delta)
 	_update_interaction_lock()
 	_handle_refuel_input()
+	_handle_relight_input()
+	_handle_extinguish_input()
+	_handle_charcoal_collect_input()
+	_handle_pickup_input()
 	_handle_healing(delta)
 	_update_shelter_state()
 	_update_warmth_state()
@@ -55,7 +75,21 @@ func to_world_save_entry() -> Dictionary:
 	var entry := super.to_world_save_entry()
 	entry[&"is_lit"] = is_lit
 	entry[&"burn_time_remaining"] = burn_time_remaining
+	entry[&"refuel_wood_units_loaded"] = _refuel_wood_units_loaded
+	entry[&"charcoal_progress_seconds"] = _charcoal_progress_seconds
+	entry[&"pending_output_charcoal"] = _pending_output_charcoal
 	return entry
+
+
+func restore_from_pickup(data: Dictionary) -> void:
+	if data.has(&"burn_time_remaining"):
+		burn_time_remaining = float(data[&"burn_time_remaining"])
+	_refuel_wood_units_loaded = int(data.get(&"refuel_wood_units_loaded", 0))
+	_charcoal_progress_seconds = clampf(float(data.get(&"charcoal_progress_seconds", 0.0)), 0.0, CHARCOAL_CYCLE_SECONDS)
+	_pending_output_charcoal = maxi(int(data.get(&"pending_output_charcoal", 0)), 0)
+	# Re-light if there's still fuel; otherwise leave it out
+	is_lit = burn_time_remaining > 0.0
+	_apply_lit_state()
 
 
 func _update_burn(delta: float) -> void:
@@ -67,9 +101,32 @@ func _update_burn(delta: float) -> void:
 		_apply_lit_state()
 
 
+func _update_charcoal_processing(delta: float) -> void:
+	if not is_lit or _refuel_wood_units_loaded <= 0:
+		return
+
+	_charcoal_progress_seconds += delta
+	var produced_charcoal := 0
+	while _charcoal_progress_seconds >= CHARCOAL_CYCLE_SECONDS and _refuel_wood_units_loaded > 0:
+		_charcoal_progress_seconds -= CHARCOAL_CYCLE_SECONDS
+		_refuel_wood_units_loaded -= 1
+		_pending_output_charcoal += 1
+		produced_charcoal += 1
+	if _refuel_wood_units_loaded <= 0:
+		_charcoal_progress_seconds = 0.0
+
+	if produced_charcoal > 0:
+		GameManager.mark_dirty()
+		_set_charcoal_status("Charcoal ready x%d" % _pending_output_charcoal)
+
+
 func _update_interaction_lock() -> void:
 	if _interact_locked_until_release and not Input.is_action_pressed("interact"):
 		_interact_locked_until_release = false
+	if _extinguish_locked_until_release and not Input.is_key_pressed(KEY_F):
+		_extinguish_locked_until_release = false
+	if _pickup_locked_until_release and not Input.is_key_pressed(KEY_G):
+		_pickup_locked_until_release = false
 
 
 func _handle_refuel_input() -> void:
@@ -82,9 +139,80 @@ func _handle_refuel_input() -> void:
 	if not InventoryManager.remove_item(REFUEL_COST_ITEM_ID, REFUEL_COST_QUANTITY):
 		return
 	burn_time_remaining += BURN_DURATION_SECONDS
+	_refuel_wood_units_loaded += REFUEL_COST_QUANTITY
 	_interact_locked_until_release = true
 	GameManager.mark_dirty()
 	_show_prompt(true)
+
+
+func _handle_relight_input() -> void:
+	# Re-light a dead campfire with 2 wood
+	if not _player_in_range or is_lit or _interact_locked_until_release:
+		return
+	if not Input.is_action_just_pressed("interact"):
+		return
+	if not InventoryManager.has_item(REFUEL_COST_ITEM_ID, RELIGHT_COST_QUANTITY):
+		return
+	if not InventoryManager.remove_item(REFUEL_COST_ITEM_ID, RELIGHT_COST_QUANTITY):
+		return
+	burn_time_remaining = BURN_DURATION_SECONDS
+	_refuel_wood_units_loaded += RELIGHT_COST_QUANTITY
+	is_lit = true
+	_apply_lit_state()
+	_interact_locked_until_release = true
+	GameManager.mark_dirty()
+	_show_prompt(true)
+
+
+func _handle_extinguish_input() -> void:
+	# Manually extinguish the campfire with F — preserves burn_time_remaining
+	if not _player_in_range or not is_lit or _extinguish_locked_until_release:
+		return
+	if not Input.is_key_pressed(KEY_F):
+		return
+	is_lit = false
+	_apply_lit_state()
+	_extinguish_locked_until_release = true
+	GameManager.mark_dirty()
+	_show_prompt(true)
+
+
+func _handle_charcoal_collect_input() -> void:
+	if not _player_in_range or not Input.is_action_just_pressed("campfire_process"):
+		return
+	if _pending_output_charcoal <= 0:
+		_set_charcoal_status(_build_charcoal_status_text())
+		return
+
+	var charcoal_data := ElementDatabase.get_element(CHARCOAL_ITEM_ID)
+	if charcoal_data.is_empty():
+		return
+	if not InventoryManager.can_add_item(charcoal_data, _pending_output_charcoal):
+		_set_charcoal_status("Inventory full")
+		return
+	var collected_charcoal := _pending_output_charcoal
+	if not InventoryManager.add_item(charcoal_data, _pending_output_charcoal):
+		_set_charcoal_status("Inventory full")
+		return
+
+	_pending_output_charcoal = 0
+	GameManager.mark_dirty()
+	_set_charcoal_status("Collected Charcoal x%d" % collected_charcoal)
+
+
+func _handle_pickup_input() -> void:
+	# Pick up the campfire with G; player can re-place it anywhere for free
+	if not _player_in_range or _pickup_locked_until_release:
+		return
+	if not Input.is_key_pressed(KEY_G):
+		return
+	CarrierRiskSystem.set_sheltered(get_instance_id(), false)
+	if "is_player_warmed" in GameManager:
+		GameManager.is_player_warmed = false
+	var build_system := get_node_or_null("/root/BuildSystem")
+	if build_system != null and build_system.has_method("enter_build_mode_for_existing"):
+		build_system.call("enter_build_mode_for_existing", scene_file_path, _build_restore_payload())
+	queue_free()
 
 
 func _handle_healing(delta: float) -> void:
@@ -177,10 +305,21 @@ func _configure_light() -> void:
 	texture.width = 256
 	texture.height = 256
 	texture.fill = GradientTexture2D.FILL_RADIAL
+	texture.fill_from = Vector2(0.5, 0.5)
+	texture.fill_to = Vector2(1.0, 0.5)
 	texture.gradient = gradient
 	point_light.texture = texture
+	point_light.texture_scale = LIGHT_TEXTURE_SCALE
 	point_light.energy = LIGHT_ENERGY_LIT if is_lit else LIGHT_ENERGY_UNLIT
 	point_light.offset = Vector2(0.0, -8.0)
+
+
+func _configure_support_area() -> void:
+	if support_shape == null:
+		return
+	var circle_shape := support_shape.shape as CircleShape2D
+	if circle_shape != null:
+		circle_shape.radius = SUPPORT_RADIUS
 
 
 func _configure_particles() -> void:
@@ -232,6 +371,8 @@ func _configure_prompt_label() -> void:
 	if prompt_label == null:
 		return
 	prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	prompt_label.add_theme_font_size_override("font_size", 8)
+	prompt_label.add_theme_constant_override("outline_size", 1)
 	prompt_label.offset_left = -84.0
 	prompt_label.offset_top = -52.0
 	prompt_label.offset_right = 84.0
@@ -240,20 +381,12 @@ func _configure_prompt_label() -> void:
 
 func _on_body_entered(body: Node) -> void:
 	if body.name == "Player" and body is CharacterBody2D:
-		_player = body as CharacterBody2D
-		_player_in_range = true
-		_show_prompt(true)
+		_set_player_in_range(body as CharacterBody2D)
 
 
 func _on_body_exited(body: Node) -> void:
 	if body == _player:
-		_player = null
-	_player_in_range = false
-	_heal_accumulator = 0.0
-	CarrierRiskSystem.set_sheltered(get_instance_id(), false)
-	if "is_player_warmed" in GameManager:
-		GameManager.is_player_warmed = false
-	_hide_prompt()
+		_clear_player_in_range()
 
 
 func _show_prompt(should_show: bool) -> void:
@@ -263,10 +396,15 @@ func _show_prompt(should_show: bool) -> void:
 	if not should_show:
 		return
 	if is_lit:
-		var wood_status := "Ready" if InventoryManager.has_item(REFUEL_COST_ITEM_ID, REFUEL_COST_QUANTITY) else "Need Wood x2"
-		prompt_label.text = "Press E to refuel\n%s" % wood_status
+		var has_wood := InventoryManager.has_item(REFUEL_COST_ITEM_ID, REFUEL_COST_QUANTITY)
+		var refuel_line := "[E] Refuel (%s)" % ("Wood x2" if has_wood else "Need Wood x2")
+		prompt_label.text = "%s\n[F] Extinguish\n[G] Pick up" % refuel_line
 	else:
-		prompt_label.text = "Campfire Out"
+		var has_wood := InventoryManager.has_item(REFUEL_COST_ITEM_ID, RELIGHT_COST_QUANTITY)
+		var relight_line := "[E] Relight" if has_wood else "[E] Relight (Need Wood x2)"
+		prompt_label.text = "Campfire Out\n%s\n[G] Pick up" % relight_line
+	if _charcoal_status_seconds > 0.0 and not _charcoal_status_text.is_empty():
+		prompt_label.text = "%s\n%s" % [prompt_label.text, _charcoal_status_text]
 
 
 func _hide_prompt() -> void:
@@ -274,8 +412,78 @@ func _hide_prompt() -> void:
 		prompt_label.visible = false
 
 
+func _build_charcoal_status_text() -> String:
+	if _pending_output_charcoal > 0:
+		return "Collect Charcoal x%d" % _pending_output_charcoal
+	if _refuel_wood_units_loaded <= 0:
+		return "No charcoal in progress"
+	var remaining_seconds := maxi(int(ceil(CHARCOAL_CYCLE_SECONDS - _charcoal_progress_seconds)), 1)
+	return "Charcoal in %s" % _format_seconds_short(remaining_seconds)
+
+
+func _update_charcoal_status(delta: float) -> void:
+	if _charcoal_status_seconds <= 0.0:
+		return
+	_charcoal_status_seconds = maxf(0.0, _charcoal_status_seconds - delta)
+	if _charcoal_status_seconds <= 0.0:
+		_charcoal_status_text = ""
+	if _player_in_range:
+		_show_prompt(true)
+
+
+func _set_charcoal_status(text: String) -> void:
+	_charcoal_status_text = text
+	_charcoal_status_seconds = CHARCOAL_STATUS_SHOW_SECONDS
+	_show_prompt(_player_in_range)
+
+
+func _format_seconds_short(total_seconds: int) -> String:
+	var minutes := total_seconds / 60
+	var seconds := total_seconds % 60
+	return "%d:%02d" % [minutes, seconds]
+
+
+func _build_restore_payload() -> Dictionary:
+	return {
+		&"burn_time_remaining": burn_time_remaining,
+		&"refuel_wood_units_loaded": _refuel_wood_units_loaded,
+		&"charcoal_progress_seconds": _charcoal_progress_seconds,
+		&"pending_output_charcoal": _pending_output_charcoal,
+	}
+
+
 func _get_rain_system() -> Node:
 	var current_scene := get_tree().current_scene
 	if current_scene == null:
 		return null
 	return current_scene.find_child("IronHillsZone", true, false)
+
+
+func _sync_player_range_state() -> void:
+	if support_area == null:
+		return
+	for body in support_area.get_overlapping_bodies():
+		if body.name == "Player" and body is CharacterBody2D:
+			_set_player_in_range(body as CharacterBody2D)
+			return
+	_clear_player_in_range()
+
+
+func _set_player_in_range(player_body: CharacterBody2D) -> void:
+	if player_body == null:
+		return
+	_player = player_body
+	_player_in_range = true
+	_show_prompt(true)
+
+
+func _clear_player_in_range() -> void:
+	if not _player_in_range and _player == null:
+		return
+	_player = null
+	_player_in_range = false
+	_heal_accumulator = 0.0
+	CarrierRiskSystem.set_sheltered(get_instance_id(), false)
+	if "is_player_warmed" in GameManager:
+		GameManager.is_player_warmed = false
+	_hide_prompt()

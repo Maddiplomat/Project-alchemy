@@ -63,6 +63,11 @@ const TOOL_RECIPE_DEFINITIONS := {
 		&"wood_qty": 2,
 		&"display_name": "Steel Axe",
 		&"tool_type": "axe",
+		&"discovery_gate": {
+			&"entry_id": &"steel",
+			&"hint": "Discover Steel in the furnace to unlock advanced forge patterns.",
+			&"locked_name": "???",
+		},
 	},
 	&"iron_pickaxe": {
 		&"metal_id": &"iron",
@@ -77,6 +82,11 @@ const TOOL_RECIPE_DEFINITIONS := {
 		&"wood_qty": 2,
 		&"display_name": "Steel Pickaxe",
 		&"tool_type": "pickaxe",
+		&"discovery_gate": {
+			&"entry_id": &"steel",
+			&"hint": "Discover Steel in the furnace to unlock advanced forge patterns.",
+			&"locked_name": "???",
+		},
 	},
 }
 
@@ -134,6 +144,9 @@ var _burn_enabled := true
 var _fuel_cost_state: Dictionary = {&"item_id": &"", &"burned_units": 0.0}
 var _available_forge_output_ids: Array[StringName] = []
 var _selected_forge_output_index := 0
+var _power_status_label: Label
+var _power_button: Button
+var _power_state: Dictionary = {&"has_cell": false, &"charge_remaining_seconds": 0.0}
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
 	&"input_b": {&"item_id": &"", &"quantity": 0},
@@ -304,6 +317,11 @@ func set_fuel_cost_state(state: Dictionary) -> void:
 func set_burn_enabled(value: bool) -> void:
 	_burn_enabled = value
 	_update_fire_toggle_button()
+
+
+func set_power_state(state: Dictionary) -> void:
+	_power_state = state.duplicate(true)
+	_update_power_panel()
 
 
 func set_probable_output(item_id: StringName, quantity: int) -> void:
@@ -527,6 +545,8 @@ func _pull_state_from_furnace() -> void:
 	)
 	if _bound_furnace.has_method("is_burn_enabled"):
 		set_burn_enabled(bool(_bound_furnace.is_burn_enabled()))
+	if _bound_furnace.has_method("get_power_state"):
+		set_power_state(_bound_furnace.get_power_state())
 	_update_mode_state(_should_use_carbonisation_mode())
 	_clear_output_if_stale()
 
@@ -593,6 +613,13 @@ func _refresh_probable_output() -> void:
 			]
 		else:
 			action_hint_label.text = "Use Forge for %s." % _get_item_label(forge_output_id)
+		_update_recipe_cycle_button()
+		return
+
+	var locked_forge_outputs := _get_matching_forge_output_ids(true)
+	if not locked_forge_outputs.is_empty():
+		show_output_placeholder("Discovery locked")
+		action_hint_label.text = _get_forge_lock_hint(locked_forge_outputs[0])
 		_update_recipe_cycle_button()
 		return
 
@@ -1141,7 +1168,7 @@ func _build_explosion_result(notes: String) -> Dictionary:
 	}
 
 
-func _get_matching_tool_recipe_output_ids() -> Array[StringName]:
+func _get_matching_tool_recipe_output_ids(include_locked: bool = false) -> Array[StringName]:
 	var input_a: Dictionary = _slot_state.get(&"input_a", {})
 	var input_b: Dictionary = _slot_state.get(&"input_b", {})
 	var input_a_id: StringName = input_a.get(&"item_id", &"")
@@ -1164,13 +1191,18 @@ func _get_matching_tool_recipe_output_ids() -> Array[StringName]:
 			input_a_id == &"wood" and input_a_qty >= wood_qty
 		)
 		if matches_straight or matches_swapped:
+			if include_locked and not _is_forge_recipe_unlocked(recipe):
+				matches.append(output_id)
+				continue
+			if not include_locked and not _is_forge_recipe_unlocked(recipe):
+				continue
 			matches.append(output_id)
 	return matches
 
 
-func _get_matching_forge_output_ids() -> Array[StringName]:
-	var forge_outputs := _get_matching_tool_recipe_output_ids()
-	if _is_steel_sword_forge_ready():
+func _get_matching_forge_output_ids(include_locked: bool = false) -> Array[StringName]:
+	var forge_outputs := _get_matching_tool_recipe_output_ids(include_locked)
+	if _is_steel_sword_forge_ready() and (include_locked or _is_steel_sword_unlocked()):
 		forge_outputs.append(STEEL_SWORD_RECIPE_OUTPUT)
 	return forge_outputs
 
@@ -1285,6 +1317,9 @@ func _is_steel_sword_forge_ready() -> bool:
 
 
 func _forge_steel_sword(current_temp: float) -> void:
+	if not _is_steel_sword_unlocked():
+		action_hint_label.text = _get_forge_lock_hint(STEEL_SWORD_RECIPE_OUTPUT)
+		return
 	var source_slot: StringName = &"input_a"
 	var source_state: Dictionary = _slot_state.get(source_slot, {})
 	if source_state.get(&"item_id", &"") != STEEL_SWORD_RECIPE_INPUT:
@@ -1310,6 +1345,42 @@ func _forge_steel_sword(current_temp: float) -> void:
 	_last_reaction_result = forge_result
 	var inputs_log := [{"item_id": STEEL_SWORD_RECIPE_INPUT, "quantity": consumed_qty}]
 	_apply_reaction_result(forge_result, 1, inputs_log, current_temp)
+
+
+func _is_forge_recipe_unlocked(recipe: Dictionary) -> bool:
+	if DiscoveryLog != null and DiscoveryLog.has_method("is_recipe_unlocked"):
+		return bool(DiscoveryLog.is_recipe_unlocked(recipe))
+	return true
+
+
+func _is_steel_sword_unlocked() -> bool:
+	return _is_forge_recipe_unlocked(_get_steel_sword_recipe_definition())
+
+
+func _get_steel_sword_recipe_definition() -> Dictionary:
+	return {
+		&"display_name": "Steel Sword",
+		&"discovery_gate": {
+			&"entry_id": &"steel",
+			&"hint": "Discover Steel in the furnace to unlock advanced forge patterns.",
+			&"locked_name": "???",
+		},
+	}
+
+
+func _get_forge_recipe_definition(output_id: StringName) -> Dictionary:
+	if output_id == STEEL_SWORD_RECIPE_OUTPUT:
+		return _get_steel_sword_recipe_definition()
+	return TOOL_RECIPE_DEFINITIONS.get(output_id, {})
+
+
+func _get_forge_lock_hint(output_id: StringName) -> String:
+	var recipe := _get_forge_recipe_definition(output_id)
+	if DiscoveryLog != null and DiscoveryLog.has_method("get_recipe_gate_hint"):
+		var hint := str(DiscoveryLog.get_recipe_gate_hint(recipe))
+		if not hint.is_empty():
+			return hint
+	return "Discover more about this material before forging it."
 
 
 ## Trigger an explosion: shake, burst sparks, damage nearby bodies, and reset the furnace.
@@ -1831,6 +1902,46 @@ func _ensure_dynamic_ui_nodes() -> void:
 		ratio_graph_frame.move_child(ratio_carbon_fill, 2)
 		ratio_graph_frame.move_child(ratio_target_zone, 3)
 		ratio_graph_frame.move_child(ratio_current_marker, 4)
+
+	_power_status_label = close_button.get_parent().get_node_or_null("PowerStatusLabel") as Label
+	_power_button = close_button.get_parent().get_node_or_null("PowerButton") as Button
+	if _power_status_label == null:
+		_power_status_label = Label.new()
+		_power_status_label.name = "PowerStatusLabel"
+		_power_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_power_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		close_button.get_parent().add_child(_power_status_label)
+		close_button.get_parent().move_child(_power_status_label, close_button.get_index())
+	if _power_button == null:
+		_power_button = Button.new()
+		_power_button.name = "PowerButton"
+		_power_button.text = "Insert Energy Cell"
+		_power_button.pressed.connect(_on_power_button_pressed)
+		close_button.get_parent().add_child(_power_button)
+		close_button.get_parent().move_child(_power_button, close_button.get_index())
+	_update_power_panel()
+
+
+func _update_power_panel() -> void:
+	if _power_status_label == null or _power_button == null:
+		return
+	var has_cell := bool(_power_state.get(&"has_cell", false))
+	var remaining_seconds := float(_power_state.get(&"charge_remaining_seconds", 0.0))
+	if has_cell and remaining_seconds > 0.0:
+		_power_status_label.text = "Power bonus active: %.1f min remaining\nHigher heat cap, faster rise, lower fuel burn." % [remaining_seconds / 60.0]
+		_power_button.text = "Power Cell Installed"
+		_power_button.disabled = true
+	else:
+		_power_status_label.text = "Insert an energy cell to raise the furnace cap to 2000C and improve efficiency."
+		_power_button.text = "Insert Energy Cell"
+		_power_button.disabled = not is_instance_valid(_bound_furnace) or not InventoryManager.has_item(&"energy_cell", 1)
+
+
+func _on_power_button_pressed() -> void:
+	if not is_instance_valid(_bound_furnace) or not _bound_furnace.has_method("insert_power_cell"):
+		return
+	if _bound_furnace.insert_power_cell():
+		_pull_state_from_furnace()
 
 
 func _update_ratio_guidance() -> void:

@@ -5,10 +5,13 @@ const MAIN_MENU_SCENE_PATH := "res://scenes/MainMenu.tscn"
 const DEATH_OVERLAY_FADE_SECONDS := 1.0
 const DISCOVERY_JOURNAL_SCENE := preload("res://scenes/UI/DiscoveryJournal.tscn")
 const CARRIER_WARNING_SFX_DURATION := 0.11
+const SCANNER_TOAST_SECONDS := 1.6
+const NIGHT_DEFENSE_TOAST_SECONDS := 2.2
 
 @onready var carrier_risk_strip: Panel = $CarrierRiskStrip
 @onready var carrier_risk_warning_label: Label = $CarrierRiskStrip/VBoxContainer/WarningLabel
 @onready var carrier_risk_hint_label: Label = $CarrierRiskStrip/VBoxContainer/HintLabel
+@onready var scanner_upgrade_label: Label = $ScannerUpgradeLabel
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var health_label: Label = $HealthBar/HealthLabel
 @onready var held_item_icon: TextureRect = $HeldItemContainer/HBoxContainer/ActiveItemIcon
@@ -40,10 +43,15 @@ var _active_carrier_risk_element: StringName = &""
 var _active_carrier_risk_seconds := -1
 var _weight_vignette_alpha := 0.0
 var _carrier_vignette_phase := 0.0
+var _scanner_upgrade_tween: Tween = null
+var _night_defense_strip: Panel = null
+var _night_defense_label: Label = null
+var _night_defense_tween: Tween = null
 
 func _ready() -> void:
 	GameManager.player_health_changed.connect(_update_health)
 	GameManager.player_died.connect(_show_death_overlay)
+	GameManager.scanner_tier_changed.connect(_on_scanner_tier_changed)
 	InventoryManager.inventory_changed.connect(_refresh_held_item)
 	InventoryManager.held_item_changed.connect(_on_held_item_changed)
 	InventoryManager.weight_changed.connect(_on_weight_changed)
@@ -59,8 +67,12 @@ func _ready() -> void:
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	_hide_death_overlay()
 	_hide_carrier_risk_warning()
+	_hide_scanner_upgrade_toast()
 	_setup_carrier_warning_audio()
 	_setup_discovery_journal()
+	_setup_night_defense_warning()
+	if has_node("/root/BaseDefenseSystem"):
+		BaseDefenseSystem.night_threat_detected.connect(_on_night_threat_detected)
 
 	if debug_seed_journal_entries > 0:
 		DiscoveryLog.seed_debug_entries(debug_seed_journal_entries, true)
@@ -186,6 +198,82 @@ func _hide_carrier_risk_warning() -> void:
 	carrier_risk_warning_label.text = "SULFUR UNSTABLE - 3s"
 	carrier_risk_hint_label.text = "Drop Sulfur from inventory to cancel"
 	_update_carry_vignette()
+
+
+func _on_scanner_tier_changed(previous_tier: int, new_tier: int) -> void:
+	if previous_tier != GameManager.ScannerTier.BASIC or new_tier != GameManager.ScannerTier.ADVANCED:
+		return
+	_show_scanner_upgrade_toast()
+
+
+func _show_scanner_upgrade_toast() -> void:
+	if _scanner_upgrade_tween != null:
+		_scanner_upgrade_tween.kill()
+
+	scanner_upgrade_label.text = "Scanner upgraded"
+	scanner_upgrade_label.visible = true
+	scanner_upgrade_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_scanner_upgrade_tween = create_tween()
+	_scanner_upgrade_tween.tween_property(scanner_upgrade_label, "modulate:a", 1.0, 0.18).set_ease(Tween.EASE_OUT)
+	_scanner_upgrade_tween.tween_interval(SCANNER_TOAST_SECONDS)
+	_scanner_upgrade_tween.tween_property(scanner_upgrade_label, "modulate:a", 0.0, 0.28).set_ease(Tween.EASE_IN)
+	_scanner_upgrade_tween.tween_callback(_hide_scanner_upgrade_toast)
+
+
+func _hide_scanner_upgrade_toast() -> void:
+	scanner_upgrade_label.visible = false
+	scanner_upgrade_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+
+
+func _setup_night_defense_warning() -> void:
+	_night_defense_strip = Panel.new()
+	_night_defense_strip.name = "NightDefenseStrip"
+	_night_defense_strip.visible = false
+	_night_defense_strip.offset_left = 24.0
+	_night_defense_strip.offset_top = 120.0
+	_night_defense_strip.offset_right = 384.0
+	_night_defense_strip.offset_bottom = 164.0
+	add_child(_night_defense_strip)
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.16, 0.10, 0.07, 0.92)
+	style.border_color = Color(0.88, 0.62, 0.24, 1.0)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_left = 6
+	style.corner_radius_bottom_right = 6
+	_night_defense_strip.add_theme_stylebox_override("panel", style)
+
+	_night_defense_label = Label.new()
+	_night_defense_label.offset_left = 12.0
+	_night_defense_label.offset_top = 10.0
+	_night_defense_label.offset_right = 344.0
+	_night_defense_label.offset_bottom = 34.0
+	_night_defense_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_night_defense_label.text = "Movement detected in the powered perimeter."
+	_night_defense_strip.add_child(_night_defense_label)
+
+
+func _on_night_threat_detected(_world_position: Vector2, stack_count: int) -> void:
+	if _night_defense_strip == null or _night_defense_label == null:
+		return
+	if _night_defense_tween != null:
+		_night_defense_tween.kill()
+	_night_defense_label.text = "Movement detected in the powered perimeter. Light stack: %d" % stack_count
+	_night_defense_strip.visible = true
+	_night_defense_strip.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_night_defense_tween = create_tween()
+	_night_defense_tween.tween_property(_night_defense_strip, "modulate:a", 1.0, 0.16)
+	_night_defense_tween.tween_interval(NIGHT_DEFENSE_TOAST_SECONDS)
+	_night_defense_tween.tween_property(_night_defense_strip, "modulate:a", 0.0, 0.24)
+	_night_defense_tween.tween_callback(func() -> void:
+		if _night_defense_strip != null:
+			_night_defense_strip.visible = false
+	)
 
 
 func _on_death_overlay_fade_finished() -> void:

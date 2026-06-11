@@ -22,7 +22,12 @@ func to_world_save_entry() -> Dictionary:
 		&"object_type": object_type,
 		&"placed_at": placed_at,
 		&"scene_path": scene_file_path,
+		&"power_state": get_power_state(),
 	}
+
+
+func restore_from_pickup(data: Dictionary) -> void:
+	restore_power_state(data.get(&"power_state", {}))
 
 
 func export_to_world_save_data(world_save_data) -> void:

@@ -4,6 +4,7 @@ enum GameState { BOOT, LOGIN, MAIN_MENU, LOADING, PLAYING, PAUSED, GAME_OVER }
 enum GameplayPhase { SCAN, EXTRACT, COMBINE, STABILIZE, SURVIVE }
 enum SessionMode { OFFLINE, ONLINE }
 enum SaveTrigger { MANUAL, AUTO_TIMER, BASE_ENTRY, DISCOVERY_UNLOCK, DEATH }
+enum ScannerTier { BASIC, ADVANCED }
 
 signal game_state_changed(previous_state: GameState, new_state: GameState)
 signal gameplay_phase_changed(previous_phase: GameplayPhase, new_phase: GameplayPhase)
@@ -24,6 +25,7 @@ signal night_started
 signal day_started
 
 signal environmental_warning_changed(warning_id: StringName, active: bool)
+signal scanner_tier_changed(previous_tier: ScannerTier, new_tier: ScannerTier)
 
 var game_state: GameState = GameState.BOOT
 var gameplay_phase: GameplayPhase = GameplayPhase.SCAN
@@ -55,6 +57,7 @@ const COLD_DAMAGE_TICK_RATE: float = 2.0
 
 var is_paused: bool = false
 var active_environmental_warnings: Array[StringName] = []
+var scanner_tier: ScannerTier = ScannerTier.BASIC
 
 var _seconds_since_autosave_request: int = 0
 var _is_night: bool = false
@@ -148,6 +151,7 @@ func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -
 	time_of_day_changed.emit(time_of_day)
 	playtime_seconds = 0
 	playtime_changed.emit(playtime_seconds)
+	set_scanner_tier(ScannerTier.BASIC)
 	set_gameplay_phase(GameplayPhase.SCAN)
 	reset_player_state()
 	clear_dirty()
@@ -381,6 +385,34 @@ func set_environmental_warning(warning_id: StringName, active: bool) -> void:
 	if not active and warning_index != -1:
 		active_environmental_warnings.remove_at(warning_index)
 		environmental_warning_changed.emit(warning_id, false)
+
+
+func set_scanner_tier(new_tier: ScannerTier) -> void:
+	_set_scanner_tier_internal(new_tier, true, true)
+
+
+func restore_scanner_tier(new_tier: ScannerTier) -> void:
+	_set_scanner_tier_internal(new_tier, false, false)
+
+
+func _set_scanner_tier_internal(new_tier: ScannerTier, should_mark_dirty: bool, should_emit_signal: bool) -> void:
+	if scanner_tier == new_tier:
+		return
+
+	var previous_tier := scanner_tier
+	scanner_tier = new_tier
+	if should_emit_signal:
+		scanner_tier_changed.emit(previous_tier, scanner_tier)
+	if should_mark_dirty:
+		mark_dirty()
+
+
+func unlock_advanced_scanner() -> void:
+	set_scanner_tier(ScannerTier.ADVANCED)
+
+
+func has_advanced_scanner() -> bool:
+	return scanner_tier == ScannerTier.ADVANCED
 
 
 func _on_bound_player_health_changed(current_health: int, maximum_health: int) -> void:

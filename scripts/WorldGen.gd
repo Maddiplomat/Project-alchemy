@@ -14,8 +14,8 @@ const SULFUR_MIN_SPAWNS := 8
 const SULFUR_MAX_SPAWNS := 12
 const LITHIUM_MIN_SPAWNS := 5
 const LITHIUM_MAX_SPAWNS := 6
-const SPARSE_TREE_MIN := 0.3
-const DENSE_TREE_MIN := 0.6
+const SPARSE_TREE_MIN := 0.62
+const DENSE_TREE_MIN := 0.78
 const HARVESTABLE_TREE_COUNT := 20
 const TREE_RESPAWN_SECONDS := 600.0
 const TREE_RESPAWN_RETRY_SECONDS := 30.0
@@ -30,6 +30,7 @@ const ACID_CRAWLER_SPAWNER_SCENE := preload("res://scenes/AcidCrawlerSpawner.tsc
 const BATTERY_STATION_SCENE := preload("res://scenes/BatteryStation.tscn")
 const TREE_RESOURCE_SCENE := preload("res://scenes/TreeResource.tscn")
 const WATER_RESPAWN_SECONDS := 120.0
+const LITHIUM_RESPAWN_SECONDS := 210.0
 const TREE_CANOPY_SOURCE_ID := SOURCE_ID
 const TREE_CANOPY_ATLAS_COORDS := TREE_TILE
 const IRON_MINE_COORDS := Vector2i(12, 8)
@@ -47,7 +48,7 @@ var _tree_spawn_sequence := 0
 
 @export var generate_on_ready := true
 @export var noise_frequency := 0.08
-@export_range(0.0, 1.0, 0.01) var sparse_tree_density := 0.35
+@export_range(0.0, 1.0, 0.01) var sparse_tree_density := 0.20
 
 @onready var ground_layer: TileMapLayer = $Ground
 @onready var decor_layer: TileMapLayer = $Decor
@@ -1085,7 +1086,7 @@ func _spawn_lithium_deposits(world_seed: int) -> void:
 
 	var spawn_count := mini(rng.randi_range(LITHIUM_MIN_SPAWNS, LITHIUM_MAX_SPAWNS), candidate_tiles.size())
 	for index in range(spawn_count):
-		element_spawn_system.spawn_element_at(&"lithium", candidate_tiles[index], ground_layer)
+		_spawn_lithium_pickup_at(candidate_tiles[index], _world_generation_id)
 
 
 func _on_water_pickup_collected(_item_data: Dictionary, _quantity: int, coords: Vector2i, generation_id: int) -> void:
@@ -1105,6 +1106,43 @@ func _respawn_water_pickup(coords: Vector2i, generation_id: int) -> void:
 	if ground_layer.get_cell_source_id(coords) == -1:
 		return
 	_spawn_water_pickup_at(coords, generation_id)
+
+
+func _spawn_lithium_pickup_at(coords: Vector2i, generation_id: int) -> void:
+	if element_spawn_system == null:
+		return
+	if element_spawn_system.has_method("get_pickup_at_tile"):
+		var existing_pickup: Node2D = element_spawn_system.get_pickup_at_tile(coords)
+		if existing_pickup != null:
+			return
+	if not element_spawn_system.has_method("spawn_element_at"):
+		return
+	var pickup: Node2D = element_spawn_system.spawn_element_at(&"lithium", coords, ground_layer)
+	if pickup == null:
+		return
+	if pickup.has_signal("picked_up"):
+		var callback := Callable(self, "_on_lithium_pickup_collected").bind(coords, generation_id)
+		if not pickup.is_connected("picked_up", callback):
+			pickup.connect("picked_up", callback, CONNECT_ONE_SHOT)
+
+
+func _on_lithium_pickup_collected(_item_data: Dictionary, _quantity: int, coords: Vector2i, generation_id: int) -> void:
+	_schedule_lithium_respawn(coords, generation_id)
+
+
+func _schedule_lithium_respawn(coords: Vector2i, generation_id: int) -> void:
+	var timer := get_tree().create_timer(LITHIUM_RESPAWN_SECONDS)
+	timer.timeout.connect(_respawn_lithium_pickup.bind(coords, generation_id), CONNECT_ONE_SHOT)
+
+
+func _respawn_lithium_pickup(coords: Vector2i, generation_id: int) -> void:
+	if generation_id != _world_generation_id:
+		return
+	if not _iron_hills_lithium_deep_tiles.has(coords):
+		return
+	if ground_layer.get_cell_source_id(coords) == -1:
+		return
+	_spawn_lithium_pickup_at(coords, generation_id)
 
 
 func get_movement_speed_multiplier_at_world_position(world_position: Vector2) -> float:

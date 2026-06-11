@@ -22,6 +22,9 @@ func _run_test() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
+	if GameManager != null and GameManager.has_method("unlock_advanced_scanner"):
+		GameManager.unlock_advanced_scanner()
+
 	var scanner := player.get_node("ScannerTool")
 	scanner.call("_begin_scan")
 	await get_tree().process_frame

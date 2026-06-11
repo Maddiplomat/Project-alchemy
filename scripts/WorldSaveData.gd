@@ -77,6 +77,10 @@ func serialize() -> Dictionary:
 		"walls": walls.duplicate(true),
 		"storage": storage.duplicate(true)
 	}
+	if has_node("/root/BaseGrid"):
+		var base_grid = get_node("/root/BaseGrid")
+		if base_grid != null and base_grid.has_method("get_charge_state"):
+			base_data["defense_grid_charge"] = float(base_grid.get_charge_state())
 	data["base"] = base_data
 
 	clear_tree_state()
@@ -99,6 +103,14 @@ func serialize() -> Dictionary:
 		elif "unlocked_elements" in dlog:
 			discoveries = dlog.unlocked_elements.duplicate(true)
 	data["discoveries"] = discoveries
+
+	var progression_data := {
+		"scanner_tier": 0,
+	}
+	if has_node("/root/GameManager"):
+		var gm = get_node("/root/GameManager")
+		progression_data["scanner_tier"] = int(gm.get("scanner_tier"))
+	data["progression"] = progression_data
 	
 	return data
 
@@ -137,6 +149,10 @@ func deserialize(data: Dictionary) -> void:
 		placed_stations = base_data.get("placed_stations", [])
 		walls = base_data.get("walls", [])
 		storage = base_data.get("storage", [])
+		if has_node("/root/BaseGrid"):
+			var base_grid = get_node("/root/BaseGrid")
+			if base_grid != null and base_grid.has_method("restore_charge_level"):
+				base_grid.restore_charge_level(float(base_data.get("defense_grid_charge", 0.0)))
 		
 		if has_node("/root/BuildSystem"):
 			var build_sys = get_node("/root/BuildSystem")
@@ -161,3 +177,9 @@ func deserialize(data: Dictionary) -> void:
 				dlog.restore_discoveries(discoveries)
 			elif "unlocked_elements" in dlog:
 				dlog.unlocked_elements = discoveries.duplicate(true)
+
+	if data.has("progression") and has_node("/root/GameManager"):
+		var progression_data: Dictionary = data["progression"]
+		var gm = get_node("/root/GameManager")
+		if gm != null and gm.has_method("restore_scanner_tier"):
+			gm.restore_scanner_tier(int(progression_data.get("scanner_tier", 0)))

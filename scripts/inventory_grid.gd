@@ -79,6 +79,11 @@ func _ready():
 	InventoryManager.inventory_changed.connect(refresh_grid)
 	InventoryManager.held_item_changed.connect(func(_id): refresh_grid())
 	InventoryManager.weight_changed.connect(_on_weight_changed)
+	if has_node("/root/DiscoveryLog"):
+		DiscoveryLog.discovery_made.connect(func(_entry: Dictionary) -> void:
+			_build_recipe_rows()
+			_refresh_recipe_states()
+		)
 	if has_node("/root/CarrierRiskSystem"):
 		CarrierRiskSystem.carrier_risk_warning.connect(_on_carrier_risk_warning)
 		CarrierRiskSystem.carrier_risk_cleared.connect(_on_carrier_risk_cleared)
@@ -86,6 +91,9 @@ func _ready():
 	if crafting_panel != null:
 		crafting_panel.visible = false
 	_ensure_tooltip_hint_label()
+	_build_recipe_rows()
+	_refresh_recipe_states()
+	_refresh_crafting_hint()
 	refresh_grid()
 	_update_weight_display(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	_update_drag_hint_label()
@@ -196,6 +204,8 @@ func refresh_grid():
 		_show_tooltip_for_slot(hover_slot_index)
 	elif hover_slot_index == -1:
 		_hide_tooltip()
+	_refresh_recipe_states()
+	_refresh_crafting_hint()
 
 
 func _on_carrier_risk_warning(element_id: StringName, _seconds_remaining: int) -> void:
@@ -654,10 +664,21 @@ func _build_recipe_rows() -> void:
 		card_box.add_theme_constant_override("separation", 8)
 		margin.add_child(card_box)
 
+		var title_label := Label.new()
+		title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		title_label.add_theme_font_size_override("font_size", 15)
+		card_box.add_child(title_label)
+
 		var recipe_flow := HBoxContainer.new()
 		recipe_flow.alignment = BoxContainer.ALIGNMENT_CENTER
 		recipe_flow.add_theme_constant_override("separation", 6)
 		card_box.add_child(recipe_flow)
+
+		var locked_hint_label := Label.new()
+		locked_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		locked_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		locked_hint_label.visible = false
+		card_box.add_child(locked_hint_label)
 
 		var inputs: Array = recipe.get(&"inputs", [])
 		for i in range(inputs.size()):
@@ -727,6 +748,9 @@ func _build_recipe_rows() -> void:
 		details_row.add_child(payoff_tag_label)
 
 		recipe_row_refs[recipe_id] = {
+			"title_label": title_label,
+			"recipe_flow": recipe_flow,
+			"locked_hint_label": locked_hint_label,
 			"availability_label": availability_label,
 			"payoff_tag_label": payoff_tag_label,
 			"style": row_style,
@@ -765,9 +789,29 @@ func _create_separator_label(text: String) -> Label:
 func _refresh_recipe_states() -> void:
 	for recipe_id: StringName in recipe_row_refs:
 		var row_ref: Dictionary = recipe_row_refs[recipe_id]
+		var title_label: Label = row_ref.get("title_label")
+		var recipe_flow: HBoxContainer = row_ref.get("recipe_flow")
+		var locked_hint_label: Label = row_ref.get("locked_hint_label")
 		var availability_label: Label = row_ref.get("availability_label")
 		var payoff_tag_label: Label = row_ref.get("payoff_tag_label")
 		var row_style: StyleBoxFlat = row_ref.get("style")
+		var recipe := RecipeDatabase.get_recipe(recipe_id)
+		var is_unlocked := _is_recipe_unlocked(recipe)
+		if title_label != null:
+			title_label.text = _get_recipe_display_name(recipe_id) if is_unlocked else _get_recipe_locked_name(recipe)
+		if recipe_flow != null:
+			recipe_flow.visible = is_unlocked
+		if locked_hint_label != null:
+			locked_hint_label.visible = not is_unlocked
+			locked_hint_label.text = _get_recipe_gate_hint(recipe)
+		if not is_unlocked:
+			availability_label.text = "Discovery\nLocked"
+			availability_label.modulate = CRAFT_LOCKED_COLOR
+			row_style.border_color = RECIPE_ROW_BORDER_COLOR
+			if payoff_tag_label != null:
+				payoff_tag_label.text = ""
+				payoff_tag_label.visible = false
+			continue
 		var can_craft_now := CraftingManager.can_craft(recipe_id)
 		availability_label.text = "Materials\nReady" if can_craft_now else "Materials\nMissing"
 		availability_label.modulate = CRAFT_READY_COLOR if can_craft_now else CRAFT_LOCKED_COLOR
@@ -856,6 +900,39 @@ func _get_recipe_payoff_tag(recipe_id: StringName) -> String:
 			return "" if InventoryManager.has_item(RUST_BOLT_ITEM_ID, 1) or InventoryManager.has_item(DISTILLATION_KIT_ITEM_ID, 1) else "Early ammo"
 		_:
 			return ""
+
+
+func _is_recipe_unlocked(recipe: Dictionary) -> bool:
+	if DiscoveryLog != null and DiscoveryLog.has_method("is_recipe_unlocked"):
+		return bool(DiscoveryLog.is_recipe_unlocked(recipe))
+	return true
+
+
+func _get_recipe_gate_hint(recipe: Dictionary) -> String:
+	if DiscoveryLog != null and DiscoveryLog.has_method("get_recipe_gate_hint"):
+		return str(DiscoveryLog.get_recipe_gate_hint(recipe))
+	return ""
+
+
+func _get_recipe_locked_name(recipe: Dictionary) -> String:
+	if DiscoveryLog != null and DiscoveryLog.has_method("get_recipe_locked_name"):
+		return str(DiscoveryLog.get_recipe_locked_name(recipe))
+	return "???"
+
+
+func _get_recipe_display_name(recipe_id: StringName) -> String:
+	var recipe := RecipeDatabase.get_recipe(recipe_id)
+	var output: Dictionary = recipe.get(&"output", {})
+	var item_id := StringName(output.get(&"item_id", &""))
+	if item_id.is_empty():
+		return "Unknown"
+	var element_data := ElementDatabase.get_element(item_id)
+	if not element_data.is_empty():
+		return str(element_data.get(&"display_name", item_id))
+	var words := String(item_id).split("_", false)
+	for i in range(words.size()):
+		words[i] = words[i].capitalize()
+	return " ".join(words)
 
 func _get_item_color(item_id: String) -> Color:
 	match item_id:

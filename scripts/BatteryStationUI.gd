@@ -8,7 +8,10 @@ signal closed
 @onready var react_button: Button = $Panel/VBoxContainer/ReactButton
 @onready var charge_bar: ProgressBar = $Panel/VBoxContainer/ChargeBar
 @onready var charge_mins_label: Label = $Panel/VBoxContainer/ChargeMinsLabel
+@onready var power_label: Label = $Panel/VBoxContainer/PowerLabel
+@onready var power_slot_label: Label = $Panel/VBoxContainer/PowerSlot/Label
 @onready var power_button: Button = $Panel/VBoxContainer/PowerSlot/Button
+@onready var title_label: Label = $Panel/VBoxContainer/Title
 @onready var close_button: Button = $Panel/VBoxContainer/CloseButton
 
 var _is_open := false
@@ -18,6 +21,10 @@ var _base_grid: Node = null
 func _ready() -> void:
 	visible = false
 	_base_grid = get_node_or_null("/root/BaseGrid")
+	title_label.text = "Battery Station"
+	power_label.text = "DEFENSE GRID POWER"
+	power_slot_label.text = "Defense Charge Slot"
+	power_button.text = "Insert Energy Cell (+20 min)"
 	react_button.pressed.connect(_on_react_pressed)
 	power_button.pressed.connect(_on_power_pressed)
 	close_button.pressed.connect(close)
@@ -56,13 +63,15 @@ func _refresh_ui() -> void:
 	iron_color.color   = Color(0.1, 0.5, 0.1, 1) if has_fe else Color(0.5, 0.1, 0.1, 1)
 
 	react_button.disabled = not (has_li and has_fe)
-	power_button.disabled = not has_cell
+	var grid_current := 0.0
+	var grid_maximum := 0.0
+	if _base_grid:
+		grid_current = float(_base_grid.get("charge_level"))
+		grid_maximum = float(_base_grid.get("MAX_CHARGE"))
+	power_button.disabled = not has_cell or (grid_maximum > 0.0 and grid_current >= grid_maximum)
 
 	if _base_grid:
-		_update_charge_display(
-			float(_base_grid.get("charge_level")),
-			float(_base_grid.get("MAX_CHARGE"))
-		)
+		_update_charge_display(grid_current, grid_maximum)
 
 
 func _on_charge_changed(current: float, maximum: float) -> void:
@@ -76,7 +85,7 @@ func _update_charge_display(current: float, maximum: float) -> void:
 	charge_bar.value = (current / maximum) * 100.0
 	var mins := int(current)
 	var secs := int((current - float(mins)) * 60.0)
-	charge_mins_label.text = "%d:%02d / 60:00 remaining" % [mins, secs]
+	charge_mins_label.text = "%d:%02d / 30:00 remaining" % [mins, secs]
 
 	# Colour the bar green → yellow → red
 	var pct := current / maximum
@@ -106,7 +115,13 @@ func _on_power_pressed() -> void:
 		return
 	if _base_grid == null:
 		return
+	if float(_base_grid.get("charge_level")) >= float(_base_grid.get("MAX_CHARGE")):
+		return
 	InventoryManager.remove_item(&"energy_cell", 1)
-	# Each Energy Cell refills the grid to full (60 minutes)
-	_base_grid.add_charge(float(_base_grid.get("MAX_CHARGE")))
+	if _base_grid.has_method("add_charge_cell"):
+		_base_grid.add_charge_cell()
+	else:
+		_base_grid.add_charge(20.0)
+	if GameManager != null and GameManager.has_method("unlock_advanced_scanner"):
+		GameManager.unlock_advanced_scanner()
 	_refresh_ui()

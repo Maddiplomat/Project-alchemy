@@ -4,6 +4,11 @@ const FURNACE_UI_SCENE := preload("res://scenes/UI/FurnaceUI.tscn")
 const DEFAULT_FUEL_BURN_DURATION := 30.0
 const PASSIVE_COOL_RATE := 15.0
 const CHARCOAL_ITEM_ID := &"charcoal"
+const POWER_CELL_DURATION_SECONDS := 480.0
+const UNPOWERED_TEMPERATURE_CAP := 1300.0
+const POWERED_TEMPERATURE_CAP := 2000.0
+const POWERED_HEAT_MULTIPLIER := 1.25
+const POWERED_FUEL_EFFICIENCY_MULTIPLIER := 0.80
 
 signal player_entered_range
 signal player_exited_range
@@ -40,6 +45,7 @@ var _fuel_slot_state: Dictionary = {
 	&"quantity": 0,
 	&"unit_fuel_value": 0.0,
 }
+var _power_cell_charge_remaining := 0.0
 var _input_slots: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
 	&"input_b": {&"item_id": &"", &"quantity": 0},
@@ -69,6 +75,8 @@ func _process(_delta: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	var remaining_delta := delta
+
+	_drain_power_bonus(delta)
 
 	if burn_enabled and _has_active_fuel():
 		remaining_delta = _apply_fuel_heat(delta)
@@ -107,6 +115,34 @@ func add_fuel(element_id: StringName, qty: int) -> bool:
 	burn_enabled = true
 	_sync_heat_state()
 	return true
+
+
+func insert_power_cell() -> bool:
+	if has_power_bonus():
+		return false
+	if not InventoryManager.has_item(&"energy_cell", 1):
+		return false
+	InventoryManager.remove_item(&"energy_cell", 1)
+	_power_cell_charge_remaining = POWER_CELL_DURATION_SECONDS
+	GameManager.mark_dirty()
+	_sync_ui()
+	return true
+
+
+func has_power_bonus() -> bool:
+	return _power_cell_charge_remaining > 0.0
+
+
+func get_power_state() -> Dictionary:
+	return {
+		&"has_cell": has_power_bonus(),
+		&"charge_remaining_seconds": _power_cell_charge_remaining,
+	}
+
+
+func restore_power_state(data: Dictionary) -> void:
+	_power_cell_charge_remaining = clampf(float(data.get(&"charge_remaining_seconds", 0.0)), 0.0, POWER_CELL_DURATION_SECONDS)
+	_sync_ui()
 
 
 func set_input(slot_name: StringName, element_id: StringName, qty: int) -> bool:
@@ -357,12 +393,20 @@ func _apply_fuel_heat(delta: float) -> float:
 	fuel_rate = _remaining_heat_potential / _remaining_burn_time
 	target_temp = current_temp + _remaining_heat_potential
 
-	var rise_amount := fuel_rate * burn_step
-	current_temp = move_toward(current_temp, target_temp, rise_amount)
+	var heat_multiplier := POWERED_HEAT_MULTIPLIER if has_power_bonus() else 1.0
+	var effective_temperature_cap := POWERED_TEMPERATURE_CAP if has_power_bonus() else UNPOWERED_TEMPERATURE_CAP
+	var rise_amount := fuel_rate * burn_step * heat_multiplier
+	var capped_target_temp := minf(target_temp, effective_temperature_cap)
+	current_temp = minf(effective_temperature_cap, move_toward(current_temp, capped_target_temp, rise_amount))
+	var heat_consumed := rise_amount
+	if current_temp >= effective_temperature_cap and target_temp > effective_temperature_cap:
+		heat_consumed = minf(heat_consumed, maxf(0.0, effective_temperature_cap - (current_temp - rise_amount)))
+	var heat_cost_multiplier := POWERED_FUEL_EFFICIENCY_MULTIPLIER if has_power_bonus() else 1.0
+	var consumed_heat_potential := heat_consumed * heat_cost_multiplier
 	var unit_fuel_value := float(_fuel_slot_state.get(&"unit_fuel_value", 0.0))
 	if unit_fuel_value > 0.0:
-		_fuel_units_burned_since_reaction += rise_amount / unit_fuel_value
-	_remaining_heat_potential = maxf(0.0, _remaining_heat_potential - rise_amount)
+		_fuel_units_burned_since_reaction += consumed_heat_potential / unit_fuel_value
+	_remaining_heat_potential = maxf(0.0, _remaining_heat_potential - consumed_heat_potential)
 	_remaining_burn_time = maxf(0.0, _remaining_burn_time - burn_step)
 
 	return delta - burn_step
@@ -421,6 +465,8 @@ func _sync_ui() -> void:
 		_furnace_ui.set_burn_enabled(burn_enabled)
 	if _furnace_ui.has_method("set_fuel_cost_state"):
 		_furnace_ui.set_fuel_cost_state(get_fuel_cost_state())
+	if _furnace_ui.has_method("set_power_state"):
+		_furnace_ui.set_power_state(get_power_state())
 
 
 func _update_sprite() -> void:
@@ -475,3 +521,17 @@ func _build_placeholder_texture(lit: bool) -> Texture2D:
 
 	image.generate_mipmaps()
 	return ImageTexture.create_from_image(image)
+
+
+func _drain_power_bonus(delta: float) -> void:
+	if not has_power_bonus():
+		return
+	if not burn_enabled or not _has_active_fuel():
+		return
+	var previous_charge := _power_cell_charge_remaining
+	_power_cell_charge_remaining = maxf(0.0, _power_cell_charge_remaining - delta)
+	if is_equal_approx(previous_charge, _power_cell_charge_remaining):
+		return
+	if _power_cell_charge_remaining <= 0.0:
+		GameManager.mark_dirty()
+	_sync_ui()

@@ -1,0 +1,36 @@
+[gd_scene load_steps=6 format=4]
+
+[ext_resource type="Script" path="res://scripts/PoweredLightPost.gd" id="1_light_post"]
+[ext_resource type="Script" path="res://scripts/PoweredLight.gd" id="2_powered_light"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(14, 20)
+
+[sub_resource type="Gradient" id="Gradient_light"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_light"]
+gradient = SubResource("Gradient_light")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(0.8, 0.1)
+
+[node name="PoweredLightPost" type="StaticBody2D"]
+script = ExtResource("1_light_post")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 2)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="PointLight2D" type="PointLight2D" parent="."]
+position = Vector2(0, -8)
+texture = SubResource("GradientTexture2D_light")
+energy = 0.0
+script = ExtResource("2_powered_light")
+defense_radius = 96.0
+drain_units_per_minute = 1.0
+active_energy = 0.95

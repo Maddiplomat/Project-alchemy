@@ -205,13 +205,19 @@ func _update_chase_velocity(delta: float) -> void:
 		return
 
 	var dist = global_position.distance_to(_player_target.global_position)
-	if dist > detection_radius * 1.5:
+	var effective_detection_radius := _get_effective_detection_radius()
+	if effective_detection_radius <= 0.0:
+		_report_lit_zone_presence()
+		_retreat()
+		return
+	if dist > effective_detection_radius * 1.5:
 		_leash_timer += delta
 		if _leash_timer >= 10.0:
 			_retreat()
 			return
 	else:
 		_leash_timer = 0.0
+	_report_lit_zone_presence()
 
 	if dist <= attack_range:
 		set_state(State.ATTACK)
@@ -396,6 +402,23 @@ func _find_player() -> CharacterBody2D:
 	return null
 
 
+func _get_effective_detection_radius() -> float:
+	var multiplier := 1.0
+	if GameManager.has_method("is_night") and GameManager.is_night() and BaseDefenseSystem != null and BaseDefenseSystem.has_method("get_detection_multiplier_at"):
+		multiplier = float(BaseDefenseSystem.get_detection_multiplier_at(global_position))
+	return detection_radius * multiplier
+
+
+func _report_lit_zone_presence() -> void:
+	if GameManager == null or not GameManager.has_method("is_night") or not GameManager.is_night():
+		return
+	if BaseDefenseSystem == null or not BaseDefenseSystem.has_method("is_position_in_powered_light"):
+		return
+	if not BaseDefenseSystem.is_position_in_powered_light(global_position):
+		return
+	BaseDefenseSystem.report_night_threat(get_instance_id(), global_position)
+
+
 func _trigger_alert(reason: StringName, player: CharacterBody2D) -> void:
 	if current_state == State.DEAD:
 		return
@@ -488,6 +511,8 @@ func _show_alert_indicator() -> void:
 
 func _on_detection_body_entered(body: Node) -> void:
 	if body.name != "Player" or not body is CharacterBody2D:
+		return
+	if global_position.distance_to(body.global_position) > _get_effective_detection_radius():
 		return
 	_trigger_alert(&"player_detected", body as CharacterBody2D)
 

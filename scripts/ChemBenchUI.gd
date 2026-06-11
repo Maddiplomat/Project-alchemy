@@ -20,6 +20,11 @@ const PANEL_VIEW_SCALE := 0.62
 const PANEL_MARGIN := Vector2(24.0, 24.0)
 const RATIO_TARGET_INPUT_A := &"input_a"
 const RATIO_TARGET_INPUT_B := &"input_b"
+const STABILIZATION_DISCOVERY_ID := &"stabilization_success"
+const POWERED_STABILIZATION_DURATION_MULTIPLIER := 1.30
+const POWERED_STABILIZATION_VENT_COOLDOWN_MULTIPLIER := 0.80
+const POWERED_STABILIZATION_SAFE_MIN := 40.0
+const POWERED_STABILIZATION_SAFE_MAX := 60.0
 
 @onready var root: Control = $Root
 @onready var backdrop: ColorRect = $Root/Backdrop
@@ -44,6 +49,7 @@ const RATIO_TARGET_INPUT_B := &"input_b"
 @onready var catalyst_name_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer/VBoxContainer/CatalystNameLabel
 @onready var close_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/CloseButton
 @onready var footer_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/FooterLabel
+@onready var footer_row: HBoxContainer = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow
 
 var _chem_bench: Node = null
 var _stabilization_overlay: CanvasLayer = null
@@ -52,6 +58,8 @@ var _pending_result: Dictionary = {}
 var _slot_refs: Dictionary[StringName, Dictionary] = {}
 var _is_open := false
 var _ratio_target_slot: StringName = RATIO_TARGET_INPUT_B
+var _power_status_label: Label = null
+var _power_button: Button = null
 
 
 func _ready() -> void:
@@ -64,6 +72,7 @@ func _ready() -> void:
 		&"catalyst": {"visual": catalyst_visual, "label": catalyst_name_label},
 	}
 	_apply_theme()
+	_ensure_power_controls()
 	_refresh_from_bench()
 	_update_ratio_target_button()
 	_update_ratio_label(ratio_slider.value)
@@ -163,6 +172,7 @@ func _refresh_from_bench() -> void:
 	_update_ratio_target_button()
 	_update_ratio_label(ratio_slider.value)
 	_update_temperature_label(temperature_slider.value)
+	_update_power_panel(state.get(&"power_state", {}))
 
 	for slot_id: StringName in [&"input_a", &"input_b", &"catalyst"]:
 		var slot_state: Dictionary = state.get(slot_id, {})
@@ -301,7 +311,11 @@ func _start_stabilization(result: Dictionary) -> void:
 	temperature_slider.editable = false
 	action_hint_label.text = "Stabilization in progress. Player controls are locked."
 	if _stabilization_overlay.has_method("start"):
-		_stabilization_overlay.call("start", _get_item_name(StringName(str(result.get("output_id", "")))))
+		_stabilization_overlay.call(
+			"start",
+			_get_item_name(StringName(str(result.get("output_id", "")))),
+			_get_stabilization_config()
+		)
 
 
 func _on_stabilization_succeeded() -> void:
@@ -361,6 +375,12 @@ func _apply_success_result(result: Dictionary) -> void:
 		return
 
 	_log_chem_bench_result(result, true, &"", inputs_log, catalyst_id)
+	if bool(result.get("requires_stabilization", false)) and DiscoveryLog != null and DiscoveryLog.has_method("log_progression_discovery"):
+		DiscoveryLog.log_progression_discovery(
+			STABILIZATION_DISCOVERY_ID,
+			"Stabilization Theory",
+			"First live stabilization achieved. Buffered sulfur chemistry can now be identified in recipe references."
+		)
 	output_name_label.text = "%s x%d" % [_get_item_name(output_id), output_quantity]
 	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_READY_COLOR)
 	react_button.text = "%s Crafted" % _get_item_name(output_id)
@@ -498,6 +518,64 @@ func _ensure_stabilization_overlay() -> void:
 		_stabilization_overlay.stabilization_succeeded.connect(_on_stabilization_succeeded)
 	if _stabilization_overlay.has_signal("stabilization_failed"):
 		_stabilization_overlay.stabilization_failed.connect(_on_stabilization_failed)
+
+
+func _ensure_power_controls() -> void:
+	if _power_status_label != null and _power_button != null:
+		return
+	var power_column := VBoxContainer.new()
+	power_column.name = "PowerColumn"
+	power_column.alignment = BoxContainer.ALIGNMENT_CENTER
+	power_column.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	power_column.custom_minimum_size = Vector2(170.0, 0.0)
+
+	_power_status_label = Label.new()
+	_power_status_label.name = "PowerStatusLabel"
+	_power_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_power_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	power_column.add_child(_power_status_label)
+
+	_power_button = Button.new()
+	_power_button.name = "PowerButton"
+	_power_button.text = "Insert Energy Cell"
+	_power_button.pressed.connect(_on_power_button_pressed)
+	power_column.add_child(_power_button)
+
+	footer_row.add_child(power_column)
+	footer_row.move_child(power_column, 1)
+
+
+func _update_power_panel(power_state: Dictionary) -> void:
+	if _power_status_label == null or _power_button == null:
+		return
+	var has_cell := bool(power_state.get(&"has_cell", false))
+	var remaining_seconds := float(power_state.get(&"charge_remaining_seconds", 0.0))
+	if has_cell and remaining_seconds > 0.0:
+		_power_status_label.text = "Bench power active: %.1f min remaining\nStabilization gets wider pressure margins and faster vent recovery." % [remaining_seconds / 60.0]
+		_power_button.text = "Power Cell Installed"
+		_power_button.disabled = true
+	else:
+		_power_status_label.text = "Insert an energy cell to power the bench for stabilization bonuses."
+		_power_button.text = "Insert Energy Cell"
+		_power_button.disabled = not InventoryManager.has_item(&"energy_cell", 1) or _stabilization_active
+
+
+func _on_power_button_pressed() -> void:
+	if not is_instance_valid(_chem_bench) or not _chem_bench.has_method("insert_power_cell"):
+		return
+	if _chem_bench.insert_power_cell():
+		_refresh_from_bench()
+
+
+func _get_stabilization_config() -> Dictionary:
+	if not is_instance_valid(_chem_bench) or not _chem_bench.has_method("has_power_bonus") or not _chem_bench.has_power_bonus():
+		return {}
+	return {
+		&"reaction_duration_seconds": 10.0 * POWERED_STABILIZATION_DURATION_MULTIPLIER,
+		&"pressure_safe_min": POWERED_STABILIZATION_SAFE_MIN,
+		&"pressure_safe_max": POWERED_STABILIZATION_SAFE_MAX,
+		&"vent_cooldown_seconds": 2.0 * POWERED_STABILIZATION_VENT_COOLDOWN_MULTIPLIER,
+	}
 
 
 func _on_close_button_pressed() -> void:

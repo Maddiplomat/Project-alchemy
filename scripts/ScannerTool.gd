@@ -22,6 +22,7 @@ const ENEMY_PANEL_HEIGHT: float = 126.0
 const ENEMY_PANEL_OFFSET: Vector2 = Vector2(-110.0, -64.0)
 const ENEMY_PANEL_ACCENT: Color = Color(0.36, 0.96, 1.0, 1.0)
 const IMMUNITY_ACCENT: Color = Color(1.0, 0.35, 0.35, 1.0)
+const BASIC_PANEL_HEIGHT: float = 44.0
 
 const CATEGORY_COLOURS: Dictionary = {
 	"organic": Color(0.45, 0.80, 0.30, 1.0),
@@ -146,15 +147,11 @@ func _scan_elements(player_pos: Vector2) -> void:
 		if pickup_node == null or _active_panels.has(pickup_node):
 			continue
 
-		var element_id := _resolve_element_id(pickup_node)
-		if element_id.is_empty():
+		var scan_item := _resolve_scannable_pickup_data(pickup_node)
+		if scan_item.is_empty():
 			continue
 
-		var data := ElementDatabase.get_element(element_id)
-		if data.is_empty():
-			continue
-
-		_spawn_element_panel(pickup_node, data)
+		_spawn_element_panel(pickup_node, scan_item)
 		_flash_element(pickup_node)
 
 	_collect_scannable_resource_nodes(player_pos)
@@ -356,6 +353,8 @@ func _build_element_panel(data: Dictionary) -> PanelContainer:
 	var weight := float(data.get(&"weight", 0.0))
 
 	var accent: Color = CATEGORY_COLOURS.get(category, FALLBACK_COLOUR)
+	if not _has_advanced_scanner():
+		return _build_basic_name_panel(display_name, accent, ELEMENT_PANEL_WIDTH)
 
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(ELEMENT_PANEL_WIDTH, ELEMENT_PANEL_HEIGHT)
@@ -420,6 +419,8 @@ func _build_element_panel(data: Dictionary) -> PanelContainer:
 
 func _build_enemy_panel(enemy: Node2D, scan_data: Dictionary) -> PanelContainer:
 	var has_subsurface_signal := bool(scan_data.get(&"subsurface_signal", false))
+	if not _has_advanced_scanner():
+		return _build_basic_name_panel(_humanize_identifier(enemy.name), ENEMY_PANEL_ACCENT, ENEMY_PANEL_WIDTH)
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(ENEMY_PANEL_WIDTH, ENEMY_PANEL_HEIGHT + (18.0 if has_subsurface_signal else 0.0))
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -478,6 +479,29 @@ func _build_enemy_panel(enemy: Node2D, scan_data: Dictionary) -> PanelContainer:
 	)
 	immunity_row.name = "ImmunitiesRow"
 	vbox.add_child(immunity_row)
+
+	return panel
+
+
+func _build_basic_name_panel(display_name: String, accent: Color, panel_width: float) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(panel_width, BASIC_PANEL_HEIGHT)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_theme_stylebox_override("panel", _build_panel_style(accent, 0.90))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var name_label := Label.new()
+	name_label.text = display_name
+	name_label.add_theme_font_size_override("font_size", 12)
+	name_label.add_theme_color_override("font_color", Color(0.96, 0.99, 1.0, 1.0))
+	name_label.clip_text = true
+	margin.add_child(name_label)
 
 	return panel
 
@@ -651,6 +675,24 @@ func _find_element_pickup(node: Node) -> Node2D:
 	return null
 
 
+func _resolve_scannable_pickup_data(pickup: Node) -> Dictionary:
+	if pickup == null:
+		return {}
+	if pickup.has_method("_get_pickup_item_data"):
+		var item_data = pickup.call("_get_pickup_item_data")
+		if item_data is Dictionary and not item_data.is_empty():
+			return item_data
+
+	var stored_item_data = pickup.get_meta(&"item_data", {})
+	if stored_item_data is Dictionary and not stored_item_data.is_empty():
+		return stored_item_data.duplicate(true)
+
+	var element_id := _resolve_element_id(pickup)
+	if element_id.is_empty():
+		return {}
+	return ElementDatabase.get_element(element_id)
+
+
 func _find_enemy_target(node: Node) -> Node2D:
 	var cur: Node = node
 	while cur != null:
@@ -703,6 +745,10 @@ func _format_damage_badge_text(damage_type: String, is_immunity: bool) -> String
 	if is_immunity:
 		return "⊘ %s" % label
 	return label
+
+
+func _has_advanced_scanner() -> bool:
+	return GameManager != null and GameManager.has_method("has_advanced_scanner") and GameManager.has_advanced_scanner()
 
 
 func _get_or_create_canvas() -> CanvasLayer:

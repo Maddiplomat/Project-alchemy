@@ -11,6 +11,8 @@ func can_craft(recipe_id: StringName) -> bool:
 		return false
 	if not _is_inventory_recipe(recipe):
 		return false
+	if not _is_recipe_unlocked(recipe):
+		return false
 
 	for input_data: Dictionary in recipe.get(&"inputs", []):
 		var element_id: StringName = input_data.get(&"element_id", &"")
@@ -89,3 +91,9 @@ func _is_inventory_recipe(recipe: Dictionary) -> bool:
 	if station == null:
 		return true
 	return StringName(station) == &""
+
+
+func _is_recipe_unlocked(recipe: Dictionary) -> bool:
+	if DiscoveryLog != null and DiscoveryLog.has_method("is_recipe_unlocked"):
+		return bool(DiscoveryLog.is_recipe_unlocked(recipe))
+	return true

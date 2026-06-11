@@ -13,6 +13,7 @@ const INTERACTION_RADIUS := 52.0
 const IRON_PICKAXE_ITEM_ID := &"iron_pickaxe"
 const STEEL_PICKAXE_ITEM_ID := &"steel_pickaxe"
 const PICKAXE_DURABILITY_LOSS := 0.05
+const CLICK_TARGET_RADIUS := 28.0
 
 var _stock := MAX_STOCK
 var _mine_cooldown_remaining := 0.0
@@ -39,7 +40,7 @@ func _process(delta: float) -> void:
 		_stock = mini(_stock + REGEN_RATE, MAX_STOCK)
 		_refresh_label()
 
-	if _player_in_range and Input.is_action_just_pressed("fire_projectile") and _mine_cooldown_remaining <= 0.0:
+	if _player_in_range and Input.is_action_just_pressed("fire_projectile") and _mine_cooldown_remaining <= 0.0 and _is_mouse_over_self():
 		_do_mine()
 
 
@@ -83,6 +84,10 @@ func _get_mine_profile() -> Dictionary:
 	if held_item_id == STEEL_PICKAXE_ITEM_ID:
 		return {&"can_harvest": true, &"progress": STEEL_PICKAXE_PROGRESS, &"item_id": held_item_id}
 	return {&"can_harvest": true, &"progress": HAND_MINE_PROGRESS, &"item_id": &""}
+
+
+func _is_mouse_over_self() -> bool:
+	return global_position.distance_to(get_global_mouse_position()) <= CLICK_TARGET_RADIUS
 
 
 func _build_visuals() -> void:
