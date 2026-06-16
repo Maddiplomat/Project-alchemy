@@ -4,6 +4,7 @@ extends Node
 ## Handles element reactions based on temperature and ratios.
 
 signal reaction_evaluated(result: Dictionary)
+signal heat_event(source_node: Node, radius: float, intensity: float)
 
 const CHEM_BENCH_REACTION_DATA_PATH := "res://data/chemistry/chem_bench_reactions.json"
 
@@ -80,6 +81,12 @@ func evaluate_reaction(element_a, element_b, ratio_b_pct: float, temp: float) ->
 
 	reaction_evaluated.emit(result)
 	return result
+
+
+func emit_heat_event(source_node: Node, radius: float, intensity: float) -> void:
+	if source_node == null or not is_instance_valid(source_node):
+		return
+	heat_event.emit(source_node, maxf(radius, 0.0), maxf(intensity, 0.0))
 
 
 func evaluate_chem_bench_reaction(state: Dictionary) -> Dictionary:

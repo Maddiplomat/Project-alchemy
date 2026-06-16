@@ -23,6 +23,7 @@ signal day_changed(day: int)
 signal time_of_day_changed(time_of_day: float)
 signal night_started
 signal day_started
+signal new_game_started
 
 signal environmental_warning_changed(warning_id: StringName, active: bool)
 signal scanner_tier_changed(previous_tier: ScannerTier, new_tier: ScannerTier)
@@ -48,6 +49,7 @@ var max_player_health: int = 100
 var player_health: int = 100
 var player_status_effects: Array[StringName] = []
 var player_health_system: Node = null
+var _health_system: Node = null
 var is_player_warmed: bool = false
 var cold_level: float = 0.0
 const COLD_BUILDUP_RATE: float = 2.0
@@ -155,6 +157,7 @@ func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -
 	set_gameplay_phase(GameplayPhase.SCAN)
 	reset_player_state()
 	clear_dirty()
+	new_game_started.emit()
 	resume_game()
 	set_game_state(GameState.PLAYING)
 
@@ -336,30 +339,31 @@ func set_player_status_effects(effects: Array[StringName]) -> void:
 	mark_dirty()
 
 
-func bind_player_health_system(health_system: Node) -> void:
-	if player_health_system == health_system:
+func bind_player_health_system(system: Node) -> void:
+	if _health_system == system:
 		return
 
-	if player_health_system != null:
-		var previous_health_changed := Callable(self, "_on_bound_player_health_changed")
-		if player_health_system.health_changed.is_connected(previous_health_changed):
-			player_health_system.health_changed.disconnect(previous_health_changed)
+	if _health_system != null:
+		var previous_health_changed := Callable(self, "_on_player_health_changed")
+		if _health_system.health_changed.is_connected(previous_health_changed):
+			_health_system.health_changed.disconnect(previous_health_changed)
 
-		var previous_player_died := Callable(self, "_on_bound_player_died")
-		if player_health_system.player_died.is_connected(previous_player_died):
-			player_health_system.player_died.disconnect(previous_player_died)
+		var previous_player_died := Callable(self, "_on_player_died_from_system")
+		if _health_system.player_died.is_connected(previous_player_died):
+			_health_system.player_died.disconnect(previous_player_died)
 
 		var previous_status_effects_changed := Callable(self, "_on_bound_player_status_effects_changed")
-		if player_health_system.status_effects_changed.is_connected(previous_status_effects_changed):
-			player_health_system.status_effects_changed.disconnect(previous_status_effects_changed)
+		if _health_system.status_effects_changed.is_connected(previous_status_effects_changed):
+			_health_system.status_effects_changed.disconnect(previous_status_effects_changed)
 
-	player_health_system = health_system
-	if player_health_system == null:
+	_health_system = system
+	player_health_system = system
+	if _health_system == null:
 		return
 
-	player_health_system.health_changed.connect(_on_bound_player_health_changed)
-	player_health_system.player_died.connect(_on_bound_player_died)
-	player_health_system.status_effects_changed.connect(_on_bound_player_status_effects_changed)
+	_health_system.health_changed.connect(_on_player_health_changed)
+	_health_system.player_died.connect(_on_player_died_from_system)
+	_health_system.status_effects_changed.connect(_on_bound_player_status_effects_changed)
 
 
 func reset_player_state() -> void:
@@ -413,6 +417,17 @@ func unlock_advanced_scanner() -> void:
 
 func has_advanced_scanner() -> bool:
 	return scanner_tier == ScannerTier.ADVANCED
+
+
+func _on_player_health_changed(current: int, maximum: int) -> void:
+	max_player_health = maximum
+	set_player_health(current)
+
+
+func _on_player_died_from_system(_cause_of_death: StringName = &"unknown") -> void:
+	if game_state != GameState.GAME_OVER:
+		request_save(SaveTrigger.DEATH)
+		set_game_state(GameState.GAME_OVER)
 
 
 func _on_bound_player_health_changed(current_health: int, maximum_health: int) -> void:

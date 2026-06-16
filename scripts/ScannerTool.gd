@@ -4,6 +4,8 @@ extends Node2D
 ## Press and hold Q to reveal floating info panels for nearby pickups and enemies.
 
 signal scan_started(origin: Vector2)
+signal scan_completed(element_id: StringName)
+signal resource_scanned(element_id: StringName)
 
 const ELEMENT_SCAN_RADIUS: float = 80.0
 const ENEMY_SCAN_RADIUS: float = 120.0
@@ -121,9 +123,10 @@ func _begin_scan() -> void:
 		return
 
 	var player_pos := player.global_position
+	var scanned_this_pass: Dictionary[StringName, bool] = {}
 	scan_started.emit(player_pos)
 	_anim.play("scan")
-	_scan_elements(player_pos)
+	_scan_elements(player_pos, scanned_this_pass)
 	_scan_enemies(player_pos)
 
 
@@ -136,7 +139,7 @@ func get_active_scan_targets() -> Array:
 	return _active_panels.keys()
 
 
-func _scan_elements(player_pos: Vector2) -> void:
+func _scan_elements(player_pos: Vector2, scanned_this_pass: Dictionary[StringName, bool]) -> void:
 	var results := _intersect_circle(player_pos, ELEMENT_SCAN_RADIUS, 2)
 	for hit in results:
 		var collider := hit.get("collider") as Node
@@ -151,13 +154,16 @@ func _scan_elements(player_pos: Vector2) -> void:
 		if scan_item.is_empty():
 			continue
 
+		var scanned_element_id := StringName(scan_item.get(&"id", scan_item.get(&"item_id", _resolve_element_id(pickup_node))))
+		_complete_scan(scanned_element_id, scanned_this_pass)
+
 		_spawn_element_panel(pickup_node, scan_item)
 		_flash_element(pickup_node)
 
-	_collect_scannable_resource_nodes(player_pos)
+	_collect_scannable_resource_nodes(player_pos, scanned_this_pass)
 
 
-func _collect_scannable_resource_nodes(player_pos: Vector2) -> void:
+func _collect_scannable_resource_nodes(player_pos: Vector2, scanned_this_pass: Dictionary[StringName, bool]) -> void:
 	for node in get_tree().get_nodes_in_group(&"scannable_resource"):
 		var resource_node := node as Node2D
 		if resource_node == null or _active_panels.has(resource_node):
@@ -176,8 +182,20 @@ func _collect_scannable_resource_nodes(player_pos: Vector2) -> void:
 		if data.is_empty():
 			continue
 
+		_complete_scan(element_id, scanned_this_pass)
 		_spawn_element_panel(resource_node, data)
 		_flash_element(resource_node)
+
+
+func _complete_scan(element_id: StringName, scanned_this_pass: Dictionary[StringName, bool]) -> void:
+	if element_id.is_empty() or scanned_this_pass.has(element_id):
+		return
+
+	scanned_this_pass[element_id] = true
+	if ElementDatabase != null and ElementDatabase.has_method("mark_element_scanned"):
+		ElementDatabase.mark_element_scanned(element_id)
+	scan_completed.emit(element_id)
+	resource_scanned.emit(element_id)
 
 
 func _scan_enemies(player_pos: Vector2) -> void:

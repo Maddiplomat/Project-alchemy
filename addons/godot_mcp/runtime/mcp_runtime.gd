@@ -18,6 +18,7 @@ var _socket: WebSocketPeer = WebSocketPeer.new()
 var _connected := false
 var _reconnect_at_msec := 0
 var _project_path := ""
+var _network_disabled := false
 
 # Circular buffer of recent runtime log lines. We grow it via push_runtime_log()
 # (called by user scripts that opt in) and via captured push_error/push_warning
@@ -32,11 +33,18 @@ func _ready() -> void:
 	_project_path = ProjectSettings.globalize_path("res://")
 	_started_at_msec = Time.get_ticks_msec()
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_network_disabled = _should_skip_network_startup()
 	push_runtime_log("info", "MCPRuntime starting (project=%s)" % _project_path)
+	if _network_disabled:
+		push_runtime_log("info", "MCPRuntime networking disabled for headless startup.")
+		set_process(false)
+		return
 	_attempt_connect()
 
 
 func _process(_delta: float) -> void:
+	if _network_disabled:
+		return
 	_socket.poll()
 	var st := _socket.get_ready_state()
 
@@ -65,6 +73,8 @@ func _process(_delta: float) -> void:
 
 
 func _attempt_connect() -> void:
+	if _network_disabled:
+		return
 	_socket = WebSocketPeer.new()
 	_socket.outbound_buffer_size = 8 * 1024 * 1024  # screenshots can be big
 	_socket.inbound_buffer_size = 256 * 1024
@@ -72,6 +82,10 @@ func _attempt_connect() -> void:
 	_reconnect_at_msec = Time.get_ticks_msec() + 2000
 	if err != OK:
 		push_runtime_log("warn", "MCPRuntime connect_to_url failed: %d (%s)" % [err, error_string(err)])
+
+
+func _should_skip_network_startup() -> bool:
+	return DisplayServer.get_name() == "headless"
 
 
 func _handle_message(json_string: String) -> void:

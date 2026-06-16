@@ -1,457 +1,553 @@
 extends Node
 
-signal inventory_changed
+signal inventory_changed(slot_index: int)
+signal active_slot_changed(new_index: int)
+signal weight_changed(total_weight: float, carry_capacity: float)
+signal purity_changed(slot_index: int, new_purity: float)
+
 signal item_added(item_id: StringName, quantity: int, total_quantity: int)
 signal item_removed(item_id: StringName, quantity: int, remaining_quantity: int)
 signal item_quantity_changed(item_id: StringName, quantity: int)
 signal held_item_changed(item_id: StringName)
 signal capacity_changed(current_weight: float, max_weight: float)
-signal weight_changed(total_weight: float, carry_capacity: float)
 signal volatile_risk_changed(risk_item_ids: Array[StringName])
 
-const DEFAULT_SLOT_COUNT := 5
+const MAX_SLOTS := 5
+const DEFAULT_SLOT_COUNT := MAX_SLOTS
 const DEFAULT_ITEM_WEIGHT := 1.0
 const DEFAULT_ITEM_PURITY := 1.0
 const DEFAULT_ITEM_DURABILITY := 1.0
 const DEFAULT_ITEM_MAX_DURABILITY := 1.0
-const LITHIUM_ITEM_ID := &"lithium"
 const DEFAULT_LITHIUM_CHARGE := 1.0
-const NO_HELD_ITEM := &""
-const carry_capacity := 20.0
+const NO_ITEM := &""
+const LITHIUM_ITEM_ID := &"lithium"
+const SULFUR_ITEM_ID := &"sulfur"
+const LITHIUM_RAIN_PURITY_LOSS_PER_SECOND := 0.02
+const LITHIUM_STORM_CHARGE_GAIN_PER_SECOND := 0.01
+const HEAT_SOURCE_TTL_SECONDS := 0.25
+const SULFUR_HEAT_REASON := "Sulfur is heating near an active furnace."
 
 enum InventoryItemCategory { GENERIC, ELEMENT, TOOL, CRAFTED, CONSUMABLE }
 enum InventoryRiskLevel { NONE, LOW, MEDIUM, HIGH, EXTREME }
 
-var items: Dictionary[StringName, Dictionary] = {}
-var max_weight: float = carry_capacity
-var current_weight: float = 0.0
-var total_weight: float = 0.0
-var slot_order: Array[StringName] = []
-var held_item_id: StringName = NO_HELD_ITEM
-var manual_selection := false
+var carry_capacity := 20.0
+var total_weight := 0.0
+var active_slot_index := 0
+var max_weight := 20.0
+var current_weight := 0.0
+
+var slots: Array[Dictionary] = []
+var items: Dictionary = {}
 var volatile_risk_item_ids: Array[StringName] = []
+var _heat_sources: Dictionary = {}
+var _sulfur_heat_risk_active := false
 
 
 func _ready() -> void:
-	_ensure_slot_count(DEFAULT_SLOT_COUNT)
+	_initialize_slots()
+	_sync_weight_state()
+	if WeatherSystem != null and WeatherSystem.has_signal("weather_tick"):
+		WeatherSystem.weather_tick.connect(_on_weather_tick)
+	if ChemistryEngine != null and ChemistryEngine.has_signal("heat_event"):
+		ChemistryEngine.heat_event.connect(_on_heat_event)
+
+
+func _physics_process(_delta: float) -> void:
+	_cleanup_heat_sources()
+	_update_sulfur_heat_risk()
+
+
+func add_element(id: StringName, qty: int, purity: float) -> bool:
+	var item_data := ElementDatabase.get_element(id)
+	if item_data.is_empty():
+		return false
+
+	var normalized := item_data.duplicate(true)
+	normalized["id"] = id
+	normalized["purity"] = purity
+	normalized["category"] = InventoryItemCategory.ELEMENT
+	normalized["risk_level"] = _to_inventory_risk_level(item_data.get(&"carrier_risk"))
+	return add_item(normalized, qty)
+
+
+func add_item(item_data: Dictionary, quantity: int = 1) -> bool:
+	if quantity <= 0:
+		return false
+
+	var normalized := _normalize_item_data(item_data, quantity)
+	var item_id := StringName(normalized.get("id", NO_ITEM))
+	if item_id.is_empty():
+		return false
+
+	var slot_index := _find_slot_for_item(item_id)
+	if slot_index == -1:
+		slot_index = _find_free_slot()
+		if slot_index == -1:
+			return false
+
+	var previous_active_item := _get_active_item_id()
+	var previous_quantity := 0
+	var previous_purity := 0.0
+	if slot_index >= 0 and slots[slot_index]["item_id"] == item_id:
+		previous_quantity = int(slots[slot_index]["quantity"])
+		previous_purity = float(slots[slot_index]["purity"])
+
+	var next_quantity := previous_quantity + quantity
+	var next_purity := _combine_purity(previous_purity, previous_quantity, float(normalized["purity"]), quantity)
+
+	slots[slot_index] = {
+		"item_id": item_id,
+		"quantity": next_quantity,
+		"purity": next_purity,
+	}
+
+	var stored_item: Dictionary = items.get(item_id, normalized.duplicate(true))
+	for key in normalized.keys():
+		if key == "quantity":
+			continue
+		stored_item[key] = normalized[key]
+	stored_item["id"] = item_id
+	stored_item["quantity"] = next_quantity
+	stored_item["purity"] = next_purity
+	stored_item["unit_weight"] = _get_stack_unit_weight(item_id, stored_item)
+	items[item_id] = stored_item
+
+	_post_slot_mutation([slot_index], previous_active_item)
+	item_added.emit(item_id, quantity, next_quantity)
+	item_quantity_changed.emit(item_id, next_quantity)
+	if not is_equal_approx(previous_purity, next_purity):
+		purity_changed.emit(slot_index, next_purity)
+	return true
+
+
+func remove_element(id: StringName, qty: int) -> void:
+	remove_item(id, qty)
+
+
+func remove_item(item_id: StringName, quantity: int = 1) -> bool:
+	if quantity <= 0:
+		return false
+	if not items.has(item_id):
+		return false
+
+	var slot_index := _find_slot_for_item(item_id)
+	if slot_index == -1:
+		items.erase(item_id)
+		_post_metadata_mutation(NO_ITEM)
+		return false
+
+	var slot := slots[slot_index]
+	var current_quantity_in_slot := int(slot["quantity"])
+	if quantity > current_quantity_in_slot:
+		return false
+
+	var previous_active_item := _get_active_item_id()
+	var remaining_quantity := current_quantity_in_slot - quantity
+
+	if remaining_quantity <= 0:
+		slots[slot_index] = _make_empty_slot()
+		items.erase(item_id)
+	else:
+		slot["quantity"] = remaining_quantity
+		slots[slot_index] = slot
+
+		var stored_item: Dictionary = items[item_id]
+		stored_item["quantity"] = remaining_quantity
+		stored_item["purity"] = float(slot["purity"])
+		items[item_id] = stored_item
+
+	_post_slot_mutation([slot_index], previous_active_item)
+	item_removed.emit(item_id, quantity, remaining_quantity)
+	item_quantity_changed.emit(item_id, remaining_quantity)
+	return true
+
+
+func get_stack(id: StringName) -> Dictionary:
+	var item_id := StringName(String(id))
+	if not items.has(item_id):
+		return {"quantity": 0, "purity": 0.0}
+	return (items[item_id] as Dictionary).duplicate(true)
+
+
+func get_all_items() -> Dictionary:
+	var ordered_items := {}
+	for slot in slots:
+		var item_id: StringName = slot["item_id"]
+		if item_id.is_empty() or not items.has(item_id):
+			continue
+		ordered_items[String(item_id)] = (items[item_id] as Dictionary).duplicate(true)
+	for item_id: StringName in items.keys():
+		if not ordered_items.has(String(item_id)):
+			ordered_items[String(item_id)] = (items[item_id] as Dictionary).duplicate(true)
+	return ordered_items
+
+
+func get_items() -> Dictionary:
+	var result := {}
+	for item_id: StringName in items.keys():
+		result[item_id] = (items[item_id] as Dictionary).duplicate(true)
+	return result
+
+
+func get_slot_data(slot_index: int) -> Dictionary:
+	if slot_index < 0 or slot_index >= MAX_SLOTS:
+		return _empty_slot_data()
+
+	var slot := slots[slot_index]
+	var item_id: StringName = slot["item_id"]
+	if item_id.is_empty():
+		return _empty_slot_data()
+
+	var merged := {}
+	if items.has(item_id):
+		merged = (items[item_id] as Dictionary).duplicate(true)
+	merged["id"] = item_id
+	merged["item_id"] = item_id
+	merged["quantity"] = int(slot["quantity"])
+	merged["purity"] = float(slot["purity"])
+	return merged
+
+
+func get_slot_item(slot_index: int) -> Dictionary:
+	var data := get_slot_data(slot_index)
+	if StringName(data.get("item_id", NO_ITEM)).is_empty():
+		return {}
+	return data
+
+
+func set_active_slot(index: int) -> void:
+	var next_index := clampi(index, 0, MAX_SLOTS - 1)
+	if next_index == active_slot_index:
+		return
+
+	active_slot_index = next_index
+	active_slot_changed.emit(active_slot_index)
+	held_item_changed.emit(_get_active_item_id())
+
+
+func select_slot(slot_index: int) -> void:
+	set_active_slot(slot_index)
+
+
+func set_held_item(item_id: StringName, _manual: bool = false) -> bool:
+	if item_id.is_empty():
+		held_item_changed.emit(_get_active_item_id())
+		return true
+
+	var slot_index := _find_slot_for_item(item_id)
+	if slot_index == -1:
+		return false
+
+	set_active_slot(slot_index)
+	return true
+
+
+func get_held_item_id() -> String:
+	return String(_get_active_item_id())
+
+
+func get_held_item() -> Dictionary:
+	return get_slot_item(active_slot_index)
+
+
+func has_item(item_id: StringName, quantity: int = 1) -> bool:
+	if quantity <= 0:
+		return true
+	return get_quantity(item_id) >= quantity
+
+
+func get_quantity(item_id: StringName) -> int:
+	if not items.has(item_id):
+		return 0
+	return int((items[item_id] as Dictionary).get("quantity", 0))
 
 
 func can_add_item(item_data: Dictionary, quantity: int = 1) -> bool:
 	if quantity <= 0:
 		return false
 
-	var item_id := _get_item_id(item_data)
+	var item_id := _get_item_id_from_dict(item_data)
 	if item_id.is_empty():
 		return false
 
-	var added_weight := _get_stack_unit_weight(item_id, item_data) * float(quantity)
-	if current_weight < max_weight:
-		return true
-
-	return current_weight + added_weight <= max_weight
-
-
-func add_item(item_data: Dictionary, quantity: int = 1) -> bool:
-	if not can_add_item(item_data, quantity):
+	if _find_slot_for_item(item_id) == -1 and _find_free_slot() == -1:
 		return false
 
-	var item_id := _get_item_id(item_data)
-	var existing_item := get_item(item_id)
-	var previous_quantity: int = existing_item.get(&"quantity", 0)
-	var total_quantity := previous_quantity + quantity
+	var added_weight := _get_stack_unit_weight(item_id, item_data) * float(quantity)
+	if total_weight < carry_capacity:
+		return true
+	return total_weight + added_weight <= carry_capacity
 
-	var stored_item := _normalize_item_data(item_data, total_quantity)
-	items[item_id] = stored_item
-	current_weight += _get_stack_unit_weight(item_id, stored_item) * float(quantity)
-	_assign_item_to_slot(item_id)
-	_sync_held_item()
 
-	item_added.emit(item_id, quantity, total_quantity)
-	item_quantity_changed.emit(item_id, total_quantity)
-	_emit_inventory_state_changed()
-	return true
+func is_over_capacity() -> bool:
+	return total_weight > carry_capacity
+
+
+func lose_random_item() -> void:
+	var occupied_slots := _get_occupied_slots()
+	if occupied_slots.is_empty():
+		return
+
+	var slot_index := occupied_slots[randi() % occupied_slots.size()]
+	var item_id: StringName = slots[slot_index]["item_id"]
+	remove_item(item_id, 1)
+
+
+func destroy_random_occupied_slot() -> Dictionary:
+	var occupied_slots := _get_occupied_slots()
+	if occupied_slots.is_empty():
+		return {}
+
+	var slot_index := occupied_slots[randi() % occupied_slots.size()]
+	var slot_data := get_slot_data(slot_index)
+	if slot_data.is_empty():
+		return {}
+
+	var item_id := StringName(slot_data.get("item_id", NO_ITEM))
+	var quantity := int(slot_data.get("quantity", 0))
+	if item_id.is_empty() or quantity <= 0:
+		return {}
+
+	if not remove_item(item_id, quantity):
+		return {}
+
+	return {
+		"slot_index": slot_index,
+		"item_id": item_id,
+		"quantity": quantity,
+	}
 
 
 func receive_world_pickup(item_data: Dictionary, quantity: int = 1) -> bool:
 	var normalized_pickup := item_data.duplicate(true)
-	var item_id := _get_item_id(normalized_pickup)
+	var item_id := _get_item_id_from_dict(normalized_pickup)
+	if item_id.is_empty():
+		return false
+
+	normalized_pickup["id"] = item_id
+	normalized_pickup["item_id"] = item_id
 	var element_data := ElementDatabase.get_element(item_id)
 	if not element_data.is_empty():
-		normalized_pickup[&"purity"] = _get_purity(normalized_pickup)
-		normalized_pickup[&"category"] = InventoryItemCategory.ELEMENT
-		normalized_pickup[&"risk_level"] = _to_inventory_risk_level(element_data.get(&"carrier_risk"))
+		normalized_pickup["purity"] = clampf(float(_dict_get(normalized_pickup, "purity", DEFAULT_ITEM_PURITY)), 0.0, 1.0)
+		normalized_pickup["category"] = InventoryItemCategory.ELEMENT
+		normalized_pickup["risk_level"] = _to_inventory_risk_level(element_data.get(&"carrier_risk"))
 	return add_item(normalized_pickup, quantity)
-
-
-func remove_item(item_id: StringName, quantity: int = 1) -> bool:
-	if quantity <= 0 or not items.has(item_id):
-		return false
-
-	var stored_item := items[item_id]
-	var previous_quantity: int = stored_item.get(&"quantity", 0)
-	if quantity > previous_quantity:
-		return false
-
-	var remaining_quantity := previous_quantity - quantity
-	current_weight = maxf(0.0, current_weight - (_get_stack_unit_weight(item_id, stored_item) * float(quantity)))
-
-	if remaining_quantity <= 0:
-		items.erase(item_id)
-		_remove_item_from_slots(item_id)
-		if held_item_id == item_id:
-			set_held_item(NO_HELD_ITEM)
-	else:
-		stored_item[&"quantity"] = remaining_quantity
-		items[item_id] = stored_item
-
-	_sync_held_item()
-
-	item_removed.emit(item_id, quantity, remaining_quantity)
-	item_quantity_changed.emit(item_id, remaining_quantity)
-	_emit_inventory_state_changed()
-	return true
-
-
-func has_item(item_id: StringName, quantity: int = 1) -> bool:
-	if quantity <= 0:
-		return true
-
-	return get_quantity(item_id) >= quantity
-
-
-func get_item(item_id: StringName) -> Dictionary:
-	if not items.has(item_id):
-		return {}
-
-	return items[item_id].duplicate(true)
-
-
-func get_quantity(item_id: StringName) -> int:
-	if not items.has(item_id):
-		return 0
-
-	return items[item_id].get(&"quantity", 0)
-
-
-func get_stack(id: String) -> Dictionary:
-	return items.get(StringName(id), {"quantity": 0, "purity": 0.0})
-
-
-func get_all_items() -> Dictionary:
-	var ordered_items := {}
-	_ensure_slot_count(DEFAULT_SLOT_COUNT)
-	for item_id: StringName in slot_order:
-		if not item_id.is_empty() and items.has(item_id):
-			ordered_items[String(item_id)] = items[item_id]
-
-	for item_id: StringName in items.keys():
-		if not ordered_items.has(String(item_id)):
-			ordered_items[String(item_id)] = items[item_id]
-
-	return ordered_items
-
-
-func get_slot_item(slot_index: int) -> Dictionary:
-	_ensure_slot_count(DEFAULT_SLOT_COUNT)
-	if slot_index < 0 or slot_index >= slot_order.size():
-		return {}
-
-	var item_id := slot_order[slot_index]
-	if item_id.is_empty() or not items.has(item_id):
-		return {}
-
-	var stack: Dictionary = items[item_id].duplicate(true)
-	stack["id"] = String(item_id)
-	return stack
-
-
-func get_held_item_id() -> String:
-	return String(held_item_id)
-
-
-func get_held_item() -> Dictionary:
-	if held_item_id.is_empty() or not items.has(held_item_id):
-		return {}
-
-	var stack: Dictionary = items[held_item_id].duplicate(true)
-	stack["id"] = String(held_item_id)
-	return stack
-
-
-func is_over_capacity() -> bool:
-	return total_weight > max_weight
-
-
-func lose_random_item() -> bool:
-	if items.is_empty():
-		return false
-
-	var item_ids := items.keys()
-	var random_id = item_ids[randi() % item_ids.size()]
-	return remove_item(random_id, 1)
-
-
-func destroy_random_occupied_slot() -> Dictionary:
-	_ensure_slot_count(DEFAULT_SLOT_COUNT)
-
-	var occupied_slots: Array[int] = []
-	for slot_index in range(slot_order.size()):
-		var item_id: StringName = slot_order[slot_index]
-		if item_id.is_empty() or not items.has(item_id):
-			continue
-		occupied_slots.append(slot_index)
-
-	if occupied_slots.is_empty():
-		return {}
-
-	var destroyed_slot_index := occupied_slots[randi() % occupied_slots.size()]
-	var destroyed_item_id: StringName = slot_order[destroyed_slot_index]
-	var destroyed_item: Dictionary = items.get(destroyed_item_id, {})
-	var destroyed_quantity := int(destroyed_item.get(&"quantity", 0))
-	if destroyed_quantity <= 0:
-		return {}
-
-	if not remove_item(destroyed_item_id, destroyed_quantity):
-		return {}
-
-	return {
-		"slot_index": destroyed_slot_index,
-		"item_id": destroyed_item_id,
-		"quantity": destroyed_quantity,
-	}
-
-
-func set_held_item(item_id: StringName, manual: bool = false) -> bool:
-	if item_id == held_item_id:
-		manual_selection = manual or manual_selection
-		return true
-
-	if not item_id.is_empty() and not items.has(item_id):
-		return false
-
-	held_item_id = item_id
-	manual_selection = manual
-	held_item_changed.emit(held_item_id)
-	return true
-
-
-func select_slot(slot_index: int) -> void:
-	var item = get_slot_item(slot_index)
-	if not item.is_empty():
-		set_held_item(StringName(str(item.get("id", ""))), true)
-		return
-
-	set_held_item(NO_HELD_ITEM, true)
-
-
-func swap_slots(from_slot: int, to_slot: int) -> void:
-	_ensure_slot_count(DEFAULT_SLOT_COUNT)
-	if from_slot < 0 or from_slot >= slot_order.size():
-		return
-	if to_slot < 0 or to_slot >= slot_order.size():
-		return
-	if from_slot == to_slot:
-		return
-
-	var from_item := slot_order[from_slot]
-	slot_order[from_slot] = slot_order[to_slot]
-	slot_order[to_slot] = from_item
-	inventory_changed.emit()
-
-
-func move_item_to_slot(item_id: StringName, target_slot: int) -> void:
-	_ensure_slot_count(DEFAULT_SLOT_COUNT)
-	if item_id.is_empty() or not items.has(item_id):
-		return
-	if target_slot < 0 or target_slot >= slot_order.size():
-		return
-	var current_slot := slot_order.find(item_id)
-	if current_slot == -1 or current_slot == target_slot:
-		return
-	swap_slots(current_slot, target_slot)
-
-
-func clear_inventory() -> void:
-	if items.is_empty() and is_zero_approx(current_weight) and held_item_id.is_empty():
-		return
-
-	items.clear()
-	slot_order.fill(NO_HELD_ITEM)
-	current_weight = 0.0
-	total_weight = 0.0
-	held_item_id = NO_HELD_ITEM
-	manual_selection = false
-	held_item_changed.emit(held_item_id)
-	_emit_inventory_state_changed()
-
-
-func add_element(id: String, qty: int, purity: float) -> bool:
-	var item_id := StringName(id)
-	var item_data := ElementDatabase.get_element(item_id)
-	if item_data.is_empty():
-		return false
-
-	item_data[&"purity"] = purity
-	item_data[&"category"] = InventoryItemCategory.ELEMENT
-	item_data[&"risk_level"] = _to_inventory_risk_level(item_data.get(&"carrier_risk"))
-	return add_item(item_data, qty)
-
-
-func remove_element(id: String, qty: int) -> void:
-	remove_item(StringName(id), qty)
 
 
 func degrade_item(item_id: StringName, amount: float) -> bool:
 	if amount <= 0.0 or not items.has(item_id):
 		return false
 
-	var stored_item := items[item_id]
-	if stored_item.get(&"durability") == null:
+	var stored_item: Dictionary = items[item_id]
+	if stored_item.get("durability") == null:
 		return false
 
-	var current_durability := float(stored_item.get(&"durability", DEFAULT_ITEM_DURABILITY))
-	var next_durability := clampf(current_durability - amount, 0.0, float(stored_item.get(&"max_durability", DEFAULT_ITEM_MAX_DURABILITY)))
-	if is_equal_approx(next_durability, current_durability):
+	var current_durability := float(stored_item.get("durability", DEFAULT_ITEM_DURABILITY))
+	var max_durability := maxf(0.0, float(stored_item.get("max_durability", DEFAULT_ITEM_MAX_DURABILITY)))
+	var next_durability := clampf(current_durability - amount, 0.0, max_durability)
+	if is_equal_approx(current_durability, next_durability):
 		return false
 
-	stored_item[&"durability"] = next_durability
 	if next_durability <= 0.0:
-		return remove_item(item_id, stored_item.get(&"quantity", 1))
+		return remove_item(item_id, int(stored_item.get("quantity", 1)))
 
+	stored_item["durability"] = next_durability
 	items[item_id] = stored_item
-	_emit_inventory_state_changed()
+	_post_metadata_mutation(_get_active_item_id())
+	var slot_index := _find_slot_for_item(item_id)
+	if slot_index != -1:
+		inventory_changed.emit(slot_index)
 	return true
 
 
 func get_item_charge(item_id: StringName) -> float:
 	if not items.has(item_id):
 		return 0.0
-	return clampf(float(items[item_id].get(&"charge", 0.0)), 0.0, 1.0)
+	return clampf(float((items[item_id] as Dictionary).get("charge", 0.0)), 0.0, 1.0)
 
 
 func drain_lithium_charge(amount: float) -> float:
 	if amount <= 0.0 or not items.has(LITHIUM_ITEM_ID):
 		return get_item_charge(LITHIUM_ITEM_ID)
 
-	var stored_item := items[LITHIUM_ITEM_ID]
-	var current_charge := clampf(float(stored_item.get(&"charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
+	var stored_item: Dictionary = items[LITHIUM_ITEM_ID]
+	var current_charge := clampf(float(stored_item.get("charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
 	var next_charge := clampf(current_charge - amount, 0.0, 1.0)
 	if is_equal_approx(current_charge, next_charge):
 		return next_charge
 
-	stored_item[&"charge"] = next_charge
+	stored_item["charge"] = next_charge
 	items[LITHIUM_ITEM_ID] = stored_item
-	_emit_inventory_state_changed()
+	_post_metadata_mutation(_get_active_item_id())
+	var slot_index := _find_slot_for_item(LITHIUM_ITEM_ID)
+	if slot_index != -1:
+		inventory_changed.emit(slot_index)
+	return next_charge
+
+
+func charge_lithium(amount: float) -> float:
+	if amount <= 0.0 or not items.has(LITHIUM_ITEM_ID):
+		return get_item_charge(LITHIUM_ITEM_ID)
+
+	var stored_item: Dictionary = items[LITHIUM_ITEM_ID]
+	var max_charge := clampf(float(stored_item.get("max_charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
+	var current_charge := clampf(float(stored_item.get("charge", DEFAULT_LITHIUM_CHARGE)), 0.0, max_charge)
+	var next_charge := clampf(current_charge + amount, 0.0, max_charge)
+	if is_equal_approx(current_charge, next_charge):
+		return next_charge
+
+	stored_item["charge"] = next_charge
+	items[LITHIUM_ITEM_ID] = stored_item
+	_post_metadata_mutation(_get_active_item_id())
+	var slot_index := _find_slot_for_item(LITHIUM_ITEM_ID)
+	if slot_index != -1:
+		inventory_changed.emit(slot_index)
 	return next_charge
 
 
 func set_max_weight(value: float) -> void:
-	var clamped_weight := maxf(0.0, value)
-	if is_equal_approx(max_weight, clamped_weight):
-		return
-
-	max_weight = clamped_weight
-	_emit_inventory_state_changed()
+	carry_capacity = maxf(0.0, value)
+	max_weight = carry_capacity
+	_emit_weight_signals()
+	_mark_game_dirty()
 
 
 func get_capacity_ratio() -> float:
-	if is_zero_approx(max_weight):
+	if is_zero_approx(carry_capacity):
 		return 1.0
-
-	return clampf(current_weight / max_weight, 0.0, 1.0)
-
-
-func get_items() -> Dictionary[StringName, Dictionary]:
-	var result: Dictionary[StringName, Dictionary] = {}
-	for item_id: StringName in items:
-		result[item_id] = items[item_id].duplicate(true)
-
-	return result
+	return clampf(total_weight / carry_capacity, 0.0, 1.0)
 
 
-func get_volatile_risk_item_ids() -> Array[StringName]:
-	return volatile_risk_item_ids.duplicate()
+func swap_slots(from_slot: int, to_slot: int) -> void:
+	if from_slot < 0 or from_slot >= MAX_SLOTS:
+		return
+	if to_slot < 0 or to_slot >= MAX_SLOTS:
+		return
+	if from_slot == to_slot:
+		return
+
+	var previous_active_item := _get_active_item_id()
+	var temp := slots[from_slot]
+	slots[from_slot] = slots[to_slot]
+	slots[to_slot] = temp
+	inventory_changed.emit(from_slot)
+	inventory_changed.emit(to_slot)
+	_post_metadata_mutation(previous_active_item)
 
 
-func _emit_inventory_state_changed() -> void:
-	_recalculate_weight()
-	_recalculate_volatile_risk()
-	capacity_changed.emit(current_weight, max_weight)
-	weight_changed.emit(total_weight, max_weight)
-	inventory_changed.emit()
+func move_item_to_slot(item_id: StringName, target_slot: int) -> void:
+	if item_id.is_empty():
+		return
+	if target_slot < 0 or target_slot >= MAX_SLOTS:
+		return
+
+	var current_slot := _find_slot_for_item(item_id)
+	if current_slot == -1 or current_slot == target_slot:
+		return
+	swap_slots(current_slot, target_slot)
+
+
+func clear_inventory() -> void:
+	var had_items := not items.is_empty()
+	items.clear()
+	volatile_risk_item_ids.clear()
+	_heat_sources.clear()
+	_set_sulfur_heat_risk_active(false)
+	_initialize_slots()
+	_sync_weight_state()
+
+	for slot_index in range(MAX_SLOTS):
+		inventory_changed.emit(slot_index)
+
+	if had_items:
+		held_item_changed.emit(_get_active_item_id())
+		volatile_risk_changed.emit([])
+
+	_emit_weight_signals()
 	_mark_game_dirty()
+
+
+func _initialize_slots() -> void:
+	slots.clear()
+	for _slot_index in range(MAX_SLOTS):
+		slots.append(_make_empty_slot())
+
+
+func _make_empty_slot() -> Dictionary:
+	return {
+		"item_id": NO_ITEM,
+		"quantity": 0,
+		"purity": 0.0,
+	}
+
+
+func _empty_slot_data() -> Dictionary:
+	return {
+		"id": NO_ITEM,
+		"item_id": NO_ITEM,
+		"quantity": 0,
+		"purity": 0.0,
+	}
 
 
 func _normalize_item_data(item_data: Dictionary, quantity: int) -> Dictionary:
 	var normalized := item_data.duplicate(true)
-	normalized[&"id"] = _get_item_id(item_data)
-	normalized[&"quantity"] = quantity
-	normalized[&"unit_weight"] = _get_unit_weight(item_data)
-	normalized[&"purity"] = _get_purity(item_data)
+	var item_id := _get_item_id_from_dict(normalized)
+	normalized["id"] = item_id
+	normalized["item_id"] = item_id
+	normalized["quantity"] = quantity
+	normalized["purity"] = clampf(float(_dict_get(normalized, "purity", DEFAULT_ITEM_PURITY)), 0.0, 1.0)
+	normalized["unit_weight"] = _get_stack_unit_weight(item_id, normalized)
 
-	if not normalized.has(&"risk_level"):
-		normalized[&"risk_level"] = InventoryRiskLevel.NONE
+	if not normalized.has("category") and not normalized.has(&"category"):
+		normalized["category"] = InventoryItemCategory.GENERIC
+	normalized["category"] = _normalize_inventory_category(_dict_get(normalized, "category", InventoryItemCategory.GENERIC))
 
-	if not normalized.has(&"category"):
-		normalized[&"category"] = InventoryItemCategory.GENERIC
-
-	normalized[&"category"] = _normalize_inventory_category(normalized.get(&"category", InventoryItemCategory.GENERIC))
-	var category: int = normalized[&"category"]
-	if normalized[&"id"] == LITHIUM_ITEM_ID:
-		normalized[&"charge"] = clampf(float(normalized.get(&"charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
-		normalized[&"max_charge"] = clampf(float(normalized.get(&"max_charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
-	var is_raw_element := category == InventoryItemCategory.ELEMENT
-	var is_consumable := category == InventoryItemCategory.CONSUMABLE
-	var max_durability = normalized.get(&"max_durability")
-	if is_raw_element or is_consumable:
-		normalized[&"durability"] = null
-		normalized[&"max_durability"] = null
+	if not normalized.has("risk_level") and not normalized.has(&"risk_level"):
+		normalized["risk_level"] = InventoryRiskLevel.NONE
 	else:
-		if max_durability == null:
-			max_durability = DEFAULT_ITEM_MAX_DURABILITY
-		max_durability = maxf(0.0, float(max_durability))
-		normalized[&"max_durability"] = max_durability
+		normalized["risk_level"] = int(_dict_get(normalized, "risk_level", InventoryRiskLevel.NONE))
 
-		var durability = normalized.get(&"durability")
-		if durability == null:
-			durability = max_durability
-		normalized[&"durability"] = clampf(float(durability), 0.0, max_durability)
+	if item_id == LITHIUM_ITEM_ID:
+		normalized["charge"] = clampf(float(_dict_get(normalized, "charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
+		normalized["max_charge"] = clampf(float(_dict_get(normalized, "max_charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
+
+	var category: int = int(normalized["category"])
+	if category == InventoryItemCategory.ELEMENT or category == InventoryItemCategory.CONSUMABLE:
+		normalized["durability"] = null
+		normalized["max_durability"] = null
+	else:
+		var max_durability = _dict_get(normalized, "max_durability", DEFAULT_ITEM_MAX_DURABILITY)
+		max_durability = maxf(0.0, float(max_durability))
+		normalized["max_durability"] = max_durability
+		var durability = _dict_get(normalized, "durability", max_durability if max_durability > 0.0 else DEFAULT_ITEM_DURABILITY)
+		normalized["durability"] = clampf(float(durability), 0.0, max_durability)
+
+	_apply_common_string_aliases(normalized)
 
 	return normalized
-
-
-func _get_item_id(item_data: Dictionary) -> StringName:
-	return item_data.get(&"id", &"")
-
-
-func _get_unit_weight(item_data: Dictionary) -> float:
-	return maxf(0.0, item_data.get(&"unit_weight", item_data.get(&"weight", DEFAULT_ITEM_WEIGHT)))
 
 
 func _get_stack_unit_weight(item_id: StringName, item_data: Dictionary) -> float:
 	var element_data := ElementDatabase.get_element(item_id)
 	if not element_data.is_empty():
 		return maxf(0.0, float(element_data.get(&"weight", DEFAULT_ITEM_WEIGHT)))
-
-	return _get_unit_weight(item_data)
-
-
-func _get_purity(item_data: Dictionary) -> float:
-	return clampf(item_data.get(&"purity", DEFAULT_ITEM_PURITY), 0.0, 1.0)
+	return maxf(0.0, float(_dict_get(item_data, "unit_weight", _dict_get(item_data, "weight", DEFAULT_ITEM_WEIGHT))))
 
 
-func _to_inventory_risk_level(risk_level_name) -> int:
-	match str(risk_level_name).to_lower():
-		"low":
-			return InventoryRiskLevel.LOW
-		"medium":
-			return InventoryRiskLevel.MEDIUM
-		"high":
-			return InventoryRiskLevel.HIGH
-		"extreme":
-			return InventoryRiskLevel.EXTREME
-		_:
-			return InventoryRiskLevel.NONE
+func _combine_purity(existing_purity: float, existing_quantity: int, added_purity: float, added_quantity: int) -> float:
+	if existing_quantity <= 0:
+		return clampf(added_purity, 0.0, 1.0)
+
+	var total_quantity := existing_quantity + added_quantity
+	if total_quantity <= 0:
+		return 0.0
+
+	return clampf(
+		((existing_purity * float(existing_quantity)) + (added_purity * float(added_quantity))) / float(total_quantity),
+		0.0,
+		1.0
+	)
 
 
 func _normalize_inventory_category(category_value) -> int:
@@ -471,75 +567,264 @@ func _normalize_inventory_category(category_value) -> int:
 			return InventoryItemCategory.GENERIC
 
 
-func _recalculate_weight() -> void:
-	var recalculated_weight := 0.0
-	for item_id: StringName in items:
-		var stored_item := items[item_id]
-		var quantity: int = stored_item.get(&"quantity", 0)
-		recalculated_weight += _get_stack_unit_weight(item_id, stored_item) * float(quantity)
+func _dict_get(data: Dictionary, key: String, default_value = null):
+	if data.has(key):
+		return data[key]
+	var key_name := StringName(key)
+	if data.has(key_name):
+		return data[key_name]
+	return default_value
 
+
+func _get_item_id_from_dict(data: Dictionary) -> StringName:
+	return StringName(_dict_get(data, "id", _dict_get(data, "item_id", NO_ITEM)))
+
+
+func _apply_common_string_aliases(data: Dictionary) -> void:
+	var aliased_keys := [
+		"id",
+		"item_id",
+		"display_name",
+		"category",
+		"risk_level",
+		"quantity",
+		"purity",
+		"unit_weight",
+		"weight",
+		"durability",
+		"max_durability",
+		"charge",
+		"max_charge",
+		"weapon_type",
+		"projectile_id",
+		"attack_cooldown",
+	]
+	for key: String in aliased_keys:
+		if data.has(key):
+			continue
+		var key_name := StringName(key)
+		if data.has(key_name):
+			data[key] = data[key_name]
+
+
+func _to_inventory_risk_level(risk_level_name) -> int:
+	match str(risk_level_name).to_lower():
+		"low":
+			return InventoryRiskLevel.LOW
+		"medium":
+			return InventoryRiskLevel.MEDIUM
+		"high":
+			return InventoryRiskLevel.HIGH
+		"extreme":
+			return InventoryRiskLevel.EXTREME
+		_:
+			return InventoryRiskLevel.NONE
+
+
+func _find_slot_for_item(item_id: StringName) -> int:
+	for slot_index in range(MAX_SLOTS):
+		if slots[slot_index]["item_id"] == item_id and int(slots[slot_index]["quantity"]) > 0:
+			return slot_index
+	return -1
+
+
+func _find_free_slot() -> int:
+	for slot_index in range(MAX_SLOTS):
+		if StringName(slots[slot_index]["item_id"]).is_empty() or int(slots[slot_index]["quantity"]) <= 0:
+			return slot_index
+	return -1
+
+
+func _get_occupied_slots() -> Array[int]:
+	var occupied_slots: Array[int] = []
+	for slot_index in range(MAX_SLOTS):
+		if int(slots[slot_index]["quantity"]) > 0 and not StringName(slots[slot_index]["item_id"]).is_empty():
+			occupied_slots.append(slot_index)
+	return occupied_slots
+
+
+func _get_active_item_id() -> StringName:
+	var active_data := get_slot_data(active_slot_index)
+	return StringName(active_data.get("item_id", NO_ITEM))
+
+
+func _post_slot_mutation(changed_slots: Array[int], previous_active_item: StringName) -> void:
+	_sync_weight_state()
+	_emit_weight_signals()
+	_recalculate_volatile_risk()
+	for slot_index in changed_slots:
+		inventory_changed.emit(slot_index)
+	_sync_active_item_signal(previous_active_item)
+	_mark_game_dirty()
+
+
+func _post_metadata_mutation(previous_active_item: StringName) -> void:
+	_sync_weight_state()
+	_emit_weight_signals()
+	_recalculate_volatile_risk()
+	_sync_active_item_signal(previous_active_item)
+	_mark_game_dirty()
+
+
+func _sync_weight_state() -> void:
+	var recalculated_weight := 0.0
+	for item_id: StringName in items.keys():
+		var stored_item: Dictionary = items[item_id]
+		recalculated_weight += _get_stack_unit_weight(item_id, stored_item) * float(stored_item.get("quantity", 0))
 	total_weight = recalculated_weight
 	current_weight = recalculated_weight
+	max_weight = carry_capacity
+
+
+func _emit_weight_signals() -> void:
+	capacity_changed.emit(total_weight, carry_capacity)
+	weight_changed.emit(total_weight, carry_capacity)
 
 
 func _recalculate_volatile_risk() -> void:
-	var previous_risk_item_ids := volatile_risk_item_ids.duplicate()
-	volatile_risk_item_ids.clear()
-
-	for item_id: StringName in items:
-		var stored_item := items[item_id]
-		if _is_risky_item(stored_item):
-			volatile_risk_item_ids.append(item_id)
-
-	if previous_risk_item_ids != volatile_risk_item_ids:
-		volatile_risk_changed.emit(volatile_risk_item_ids.duplicate())
-
-
-func _assign_item_to_slot(item_id: StringName) -> void:
-	_ensure_slot_count(DEFAULT_SLOT_COUNT)
-	if slot_order.has(item_id):
+	var next_risk_item_ids: Array[StringName] = []
+	for item_id: StringName in items.keys():
+		if _is_risky_item(item_id, items[item_id] as Dictionary):
+			next_risk_item_ids.append(item_id)
+	if volatile_risk_item_ids == next_risk_item_ids:
 		return
-
-	var empty_index := slot_order.find(NO_HELD_ITEM)
-	if empty_index == -1:
-		slot_order.append(item_id)
-	else:
-		slot_order[empty_index] = item_id
+	volatile_risk_item_ids = next_risk_item_ids
+	volatile_risk_changed.emit(volatile_risk_item_ids.duplicate())
 
 
-func _remove_item_from_slots(item_id: StringName) -> void:
-	for i in range(slot_order.size()):
-		if slot_order[i] == item_id:
-			slot_order[i] = NO_HELD_ITEM
-
-
-func _ensure_slot_count(count: int) -> void:
-	while slot_order.size() < count:
-		slot_order.append(NO_HELD_ITEM)
-
-
-func _sync_held_item() -> void:
-	if manual_selection and not held_item_id.is_empty() and items.has(held_item_id):
-		return
-
-	manual_selection = false
-	for item_id: StringName in slot_order:
-		if not item_id.is_empty() and items.has(item_id):
-			set_held_item(item_id, false)
-			return
-
-	set_held_item(NO_HELD_ITEM, false)
-
-
-func _is_risky_item(item_data: Dictionary) -> bool:
-	var risk_level: int = item_data.get(&"risk_level", InventoryRiskLevel.NONE)
+func _is_risky_item(item_id: StringName, item_data: Dictionary) -> bool:
+	var risk_level: int = int(item_data.get("risk_level", InventoryRiskLevel.NONE))
 	if risk_level >= InventoryRiskLevel.MEDIUM:
 		return true
 
-	var category: int = _normalize_inventory_category(item_data.get(&"category", InventoryItemCategory.GENERIC))
-	return category == InventoryItemCategory.ELEMENT and risk_level >= InventoryRiskLevel.LOW
+	var element_data := ElementDatabase.get_element(item_id)
+	if element_data.is_empty():
+		return false
+	if String(element_data.get(&"category", "")).to_lower() != "volatile":
+		return false
+	return risk_level >= InventoryRiskLevel.LOW
+
+
+func _sync_active_item_signal(previous_active_item: StringName) -> void:
+	var next_active_item := _get_active_item_id()
+	if next_active_item == previous_active_item:
+		return
+	held_item_changed.emit(next_active_item)
 
 
 func _mark_game_dirty() -> void:
 	if has_node("/root/GameManager"):
-		get_node("/root/GameManager").mark_dirty()
+		GameManager.mark_dirty()
+
+
+func _on_weather_tick(state: int, delta: float) -> void:
+	if delta <= 0.0 or not items.has(LITHIUM_ITEM_ID):
+		return
+
+	if state == WeatherSystem.WeatherState.RAIN:
+		_adjust_item_purity(LITHIUM_ITEM_ID, -LITHIUM_RAIN_PURITY_LOSS_PER_SECOND * delta)
+	elif state == WeatherSystem.WeatherState.ELECTRICAL_STORM:
+		charge_lithium(LITHIUM_STORM_CHARGE_GAIN_PER_SECOND * delta)
+
+
+func _on_heat_event(source_node: Node, radius: float, intensity: float) -> void:
+	if source_node == null or not is_instance_valid(source_node):
+		return
+	if not source_node.is_in_group(&"heat_source"):
+		return
+	if radius <= 0.0 or intensity <= 0.0:
+		_heat_sources.erase(source_node.get_instance_id())
+		return
+	_heat_sources[source_node.get_instance_id()] = {
+		&"source": source_node,
+		&"radius": radius,
+		&"intensity": intensity,
+		&"expires_at_msec": Time.get_ticks_msec() + int(HEAT_SOURCE_TTL_SECONDS * 1000.0),
+	}
+
+
+func _adjust_item_purity(item_id: StringName, amount: float) -> float:
+	if amount == 0.0 or not items.has(item_id):
+		return 0.0
+
+	var slot_index := _find_slot_for_item(item_id)
+	if slot_index == -1:
+		return 0.0
+
+	var slot := slots[slot_index]
+	var current_purity := clampf(float(slot.get("purity", DEFAULT_ITEM_PURITY)), 0.0, 1.0)
+	var next_purity := clampf(current_purity + amount, 0.0, 1.0)
+	if is_equal_approx(current_purity, next_purity):
+		return next_purity
+
+	slot["purity"] = next_purity
+	slots[slot_index] = slot
+
+	var stored_item: Dictionary = items[item_id]
+	stored_item["purity"] = next_purity
+	items[item_id] = stored_item
+
+	_post_metadata_mutation(_get_active_item_id())
+	inventory_changed.emit(slot_index)
+	purity_changed.emit(slot_index, next_purity)
+	return next_purity
+
+
+func _cleanup_heat_sources() -> void:
+	if _heat_sources.is_empty():
+		return
+	var now_msec := Time.get_ticks_msec()
+	var expired_ids: Array[int] = []
+	for source_id: int in _heat_sources.keys():
+		var source_state: Dictionary = _heat_sources[source_id]
+		var source_node := source_state.get(&"source", null) as Node
+		if source_node == null or not is_instance_valid(source_node):
+			expired_ids.append(source_id)
+			continue
+		if now_msec > int(source_state.get(&"expires_at_msec", 0)):
+			expired_ids.append(source_id)
+	for source_id: int in expired_ids:
+		_heat_sources.erase(source_id)
+
+
+func _update_sulfur_heat_risk() -> void:
+	if not items.has(SULFUR_ITEM_ID):
+		_set_sulfur_heat_risk_active(false)
+		return
+
+	var player := _get_player()
+	if player == null:
+		_set_sulfur_heat_risk_active(false)
+		return
+
+	for source_state: Dictionary in _heat_sources.values():
+		var source_node := source_state.get(&"source", null) as Node2D
+		if source_node == null or not is_instance_valid(source_node):
+			continue
+		var radius := maxf(float(source_state.get(&"radius", 0.0)), 0.0)
+		if radius <= 0.0:
+			continue
+		if player.global_position.distance_to(source_node.global_position) <= radius:
+			_set_sulfur_heat_risk_active(true)
+			return
+
+	_set_sulfur_heat_risk_active(false)
+
+
+func _set_sulfur_heat_risk_active(active: bool) -> void:
+	if _sulfur_heat_risk_active == active:
+		return
+	_sulfur_heat_risk_active = active
+	if CarrierRiskSystem != null and CarrierRiskSystem.has_method("set_external_trigger"):
+		CarrierRiskSystem.set_external_trigger(
+			SULFUR_ITEM_ID,
+			active,
+			SULFUR_HEAT_REASON
+		)
+
+
+func _get_player() -> Node2D:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return null
+	return current_scene.find_child("Player", true, false) as Node2D

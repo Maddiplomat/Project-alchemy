@@ -7,6 +7,7 @@ extends "res://scripts/ChemBench.gd"
 func _ready() -> void:
 	add_to_group(&"placed_objects")
 	add_to_group(&"placed_stations")
+	add_to_group(&"chem_bench_station")
 	super()
 
 

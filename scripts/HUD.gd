@@ -3,7 +3,7 @@ extends CanvasLayer
 const WORLD_SCENE_PATH := "res://scenes/World.tscn"
 const MAIN_MENU_SCENE_PATH := "res://scenes/MainMenu.tscn"
 const DEATH_OVERLAY_FADE_SECONDS := 1.0
-const DISCOVERY_JOURNAL_SCENE := preload("res://scenes/UI/DiscoveryJournal.tscn")
+const DISCOVERY_JOURNAL_SCENE := preload("res://scenes/UI/Journal.tscn")
 const CARRIER_WARNING_SFX_DURATION := 0.11
 const SCANNER_TOAST_SECONDS := 1.6
 const NIGHT_DEFENSE_TOAST_SECONDS := 2.2
@@ -12,8 +12,15 @@ const NIGHT_DEFENSE_TOAST_SECONDS := 2.2
 @onready var carrier_risk_warning_label: Label = $CarrierRiskStrip/VBoxContainer/WarningLabel
 @onready var carrier_risk_hint_label: Label = $CarrierRiskStrip/VBoxContainer/HintLabel
 @onready var scanner_upgrade_label: Label = $ScannerUpgradeLabel
+@onready var objectives_panel: Panel = $ObjectivesPanel
+@onready var objective_title_label: Label = $ObjectivesPanel/MarginContainer/VBoxContainer/TitleLabel
+@onready var objective_1_label: Label = $ObjectivesPanel/MarginContainer/VBoxContainer/Objective1Label
+@onready var objective_2_label: Label = $ObjectivesPanel/MarginContainer/VBoxContainer/Objective2Label
+@onready var objective_3_label: Label = $ObjectivesPanel/MarginContainer/VBoxContainer/Objective3Label
+@onready var day_time_label: Label = $DayTimeLabel
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var health_label: Label = $HealthBar/HealthLabel
+@onready var weight_label: Label = $WeightLabel
 @onready var held_item_icon: TextureRect = $HeldItemContainer/HBoxContainer/ActiveItemIcon
 @onready var held_item_label: Label = $HeldItemContainer/HBoxContainer/ActiveItemLabel
 @onready var carry_vignette: ColorRect = $CarryVignette
@@ -47,14 +54,25 @@ var _scanner_upgrade_tween: Tween = null
 var _night_defense_strip: Panel = null
 var _night_defense_label: Label = null
 var _night_defense_tween: Tween = null
+var _objectives_panel_visible := true
+var _toast_queue: Array[String] = []
+var _is_toast_playing := false
+var _toast_panel: PanelContainer = null
+var _toast_label: Label = null
+var _toast_tween: Tween = null
 
 func _ready() -> void:
 	GameManager.player_health_changed.connect(_update_health)
 	GameManager.player_died.connect(_show_death_overlay)
 	GameManager.scanner_tier_changed.connect(_on_scanner_tier_changed)
-	InventoryManager.inventory_changed.connect(_refresh_held_item)
-	InventoryManager.held_item_changed.connect(_on_held_item_changed)
+	GameManager.day_changed.connect(_on_day_changed)
+	GameManager.time_of_day_changed.connect(_on_time_of_day_changed)
+	InventoryManager.inventory_changed.connect(_refresh_held_item.unbind(1))
+	InventoryManager.active_slot_changed.connect(_on_held_item_changed.unbind(1))
 	InventoryManager.weight_changed.connect(_on_weight_changed)
+	if ResearchObjectives != null:
+		ResearchObjectives.objective_completed.connect(_on_objectives_changed)
+		ResearchObjectives.objective_activated.connect(_on_objectives_changed)
 	retry_button.pressed.connect(_on_retry_button_pressed)
 	quit_button.pressed.connect(_on_quit_button_pressed)
 	if has_node("/root/CarrierRiskSystem"):
@@ -65,6 +83,8 @@ func _ready() -> void:
 	_update_health(GameManager.player_health, GameManager.max_player_health)
 	_refresh_held_item()
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
+	_refresh_day_time()
+	_refresh_objectives()
 	_hide_death_overlay()
 	_hide_carrier_risk_warning()
 	_hide_scanner_upgrade_toast()
@@ -79,6 +99,8 @@ func _ready() -> void:
 
 	if debug_open_journal_on_ready:
 		call_deferred("_open_debug_journal")
+
+	_setup_toast_notification()
 
 
 func _process(delta: float) -> void:
@@ -105,6 +127,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			_open_journal()
 		get_viewport().set_input_as_handled()
+		return
+
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_O:
+		_toggle_objectives_panel()
+		get_viewport().set_input_as_handled()
+
+
+func _toggle_objectives_panel() -> void:
+	_objectives_panel_visible = not _objectives_panel_visible
+	if objectives_panel != null:
+		objectives_panel.visible = _objectives_panel_visible
 
 func _update_health(current_health: int, max_health: int) -> void:
 	health_bar.max_value = max_health
@@ -112,27 +145,27 @@ func _update_health(current_health: int, max_health: int) -> void:
 	health_label.text = "%d / %d HP" % [current_health, max_health]
 
 func _refresh_held_item() -> void:
-	var held_item := InventoryManager.get_held_item()
-	if held_item.is_empty():
+	var held_item := InventoryManager.get_slot_data(InventoryManager.active_slot_index)
+	if held_item.item_id == &"" or held_item.quantity <= 0:
 		held_item_icon.texture = null
 		held_item_icon.modulate = Color(1.0, 1.0, 1.0, 0.25)
 		held_item_label.text = "Hands Empty"
 		return
 
-	var item_id := str(held_item.get("id", ""))
-	var element_data := ElementDatabase.get_element(StringName(item_id))
+	var item_id := String(held_item.item_id)
+	var element_data := ElementDatabase.get_element(held_item.item_id)
 	held_item_icon.texture = _get_placeholder_texture(item_id)
 	held_item_icon.modulate = _get_item_color(item_id)
 	held_item_label.text = (
 		str(element_data.get("display_name", item_id))
-		if not element_data.is_empty() else
-		str(held_item.get("display_name", item_id))
+		if not element_data.is_empty() else item_id
 	)
 
-func _on_held_item_changed(_item_id: String) -> void:
+func _on_held_item_changed() -> void:
 	_refresh_held_item()
 
 func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
+	weight_label.text = "%.1f / %.1f kg" % [total_weight, carry_capacity]
 	var capacity_ratio := 0.0
 	if carry_capacity > 0.0:
 		capacity_ratio = total_weight / carry_capacity
@@ -142,6 +175,49 @@ func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 		var alpha_ratio := inverse_lerp(CARRY_VIGNETTE_START_RATIO, CARRY_VIGNETTE_END_RATIO, minf(capacity_ratio, CARRY_VIGNETTE_END_RATIO))
 		_weight_vignette_alpha = alpha_ratio * CARRY_VIGNETTE_MAX_ALPHA
 	_update_carry_vignette()
+
+
+func _on_day_changed(_day: int) -> void:
+	_refresh_day_time()
+
+
+func _on_time_of_day_changed(_time_of_day: float) -> void:
+	_refresh_day_time()
+
+
+func _refresh_day_time() -> void:
+	var total_minutes: int = int(round(GameManager.time_of_day * 24.0 * 60.0)) % (24 * 60)
+	var hour: int = int(floor(float(total_minutes) / 60.0))
+	var minute: int = total_minutes % 60
+	day_time_label.text = "Day %d  %02d:%02d" % [GameManager.current_day, hour, minute]
+
+
+func _on_objectives_changed(_objective_id: StringName) -> void:
+	_refresh_objectives()
+
+
+func _refresh_objectives() -> void:
+	var lines: Array[String] = []
+	if ResearchObjectives != null and ResearchObjectives.has_method("get_all_objectives"):
+		var objective_list: Array[Dictionary] = ResearchObjectives.get_all_objectives()
+		for objective: Dictionary in objective_list:
+			if bool(objective.get(&"completed", false)):
+				continue
+			var title := str(objective.get(&"title", "Untitled Objective"))
+			var hint := str(objective.get(&"hint", ""))
+			var prefix := "[Active] " if bool(objective.get(&"active", false)) else "[Queued] "
+			var line := "%s%s" % [prefix, title]
+			if not hint.is_empty():
+				line = "%s - %s" % [line, hint]
+			lines.append(line)
+			if lines.size() >= 3:
+				break
+
+	objective_title_label.text = "Research Objectives"
+	objective_1_label.text = lines[0] if lines.size() > 0 else "No active objectives"
+	objective_2_label.text = lines[1] if lines.size() > 1 else ""
+	objective_3_label.text = lines[2] if lines.size() > 2 else ""
+	objectives_panel.visible = _objectives_panel_visible
 
 
 func _show_death_overlay(cause_of_death: StringName) -> void:
@@ -494,3 +570,77 @@ func _get_placeholder_texture(item_id: String) -> Texture2D:
 	texture.height = 48
 	_placeholder_textures[item_id] = texture
 	return texture
+
+func _setup_toast_notification() -> void:
+	_toast_panel = PanelContainer.new()
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
+	style.border_color = Color(0.8, 0.7, 0.2, 1.0)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
+	style.content_margin_left = 20
+	style.content_margin_right = 20
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	_toast_panel.add_theme_stylebox_override("panel", style)
+	_toast_panel.modulate.a = 0.0
+	
+	_toast_label = Label.new()
+	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast_label.add_theme_font_size_override("font_size", 20)
+	
+	_toast_panel.add_child(_toast_label)
+	add_child(_toast_panel)
+	
+	_toast_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_toast_panel.offset_top = 100
+	_toast_panel.offset_bottom = 140
+	_toast_panel.offset_left = 300
+	_toast_panel.offset_right = -300
+	_toast_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toast_panel.z_index = 100
+	
+	if ElementDatabase != null:
+		ElementDatabase.element_discovered.connect(_on_element_discovered_toast)
+
+func _on_element_discovered_toast(element_id: StringName) -> void:
+	var elem = ElementDatabase.get_element(element_id)
+	if elem.is_empty():
+		return
+	var display_name = str(elem.get("display_name", element_id))
+	_queue_toast("%s discovered — new entries added to journal" % display_name)
+	
+	for recipe_id in RecipeDatabase.recipes.keys():
+		var recipe = RecipeDatabase.get_recipe(recipe_id)
+		if recipe.get("requires_discovery") == element_id:
+			_queue_toast("New recipe available: %s" % recipe.get("name", recipe_id))
+
+func _queue_toast(message: String) -> void:
+	_toast_queue.append(message)
+	_play_next_toast()
+
+func _play_next_toast() -> void:
+	if _is_toast_playing or _toast_queue.is_empty():
+		return
+		
+	_is_toast_playing = true
+	var message = _toast_queue.pop_front()
+	_toast_label.text = message
+	
+	if _toast_tween != null and _toast_tween.is_valid():
+		_toast_tween.kill()
+		
+	_toast_tween = create_tween()
+	_toast_tween.tween_property(_toast_panel, "modulate:a", 1.0, 0.3)
+	_toast_tween.tween_interval(2.5)
+	_toast_tween.tween_property(_toast_panel, "modulate:a", 0.0, 0.5)
+	_toast_tween.finished.connect(func():
+		_is_toast_playing = false
+		_play_next_toast()
+	)

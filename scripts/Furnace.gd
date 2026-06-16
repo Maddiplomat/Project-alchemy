@@ -9,6 +9,9 @@ const UNPOWERED_TEMPERATURE_CAP := 1300.0
 const POWERED_TEMPERATURE_CAP := 2000.0
 const POWERED_HEAT_MULTIPLIER := 1.25
 const POWERED_FUEL_EFFICIENCY_MULTIPLIER := 0.80
+const HEAT_EVENT_MIN_TEMP := 160.0
+const HEAT_EVENT_MIN_RADIUS := 24.0
+const HEAT_EVENT_MAX_RADIUS := 96.0
 
 signal player_entered_range
 signal player_exited_range
@@ -53,6 +56,7 @@ var _input_slots: Dictionary[StringName, Dictionary] = {
 
 
 func _ready() -> void:
+	add_to_group(&"heat_source")
 	_unlit_texture = _build_placeholder_texture(false)
 	_lit_texture = _build_placeholder_texture(true)
 	_update_sprite()
@@ -60,6 +64,8 @@ func _ready() -> void:
 	call_deferred("_ensure_ui")
 	interaction_area.body_entered.connect(_on_body_entered)
 	interaction_area.body_exited.connect(_on_body_exited)
+	if PowerSwitchboard != null and PowerSwitchboard.has_signal("switchboard_changed"):
+		PowerSwitchboard.switchboard_changed.connect(_sync_ui)
 	_hide_prompt()
 
 
@@ -86,6 +92,7 @@ func _physics_process(delta: float) -> void:
 
 	_sync_heat_state()
 	temp_changed.emit(current_temp)
+	_emit_heat_signature()
 
 
 func set_lit(value: bool) -> void:
@@ -118,30 +125,29 @@ func add_fuel(element_id: StringName, qty: int) -> bool:
 
 
 func insert_power_cell() -> bool:
-	if has_power_bonus():
-		return false
-	if not InventoryManager.has_item(&"energy_cell", 1):
-		return false
-	InventoryManager.remove_item(&"energy_cell", 1)
-	_power_cell_charge_remaining = POWER_CELL_DURATION_SECONDS
-	GameManager.mark_dirty()
-	_sync_ui()
 	return true
 
 
+func has_power_cell_installed() -> bool:
+	return false
+
+
 func has_power_bonus() -> bool:
-	return _power_cell_charge_remaining > 0.0
+	return _is_switchboard_boost_enabled() and _is_base_grid_powered()
 
 
 func get_power_state() -> Dictionary:
 	return {
-		&"has_cell": has_power_bonus(),
-		&"charge_remaining_seconds": _power_cell_charge_remaining,
+		&"has_cell": false,
+		&"charge_remaining_seconds": 0.0,
+		&"switchboard_enabled": _is_switchboard_boost_enabled(),
+		&"boost_active": has_power_bonus(),
+		&"grid_powered": _is_base_grid_powered(),
 	}
 
 
 func restore_power_state(data: Dictionary) -> void:
-	_power_cell_charge_remaining = clampf(float(data.get(&"charge_remaining_seconds", 0.0)), 0.0, POWER_CELL_DURATION_SECONDS)
+	_power_cell_charge_remaining = 0.0
 	_sync_ui()
 
 
@@ -524,14 +530,26 @@ func _build_placeholder_texture(lit: bool) -> Texture2D:
 
 
 func _drain_power_bonus(delta: float) -> void:
-	if not has_power_bonus():
+	return
+
+
+func _is_switchboard_boost_enabled() -> bool:
+	if PowerSwitchboard == null or not PowerSwitchboard.has_method("allows_furnace_boost"):
+		return true
+	return bool(PowerSwitchboard.allows_furnace_boost())
+
+
+func _is_base_grid_powered() -> bool:
+	if BaseGrid == null or not BaseGrid.has_method("is_powered"):
+		return false
+	return bool(BaseGrid.is_powered())
+
+
+func _emit_heat_signature() -> void:
+	if current_temp < HEAT_EVENT_MIN_TEMP:
 		return
-	if not burn_enabled or not _has_active_fuel():
+	if ChemistryEngine == null or not ChemistryEngine.has_method("emit_heat_event"):
 		return
-	var previous_charge := _power_cell_charge_remaining
-	_power_cell_charge_remaining = maxf(0.0, _power_cell_charge_remaining - delta)
-	if is_equal_approx(previous_charge, _power_cell_charge_remaining):
-		return
-	if _power_cell_charge_remaining <= 0.0:
-		GameManager.mark_dirty()
-	_sync_ui()
+	var intensity := clampf(current_temp / POWERED_TEMPERATURE_CAP, 0.0, 1.0)
+	var radius := lerpf(HEAT_EVENT_MIN_RADIUS, HEAT_EVENT_MAX_RADIUS, intensity)
+	ChemistryEngine.emit_heat_event(self, radius, intensity)

@@ -6,11 +6,13 @@ enum ExtractionTool { HAND, PICKAXE, FURNACE, DISTILLATION_KIT, PRESSURE_CHAMBER
 
 signal element_registered(element_id: StringName)
 signal element_discovered(element_id: StringName)
+signal element_scanned(element_id: StringName)
 signal element_updated(element_id: StringName)
 signal database_ready(element_count: int)
 
 var elements: Dictionary[StringName, Dictionary] = {}
 var discovered_elements: Array[StringName] = []
+var scanned_elements: Dictionary[StringName, bool] = {}
 var biome_elements: Dictionary[StringName, Array] = {}
 
 const ELEMENT_DATA_DIR := "res://data/elements"
@@ -83,6 +85,31 @@ func is_element_discovered(element_id: StringName) -> bool:
 	return discovered_elements.has(element_id)
 
 
+func mark_element_scanned(element_id: StringName) -> bool:
+	if not has_element(element_id) or scanned_elements.has(element_id):
+		return false
+
+	scanned_elements[element_id] = true
+	element_scanned.emit(element_id)
+	return true
+
+
+func is_element_scanned(element_id: StringName) -> bool:
+	return scanned_elements.has(element_id)
+
+
+func get_scanned_elements() -> Array[StringName]:
+	var result: Array[StringName] = []
+	for element_id: StringName in scanned_elements.keys():
+		result.append(element_id)
+	result.sort()
+	return result
+
+
+func clear_scanned_elements() -> void:
+	scanned_elements.clear()
+
+
 func register_element(element_data: Dictionary) -> bool:
 	var element_id: StringName = element_data.get(&"id", &"")
 	if element_id.is_empty():
@@ -103,6 +130,7 @@ func register_element(element_data: Dictionary) -> bool:
 func _seed_elements() -> void:
 	elements.clear()
 	discovered_elements.clear()
+	scanned_elements.clear()
 	biome_elements.clear()
 
 	var seed_data := _load_element_data_files()

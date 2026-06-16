@@ -352,4 +352,3 @@ func _build_badge_style(color: Color) -> StyleBoxFlat:
 	style.content_margin_right = 8.0
 	style.content_margin_bottom = 4.0
 	return style
-

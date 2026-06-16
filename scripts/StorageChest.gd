@@ -22,7 +22,11 @@ func _ready() -> void:
 	save_bucket = SaveBucket.STORAGE
 	if chest_id.is_empty():
 		chest_id = StorageManager.generate_chest_id()
-	StorageManager.ensure_chest(chest_id)
+	StorageManager.ensure_container(chest_id, {
+		&"slot_count": StorageManager.DEFAULT_SLOT_COUNT,
+		&"title": "Storage Chest",
+		&"filter_id": StorageManager.FILTER_ANY,
+	})
 	_build_chest_texture()
 	super()
 	_configure_prompt_label()
@@ -70,6 +74,19 @@ func to_world_save_entry() -> Dictionary:
 	var entry := super.to_world_save_entry()
 	entry[&"chest_id"] = chest_id
 	return entry
+
+
+func restore_from_pickup(entry: Dictionary) -> void:
+	var restored_id := StringName(str(entry.get(&"chest_id", chest_id)))
+	if not restored_id.is_empty():
+		chest_id = restored_id
+	StorageManager.ensure_container(chest_id, {
+		&"slot_count": StorageManager.DEFAULT_SLOT_COUNT,
+		&"title": "Storage Chest",
+		&"filter_id": StorageManager.FILTER_ANY,
+	})
+	if _ui != null and _ui.has_method("bind_chest"):
+		_ui.bind_chest(chest_id)
 
 
 func _build_chest_texture() -> void:

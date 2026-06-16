@@ -5,6 +5,8 @@ signal picked_up(item_data: Dictionary, quantity: int)
 static var _shape_logged := false
 const DISTILLATION_KIT_ITEM_ID := &"distillation_kit"
 const DISTILLATION_KIT_DURABILITY_LOSS := 0.05
+const SULFUR_ACID_MIST_DEGRADE_INTERVAL_SECONDS := 1.0
+const SULFUR_ACID_MIST_PURITY_LOSS_PER_TICK := 0.08
 
 @export var element_id: StringName = &""
 @export var pickup_quantity := 1
@@ -19,6 +21,7 @@ const DISTILLATION_KIT_DURABILITY_LOSS := 0.05
 var _player_in_range: CharacterBody2D = null
 var _pickup_textures := {}
 var _glow_textures := {}
+var _acid_mist_degrade_timer: Timer = null
 
 
 func _ready() -> void:
@@ -29,6 +32,7 @@ func _ready() -> void:
 	_apply_visual_identity()
 	_setup_animations()
 	_play_idle_animation()
+	_setup_weather_reactivity()
 
 	_log_shape_size_once()
 
@@ -74,6 +78,83 @@ func _attempt_pickup() -> void:
 	picked_up.emit(item_data, pickup_quantity)
 	prompt_label.visible = false
 	queue_free()
+
+
+func _setup_weather_reactivity() -> void:
+	_ensure_pickup_payload()
+	if WeatherSystem != null and WeatherSystem.has_signal("weather_changed"):
+		WeatherSystem.weather_changed.connect(_on_weather_changed)
+	_acid_mist_degrade_timer = Timer.new()
+	_acid_mist_degrade_timer.one_shot = true
+	_acid_mist_degrade_timer.wait_time = SULFUR_ACID_MIST_DEGRADE_INTERVAL_SECONDS
+	_acid_mist_degrade_timer.timeout.connect(_on_acid_mist_degrade_timeout)
+	add_child(_acid_mist_degrade_timer)
+	if WeatherSystem != null and WeatherSystem.has_method("get_current_state"):
+		_on_weather_changed(int(WeatherSystem.get_current_state()))
+
+
+func _on_weather_changed(new_state: int) -> void:
+	if get_element_id() != &"sulfur":
+		return
+	if new_state == WeatherSystem.WeatherState.ACID_MIST:
+		if _acid_mist_degrade_timer != null and _acid_mist_degrade_timer.is_stopped():
+			_acid_mist_degrade_timer.start()
+		return
+	if _acid_mist_degrade_timer != null:
+		_acid_mist_degrade_timer.stop()
+
+
+func _on_acid_mist_degrade_timeout() -> void:
+	if get_element_id() != &"sulfur":
+		return
+	if WeatherSystem == null or not WeatherSystem.has_method("get_current_state"):
+		return
+	if int(WeatherSystem.get_current_state()) != WeatherSystem.WeatherState.ACID_MIST:
+		return
+
+	var item_data := _ensure_pickup_payload()
+	var current_purity := clampf(float(item_data.get(&"purity", InventoryManager.DEFAULT_ITEM_PURITY)), 0.0, 1.0)
+	var next_purity := clampf(current_purity - SULFUR_ACID_MIST_PURITY_LOSS_PER_TICK, 0.0, 1.0)
+	item_data[&"purity"] = next_purity
+	set_meta(&"item_data", item_data)
+	_apply_weather_degradation_visuals(next_purity)
+
+	if next_purity <= 0.0:
+		queue_free()
+		return
+
+	_acid_mist_degrade_timer.start()
+
+
+func _ensure_pickup_payload() -> Dictionary:
+	var stored_item_data = get_meta(&"item_data", {})
+	if stored_item_data is Dictionary and not stored_item_data.is_empty():
+		var existing_payload := (stored_item_data as Dictionary).duplicate(true)
+		if not existing_payload.has(&"purity"):
+			existing_payload[&"purity"] = InventoryManager.DEFAULT_ITEM_PURITY
+			set_meta(&"item_data", existing_payload)
+		return existing_payload
+
+	var generated_payload := _get_pickup_item_data()
+	if generated_payload.is_empty():
+		generated_payload = {&"id": get_element_id()}
+	generated_payload[&"id"] = StringName(generated_payload.get(&"id", get_element_id()))
+	generated_payload[&"purity"] = clampf(
+		float(generated_payload.get(&"purity", InventoryManager.DEFAULT_ITEM_PURITY)),
+		0.0,
+		1.0
+	)
+	set_meta(&"item_data", generated_payload)
+	return generated_payload.duplicate(true)
+
+
+func _apply_weather_degradation_visuals(purity: float) -> void:
+	var purity_alpha := lerpf(0.35, 1.0, clampf(purity, 0.0, 1.0))
+	sprite.modulate = Color(1.0, 1.0, 1.0, purity_alpha)
+	if glow_sprite != null and glow_sprite.visible:
+		glow_sprite.modulate.a = purity_alpha * 0.7
+	if sulfur_particles != null:
+		sulfur_particles.amount_ratio = maxf(0.25, purity)
 
 
 func _get_pickup_item_data() -> Dictionary:

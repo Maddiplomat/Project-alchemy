@@ -262,8 +262,8 @@ func _start_emerge_warning() -> void:
 	_set_surface_visible(false)
 	_sync_scan_proxy()
 	_spawn_emerge_warning_fx(_burrow_target_position)
-	if CameraShake != null and CameraShake.has_signal("shake"):
-		CameraShake.shake.emit(0.25, 0.4)
+	if CameraShake != null and CameraShake.has_method("shake"):
+		CameraShake.shake(0.25, 0.4)
 
 
 func _finish_emerge() -> void:

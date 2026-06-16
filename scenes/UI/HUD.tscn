@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/HUD.gd" id="1_hud"]
+[ext_resource type="Script" path="res://scripts/MinimapOverlay.gd" id="2_minimap"]
 
 [node name="HUD" type="CanvasLayer"]
 layer = 10
@@ -19,7 +20,7 @@ mouse_filter = 2
 z_index = 20
 color = Color(0.32, 0.05, 0.04, 0)
 
-[node name="MinimapPlaceholder" type="ColorRect" parent="."]
+[node name="MinimapPlaceholder" type="Control" parent="."]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -27,7 +28,7 @@ offset_left = -72.0
 offset_top = 8.0
 offset_right = -8.0
 offset_bottom = 72.0
-color = Color(0, 0, 0, 1)
+script = ExtResource("2_minimap")
 
 [node name="CarrierRiskStrip" type="Panel" parent="."]
 visible = false
@@ -82,13 +83,67 @@ text = "Scanner upgraded"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="ObjectivesPanel" type="Panel" parent="."]
+anchors_preset = 0
+offset_left = 16.0
+offset_top = 44.0
+offset_right = 292.0
+offset_bottom = 166.0
+self_modulate = Color(1, 1, 1, 0)
+
+[node name="MarginContainer" type="MarginContainer" parent="ObjectivesPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 12.0
+offset_right = -10.0
+offset_bottom = -8.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="ObjectivesPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TitleLabel" type="Label" parent="ObjectivesPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Research Objectives"
+
+[node name="Objective1Label" type="Label" parent="ObjectivesPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 3
+text = "No active objectives"
+
+[node name="Objective2Label" type="Label" parent="ObjectivesPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 3
+text = ""
+
+[node name="Objective3Label" type="Label" parent="ObjectivesPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 3
+text = ""
+
+[node name="DayTimeLabel" type="Label" parent="."]
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -90.0
+offset_top = 18.0
+offset_right = 90.0
+offset_bottom = 42.0
+theme_override_font_sizes/font_size = 18
+text = "Day 1 06:00"
+horizontal_alignment = 1
+
 [node name="HealthBar" type="ProgressBar" parent="."]
 anchors_preset = 3
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
 offset_top = -52.0
-offset_right = 304.0
+offset_right = 124.0
 offset_bottom = -24.0
 show_percentage = false
 max_value = 100.0
@@ -108,6 +163,17 @@ offset_bottom = 11.0
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "100 / 100 HP"
+
+[node name="WeightLabel" type="Label" parent="."]
+anchors_preset = 3
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 136.0
+offset_top = -52.0
+offset_right = 292.0
+offset_bottom = -24.0
+text = "0.0 / 20.0 kg"
+vertical_alignment = 1
 
 [node name="HeldItemContainer" type="Panel" parent="."]
 anchors_preset = 10

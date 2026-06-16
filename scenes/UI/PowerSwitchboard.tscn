@@ -1,0 +1,229 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/BatteryStationUI.gd" id="1_ui"]
+
+[node name="PowerSwitchboard" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_ui")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.55)
+mouse_filter = 2
+
+[node name="Panel" type="Panel" parent="."]
+layout_mode = 1
+offset_left = 24.0
+offset_top = 40.0
+offset_right = 424.0
+offset_bottom = 610.0
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+
+[node name="VBox" type="VBoxContainer" parent="Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "Battery Station"
+horizontal_alignment = 1
+
+[node name="HSep0" type="HSeparator" parent="Panel/Margin/VBox"]
+layout_mode = 2
+
+[node name="InputsLabel" type="Label" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "INPUTS"
+modulate = Color(0.7, 0.7, 0.7, 1)
+
+[node name="InputRow" type="HBoxContainer" parent="Panel/Margin/VBox"]
+layout_mode = 2
+alignment = 1
+
+[node name="LithiumSlot" type="VBoxContainer" parent="Panel/Margin/VBox/InputRow"]
+layout_mode = 2
+size_flags_horizontal = 4
+custom_minimum_size = Vector2(70, 0)
+
+[node name="ColorRect" type="ColorRect" parent="Panel/Margin/VBox/InputRow/LithiumSlot"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 50)
+color = Color(0.2, 0.2, 0.4, 1)
+
+[node name="Label" type="Label" parent="Panel/Margin/VBox/InputRow/LithiumSlot"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "Lithium x1"
+horizontal_alignment = 1
+
+[node name="ArrowLabel" type="Label" parent="Panel/Margin/VBox/InputRow"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 16
+text = "→"
+
+[node name="IronSlot" type="VBoxContainer" parent="Panel/Margin/VBox/InputRow"]
+layout_mode = 2
+size_flags_horizontal = 4
+custom_minimum_size = Vector2(70, 0)
+
+[node name="ColorRect" type="ColorRect" parent="Panel/Margin/VBox/InputRow/IronSlot"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 50)
+color = Color(0.3, 0.2, 0.2, 1)
+
+[node name="Label" type="Label" parent="Panel/Margin/VBox/InputRow/IronSlot"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "Iron x1"
+horizontal_alignment = 1
+
+[node name="OutputLabel" type="Label" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "→ Energy Cell x2"
+horizontal_alignment = 1
+modulate = Color(0.6, 1.0, 0.6, 1)
+
+[node name="ReactButton" type="Button" parent="Panel/Margin/VBox"]
+layout_mode = 2
+text = "React"
+
+[node name="HSep1" type="HSeparator" parent="Panel/Margin/VBox"]
+layout_mode = 2
+
+[node name="PowerLabel" type="Label" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "DEFENSE GRID POWER"
+modulate = Color(0.7, 0.7, 0.7, 1)
+
+[node name="ChargeBar" type="ProgressBar" parent="Panel/Margin/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 18)
+value = 0.0
+show_percentage = true
+
+[node name="ChargeMinsLabel" type="Label" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "0:00 / 30:00 remaining"
+horizontal_alignment = 1
+
+[node name="PowerSlot" type="VBoxContainer" parent="Panel/Margin/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Panel/Margin/VBox/PowerSlot"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "Defense Charge Slot"
+horizontal_alignment = 1
+
+[node name="Button" type="Button" parent="Panel/Margin/VBox/PowerSlot"]
+layout_mode = 2
+text = "Insert Energy Cell (+20 min)"
+
+[node name="HSep2" type="HSeparator" parent="Panel/Margin/VBox"]
+layout_mode = 2
+
+[node name="Switchboard" type="VBoxContainer" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Label" type="Label" parent="Panel/Margin/VBox/Switchboard"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "POWER SWITCHBOARD"
+modulate = Color(0.7, 0.7, 0.7, 1)
+
+[node name="DrawLabel" type="Label" parent="Panel/Margin/VBox/Switchboard"]
+layout_mode = 2
+text = "Current Draw 0.00 / 4.00 units/min"
+
+[node name="WarningLabel" type="Label" parent="Panel/Margin/VBox/Switchboard"]
+layout_mode = 2
+visible = false
+theme_override_font_sizes/font_size = 9
+modulate = Color(1, 0.45, 0.3, 1)
+text = "Warning"
+
+[node name="Consumers" type="VBoxContainer" parent="Panel/Margin/VBox/Switchboard"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="PerimeterLights" type="HBoxContainer" parent="Panel/Margin/VBox/Switchboard/Consumers"]
+layout_mode = 2
+
+[node name="Toggle" type="CheckButton" parent="Panel/Margin/VBox/Switchboard/Consumers/PerimeterLights"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Perimeter Lights"
+button_pressed = true
+
+[node name="Draw" type="Label" parent="Panel/Margin/VBox/Switchboard/Consumers/PerimeterLights"]
+layout_mode = 2
+text = "0.00 /min"
+
+[node name="TrapNetwork" type="HBoxContainer" parent="Panel/Margin/VBox/Switchboard/Consumers"]
+layout_mode = 2
+
+[node name="Toggle" type="CheckButton" parent="Panel/Margin/VBox/Switchboard/Consumers/TrapNetwork"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Trap Network"
+button_pressed = true
+
+[node name="Draw" type="Label" parent="Panel/Margin/VBox/Switchboard/Consumers/TrapNetwork"]
+layout_mode = 2
+text = "0.00 /min"
+
+[node name="FurnaceBoost" type="HBoxContainer" parent="Panel/Margin/VBox/Switchboard/Consumers"]
+layout_mode = 2
+
+[node name="Toggle" type="CheckButton" parent="Panel/Margin/VBox/Switchboard/Consumers/FurnaceBoost"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Furnace Boost"
+button_pressed = true
+
+[node name="Draw" type="Label" parent="Panel/Margin/VBox/Switchboard/Consumers/FurnaceBoost"]
+layout_mode = 2
+text = "0.00 /min"
+
+[node name="ChemBenchBoost" type="HBoxContainer" parent="Panel/Margin/VBox/Switchboard/Consumers"]
+layout_mode = 2
+
+[node name="Toggle" type="CheckButton" parent="Panel/Margin/VBox/Switchboard/Consumers/ChemBenchBoost"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Chem Bench Boost"
+button_pressed = true
+
+[node name="Draw" type="Label" parent="Panel/Margin/VBox/Switchboard/Consumers/ChemBenchBoost"]
+layout_mode = 2
+text = "0.00 /min"
+
+[node name="HSep3" type="HSeparator" parent="Panel/Margin/VBox"]
+layout_mode = 2
+
+[node name="CloseButton" type="Button" parent="Panel/Margin/VBox"]
+layout_mode = 2
+text = "Close"

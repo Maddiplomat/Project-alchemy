@@ -1,0 +1,120 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/Journal.gd" id="1_journal"]
+
+[node name="Journal" type="Panel"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -420.0
+offset_top = -250.0
+offset_right = 420.0
+offset_bottom = 250.0
+mouse_filter = 1
+z_index = 25
+script = ExtResource("1_journal")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+
+[node name="Root" type="VBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="TitleRow" type="VBoxContainer" parent="MarginContainer/Root"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/Root/TitleRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Field Journal"
+
+[node name="SubtitleLabel" type="Label" parent="MarginContainer/Root/TitleRow"]
+layout_mode = 2
+text = "Press J to close."
+
+[node name="TabBar" type="TabBar" parent="MarginContainer/Root"]
+layout_mode = 2
+clip_tabs = false
+current_tab = 0
+
+[node name="Content" type="PanelContainer" parent="MarginContainer/Root"]
+custom_minimum_size = Vector2(0, 360)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Split" type="HSplitContainer" parent="MarginContainer/Root/Content"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+split_offset = 240
+
+[node name="ListFrame" type="PanelContainer" parent="MarginContainer/Root/Content/Split"]
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+
+[node name="ListMargin" type="MarginContainer" parent="MarginContainer/Root/Content/Split/ListFrame"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="EntryList" type="ItemList" parent="MarginContainer/Root/Content/Split/ListFrame/ListMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+same_column_width = true
+auto_height = true
+
+[node name="DetailFrame" type="PanelContainer" parent="MarginContainer/Root/Content/Split"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="DetailMargin" type="MarginContainer" parent="MarginContainer/Root/Content/Split/DetailFrame"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="DetailContent" type="VBoxContainer" parent="MarginContainer/Root/Content/Split/DetailFrame/DetailMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="DetailTitleLabel" type="Label" parent="MarginContainer/Root/Content/Split/DetailFrame/DetailMargin/DetailContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "No entry selected"
+
+[node name="UnlockChainLabel" type="Label" parent="MarginContainer/Root/Content/Split/DetailFrame/DetailMargin/DetailContent"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Unlock chain: None"
+
+[node name="TryNextLabel" type="Label" parent="MarginContainer/Root/Content/Split/DetailFrame/DetailMargin/DetailContent"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Try next:"
+
+[node name="HazardNotesLabel" type="Label" parent="MarginContainer/Root/Content/Split/DetailFrame/DetailMargin/DetailContent"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Hazard notes:"
+
+[node name="ScannerClueLabel" type="Label" parent="MarginContainer/Root/Content/Split/DetailFrame/DetailMargin/DetailContent"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Scanner clue:"

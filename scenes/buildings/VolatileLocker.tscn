@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=4]
+
+[ext_resource type="Script" path="res://scripts/buildings/VolatileLocker.gd" id="1_script"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_main"]
+size = Vector2(24, 24)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_interaction"]
+size = Vector2(48, 48)
+
+[node name="VolatileLocker" type="StaticBody2D"]
+script = ExtResource("1_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_main")
+
+[node name="InteractionArea" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+shape = SubResource("RectangleShape2D_interaction")
+
+[node name="PromptLabel" type="Label" parent="."]
+visible = false
+text = "Press E to open Volatile Locker"
+horizontal_alignment = 1

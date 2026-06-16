@@ -3,7 +3,7 @@ extends CanvasLayer
 signal ui_closed
 
 const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
-const SLOT_COUNT := 20
+const DEFAULT_STORAGE_SLOT_COUNT := 20
 const TOOLTIP_OFFSET := Vector2(18, 18)
 const DRAG_HINT_TEXT := "Drag between player and chest. Wheel or Q/E adjusts qty."
 
@@ -24,10 +24,11 @@ var drag_ghost: TextureRect = null
 
 func _ready() -> void:
 	layer = 11
-	_build_grid(player_grid, "player")
-	_build_grid(chest_grid, "chest")
+	_ensure_grid_slot_count(player_grid, InventoryManager.DEFAULT_SLOT_COUNT, "player")
+	_ensure_grid_slot_count(chest_grid, DEFAULT_STORAGE_SLOT_COUNT, "chest")
 	panel.visible = false
-	InventoryManager.inventory_changed.connect(_refresh_all)
+	InventoryManager.inventory_changed.connect(_refresh_all.unbind(1))
+	InventoryManager.active_slot_changed.connect(_refresh_all.unbind(1))
 	InventoryManager.weight_changed.connect(_on_weight_changed)
 	StorageManager.chest_inventory_changed.connect(_on_chest_inventory_changed)
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
@@ -36,8 +37,12 @@ func _ready() -> void:
 
 func bind_chest(bound_chest_id: StringName) -> void:
 	chest_id = bound_chest_id
-	StorageManager.ensure_chest(chest_id)
-	chest_title_label.text = "Chest %s" % String(chest_id).substr(0, 8)
+	StorageManager.ensure_container(chest_id)
+	var title := StorageManager.get_container_title(chest_id)
+	if title == "Storage Chest":
+		chest_title_label.text = "%s %s" % [title, String(chest_id).substr(0, 8)]
+	else:
+		chest_title_label.text = title
 	_refresh_all()
 
 
@@ -95,34 +100,49 @@ func _process(_delta: float) -> void:
 		drag_ghost.global_position = get_viewport().get_mouse_position() - (drag_ghost.size / 2.0)
 
 
-func _build_grid(target_grid: GridContainer, container_name: String) -> void:
-	for i in range(SLOT_COUNT):
+func _build_grid(target_grid: GridContainer, container_name: String, start_index: int, count: int) -> void:
+	for i in range(count):
 		var slot = SLOT_SCENE.instantiate()
 		target_grid.add_child(slot)
-		slot.slot_index = i
+		slot.slot_index = start_index + i
 		slot.custom_minimum_size = Vector2(64, 64)
 		slot.drag_started.connect(_on_slot_drag_started.bind(container_name))
 		slot.drag_released.connect(_on_slot_drag_released.bind(container_name))
 		slot.clicked.connect(_on_slot_clicked.bind(container_name))
 
 
+func _ensure_grid_slot_count(target_grid: GridContainer, count: int, container_name: String) -> void:
+	var current_count := target_grid.get_child_count()
+	if current_count < count:
+		_build_grid(target_grid, container_name, current_count, count - current_count)
+	elif current_count > count:
+		for child_index in range(current_count - 1, count - 1, -1):
+			var child := target_grid.get_child(child_index)
+			target_grid.remove_child(child)
+			child.free()
+	for child_index in range(target_grid.get_child_count()):
+		var slot = target_grid.get_child(child_index)
+		slot.slot_index = child_index
+
+
 func _refresh_all(_unused = null) -> void:
 	if chest_id.is_empty():
 		return
+	_ensure_grid_slot_count(chest_grid, StorageManager.get_slot_count(chest_id), "chest")
 	_refresh_player_grid()
 	_refresh_chest_grid()
 
 
 func _refresh_player_grid() -> void:
-	var held_id := InventoryManager.get_held_item_id()
+	var active_index := InventoryManager.active_slot_index
 	for i in range(player_grid.get_child_count()):
 		var slot = player_grid.get_child(i)
-		var data = InventoryManager.get_slot_item(i)
-		slot.is_equipped = (not data.is_empty() and data.id == held_id)
-		if data.is_empty():
+		var data = InventoryManager.get_slot_data(i)
+		slot.is_equipped = (i == active_index and data.item_id != &"")
+		if data.item_id == &"":
 			slot.clear()
 		else:
-			slot.update_slot(data.id, data.quantity, data.purity, data.get("durability"), data.get("max_durability"))
+			slot.update_slot(String(data.item_id), data.quantity, data.purity, null, null)
 
 
 func _refresh_chest_grid() -> void:
@@ -174,7 +194,7 @@ func _on_slot_drag_released(slot_index: int, container_name: String) -> void:
 
 func _on_slot_clicked(slot_index: int, container_name: String) -> void:
 	if container_name == "player":
-		InventoryManager.select_slot(slot_index)
+		InventoryManager.set_active_slot(slot_index)
 
 
 func _finish_drag(target_container: String, target_slot_index: int) -> void:
@@ -188,10 +208,7 @@ func _finish_drag(target_container: String, target_slot_index: int) -> void:
 	var success := false
 	if target_slot_index >= 0:
 		if origin_container == target_container:
-			if origin_container == "player" and origin_index != target_slot_index:
-				InventoryManager.swap_slots(origin_index, target_slot_index)
-				success = true
-			elif origin_container == "chest" and origin_index != target_slot_index:
+			if origin_container == "chest" and origin_index != target_slot_index:
 				StorageManager.swap_slots(chest_id, origin_index, target_slot_index)
 				success = true
 		elif origin_container == "player" and target_container == "chest":
@@ -281,7 +298,7 @@ func _get_grid(container_name: String) -> GridContainer:
 
 func _get_slot_data(container_name: String, slot_index: int) -> Dictionary:
 	if container_name == "player":
-		return InventoryManager.get_slot_item(slot_index)
+		return InventoryManager.get_slot_data(slot_index)
 	if container_name == "chest":
 		return StorageManager.get_slot_item(chest_id, slot_index)
 	return {}

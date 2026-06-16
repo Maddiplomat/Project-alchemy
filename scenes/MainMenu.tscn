@@ -62,4 +62,4 @@ horizontal_alignment = 1
 [node name="StartButton" type="Button" parent="CenterContainer/Panel/VBoxContainer" unique_id=509172624]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
-text = "Start Run"
+text = "Start Game"

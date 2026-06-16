@@ -75,7 +75,8 @@ func serialize() -> Dictionary:
 	var base_data := {
 		"placed_stations": placed_stations.duplicate(true),
 		"walls": walls.duplicate(true),
-		"storage": storage.duplicate(true)
+		"storage": storage.duplicate(true),
+		"chest_inventories": chest_inventories.duplicate(true),
 	}
 	if has_node("/root/BaseGrid"):
 		var base_grid = get_node("/root/BaseGrid")
@@ -149,6 +150,7 @@ func deserialize(data: Dictionary) -> void:
 		placed_stations = base_data.get("placed_stations", [])
 		walls = base_data.get("walls", [])
 		storage = base_data.get("storage", [])
+		chest_inventories = base_data.get("chest_inventories", {})
 		if has_node("/root/BaseGrid"):
 			var base_grid = get_node("/root/BaseGrid")
 			if base_grid != null and base_grid.has_method("restore_charge_level"):
@@ -158,6 +160,10 @@ func deserialize(data: Dictionary) -> void:
 			var build_sys = get_node("/root/BuildSystem")
 			if build_sys.has_method("import_from_world_save_data"):
 				build_sys.import_from_world_save_data(self)
+		if has_node("/root/StorageManager"):
+			var storage_manager = get_node("/root/StorageManager")
+			if storage_manager.has_method("import_from_world_save_data"):
+				storage_manager.import_from_world_save_data(self)
 
 	if data.has("resources"):
 		var resource_data: Dictionary = data["resources"]

@@ -1,4 +1,5 @@
 extends Panel
+class_name InventorySlot
 
 signal drag_started(slot_index: int)
 signal drag_released(slot_index: int)
@@ -31,9 +32,11 @@ const QUANTITY_FONT_COLOR := Color(0.97, 0.97, 0.97, 1.0)
 const QUANTITY_OUTLINE_COLOR := Color(0.03, 0.04, 0.05, 0.95)
 
 var slot_index := -1
-var current_item_id := ""
-var current_quantity := 0
-var current_purity := 0.0
+var item_id: StringName = &""
+var quantity: int = 0
+var purity: float = 0.0
+var is_active: bool = false
+var item_color: Color = Color.WHITE
 var current_durability = null
 var current_max_durability = null
 var is_drag_origin := false
@@ -93,34 +96,34 @@ func _gui_input(event: InputEvent) -> void:
 			drag_released.emit(slot_index)
 		accept_event()
 
-func update_slot(item_id: String, quantity: int, purity: float, durability = null, max_durability = null) -> void:
-	current_item_id = item_id
-	current_quantity = quantity
-	current_purity = purity
-	current_durability = durability
-	current_max_durability = max_durability
+func update_display() -> void:
+	is_equipped = is_active
 	is_drag_origin = false
-
-	if quantity > 0:
-		item_icon.texture = _get_placeholder_texture(item_id)
-		item_icon.modulate = _get_icon_color()
-		quantity_label.text = "x%d" % quantity
-	else:
-		current_item_id = ""
-
 	_apply_visual_state()
 
+
+func update_slot(next_item_id: String, next_quantity: int, next_purity: float, durability = null, max_durability = null) -> void:
+	item_id = StringName(next_item_id)
+	quantity = next_quantity
+	purity = next_purity
+	current_durability = durability
+	current_max_durability = max_durability
+	update_display()
+
 func clear() -> void:
-	current_item_id = ""
-	current_quantity = 0
-	current_purity = 0.0
+	item_id = &""
+	quantity = 0
+	purity = 0.0
+	is_active = false
+	item_color = Color.WHITE
 	current_durability = null
 	current_max_durability = null
 	is_drag_origin = false
+	is_equipped = false
 	_apply_visual_state()
 
 func has_item() -> bool:
-	return current_item_id != "" and current_quantity > 0
+	return not item_id.is_empty() and quantity > 0
 
 func set_drag_origin(active: bool) -> void:
 	is_drag_origin = active
@@ -146,9 +149,9 @@ func _apply_visual_state() -> void:
 		self_modulate = Color.WHITE
 
 	if has_stack:
-		item_icon.texture = _get_placeholder_texture(current_item_id)
+		item_icon.texture = _get_placeholder_texture(String(item_id))
 		item_icon.modulate = _get_icon_color()
-		quantity_label.text = "x%d" % current_quantity
+		quantity_label.text = "x%d" % quantity
 	else:
 		item_icon.texture = null
 		quantity_label.text = ""
@@ -198,6 +201,7 @@ func _get_item_color(item_id: String) -> Color:
 
 
 func _apply_background_style() -> void:
+	var current_item_id := String(item_id)
 	var is_charcoal_slot := has_item() and current_item_id == "charcoal"
 	var is_sulfur_held_slot := has_item() and current_item_id == "sulfur" and is_equipped
 	var is_sulfur_risk_slot := has_item() and current_item_id == "sulfur" and _carrier_risk_active
@@ -254,14 +258,14 @@ func _apply_background_style() -> void:
 
 
 func _supports_passive_risk_pulse() -> bool:
-	return current_item_id == "sulfur" or current_item_id == "lithium"
+	return item_id == &"sulfur" or item_id == &"lithium"
 
 
 func _supports_carrier_risk_visuals() -> bool:
 	return _supports_passive_risk_pulse()
 
 func _get_icon_color() -> Color:
-	var base_color := _get_item_color(current_item_id)
+	var base_color := item_color if item_color != Color.WHITE else _get_item_color(String(item_id))
 	if _has_durability() and _get_durability_ratio() <= 0.0:
 		return _get_desaturated_color(base_color)
 	return base_color

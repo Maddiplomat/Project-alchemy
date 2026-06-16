@@ -1,15 +1,16 @@
 extends Node
+# Autoload: RecipeDatabase
 
-signal recipe_registered(recipe_id: StringName)
+signal recipe_unlocked(recipe_id: StringName)
 signal database_ready(recipe_count: int)
 
-const RECIPE_DATA_DIR := "res://data/recipes"
-
+# Recipe dict: id -> {id, name, station, inputs: [{id, qty}], output: {id, qty},
+#                     unlocked: bool, requires_discovery: StringName}
 var recipes: Dictionary[StringName, Dictionary] = {}
 
 
 func _ready() -> void:
-	_load_recipes()
+	_seed_recipes()
 	database_ready.emit(recipes.size())
 
 
@@ -17,182 +18,209 @@ func has_recipe(recipe_id: StringName) -> bool:
 	return recipes.has(recipe_id)
 
 
-func get_recipe(recipe_id: StringName) -> Dictionary:
-	if not has_recipe(recipe_id):
+func get_recipe(id: StringName) -> Dictionary:
+	if not recipes.has(id):
 		return {}
-
-	return recipes[recipe_id].duplicate(true)
+	var recipe := (recipes[id] as Dictionary).duplicate(true)
+	recipe[&"unlocked"] = _is_recipe_unlocked(recipe)
+	return recipe
 
 
 func get_all_recipes() -> Dictionary[StringName, Dictionary]:
 	var result: Dictionary[StringName, Dictionary] = {}
-	for recipe_id: StringName in recipes:
-		result[recipe_id] = recipes[recipe_id].duplicate(true)
-
+	for recipe_id: StringName in recipes.keys():
+		result[recipe_id] = get_recipe(recipe_id)
 	return result
+
+
+func get_all_unlocked() -> Array[Dictionary]:
+	var unlocked_recipes: Array[Dictionary] = []
+	for recipe_id: StringName in recipes.keys():
+		var recipe := get_recipe(recipe_id)
+		if bool(recipe.get(&"unlocked", false)):
+			unlocked_recipes.append(recipe)
+	return unlocked_recipes
+
+
+func unlock_recipe(recipe_id: StringName) -> bool:
+	if not recipes.has(recipe_id):
+		return false
+
+	var recipe: Dictionary = recipes[recipe_id]
+	if bool(recipe.get(&"unlocked", false)):
+		return false
+
+	recipe[&"unlocked"] = true
+	recipes[recipe_id] = recipe
+	recipe_unlocked.emit(recipe_id)
+	return true
+
+
+func get_recipes_for_station(station_id: StringName) -> Array[Dictionary]:
+	var station_recipes: Array[Dictionary] = []
+	for recipe_id: StringName in recipes.keys():
+		var recipe := get_recipe(recipe_id)
+		if StringName(recipe.get(&"station", &"")) == station_id:
+			station_recipes.append(recipe)
+	return station_recipes
 
 
 func get_recipes_for_output(item_id: StringName) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	for recipe_id: StringName in recipes:
-		var recipe: Dictionary = recipes[recipe_id]
+	for recipe_id: StringName in recipes.keys():
+		var recipe := get_recipe(recipe_id)
 		var output: Dictionary = recipe.get(&"output", {})
-		if output.get(&"item_id", &"") == item_id:
-			result.append(recipe.duplicate(true))
-
+		if StringName(output.get(&"item_id", output.get(&"id", &""))) == item_id:
+			result.append(recipe)
 	return result
 
 
-func _load_recipes() -> void:
+func _seed_recipes() -> void:
 	recipes.clear()
-	var dir := DirAccess.open(RECIPE_DATA_DIR)
-	if dir == null:
-		push_warning("Unable to open recipe data directory: %s" % RECIPE_DATA_DIR)
+
+	_register_recipe(_make_recipe(
+		&"charcoal",
+		"Charcoal",
+		&"furnace",
+		[{&"id": &"wood", &"qty": 1}],
+		{&"id": &"charcoal", &"qty": 1}
+	))
+	_register_recipe(_make_recipe(
+		&"wrought_iron",
+		"Wrought Iron",
+		&"furnace",
+		[{&"id": &"iron", &"qty": 1}, {&"id": &"charcoal", &"qty": 1}],
+		{&"id": &"wrought_iron", &"qty": 1}
+	))
+	_register_recipe(_make_recipe(
+		&"steel",
+		"Steel",
+		&"furnace",
+		[{&"id": &"iron", &"qty": 1}, {&"id": &"charcoal", &"qty": 1}],
+		{&"id": &"steel", &"qty": 1}
+	))
+	_register_recipe(_make_recipe(
+		&"cast_iron",
+		"Cast Iron",
+		&"furnace",
+		[{&"id": &"iron", &"qty": 1}, {&"id": &"charcoal", &"qty": 1}],
+		{&"id": &"cast_iron", &"qty": 1}
+	))
+	_register_recipe(_make_recipe(
+		&"rust_bolt",
+		"Rust Bolt",
+		&"chem_bench",
+		[{&"id": &"iron", &"qty": 2}, {&"id": &"water", &"qty": 1}],
+		{&"id": &"rust_bolt", &"qty": 8}
+	))
+	_register_recipe(_make_recipe(
+		&"sulfuric_bolt",
+		"Sulfuric Bolt",
+		&"chem_bench",
+		[{&"id": &"sulfur", &"qty": 1}, {&"id": &"iron", &"qty": 1}],
+		{&"id": &"sulfuric_bolt", &"qty": 6},
+		false,
+		&"distillation_kit"
+	))
+	_register_recipe(_make_recipe(
+		&"corrosive_slurry",
+		"Corrosive Slurry",
+		&"chem_bench",
+		[{&"id": &"sulfur", &"qty": 1}, {&"id": &"water", &"qty": 1}],
+		{&"id": &"corrosive_slurry", &"qty": 1},
+		false,
+		&"stabilization_success"
+	))
+	_register_recipe(_make_recipe(
+		&"distillation_kit",
+		"Distillation Kit",
+		&"",
+		[{&"id": &"iron", &"qty": 2}, {&"id": &"wood", &"qty": 3}],
+		{&"id": &"distillation_kit", &"qty": 1},
+		true,
+		&"",
+		1.0
+	))
+
+
+func _register_recipe(recipe: Dictionary) -> void:
+	var recipe_id := StringName(recipe.get(&"id", &""))
+	if recipe_id.is_empty():
 		return
-	var file_names := dir.get_files()
-	file_names.sort()
-	for file_name: String in file_names:
-		if not file_name.ends_with(".json"):
-			continue
-		_load_recipe_file("%s/%s" % [RECIPE_DATA_DIR, file_name])
+	recipes[recipe_id] = recipe
 
 
-func _load_recipe_file(file_path: String) -> void:
-	var file := FileAccess.open(file_path, FileAccess.READ)
-	if file == null:
-		push_warning("Unable to open recipe data file: %s" % file_path)
-		return
-
-	var parsed = JSON.parse_string(file.get_as_text())
-	if not parsed is Array:
-		push_warning("Skipping invalid recipe data file: %s" % file_path)
-		return
-
-	for raw_recipe in parsed:
-		if not raw_recipe is Dictionary:
-			push_warning("Skipping malformed recipe entry in %s" % file_path)
-			continue
-
-		var recipe := _normalize_recipe(raw_recipe)
-		if recipe.is_empty():
-			push_warning("Skipping incomplete recipe entry in %s" % file_path)
-			continue
-
-		var recipe_id: StringName = recipe.get(&"id", &"")
-		recipes[recipe_id] = recipe
-		recipe_registered.emit(recipe_id)
-
-
-func _normalize_recipe(raw_recipe: Dictionary) -> Dictionary:
-	var required_keys := [&"id", &"inputs", &"output"]
-	for key: StringName in required_keys:
-		if not raw_recipe.has(key):
-			return {}
-
-	var raw_inputs = raw_recipe.get(&"inputs")
-	if not raw_inputs is Array:
-		return {}
-
+func _make_recipe(
+	recipe_id: StringName,
+	recipe_name: String,
+	station_id: StringName,
+	inputs: Array,
+	output: Dictionary,
+	unlocked: bool = true,
+	requires_discovery: StringName = &"",
+	durability = null
+) -> Dictionary:
 	var normalized_inputs: Array[Dictionary] = []
-	for raw_input in raw_inputs:
-		if not raw_input is Dictionary:
-			return {}
-		var normalized_input := _normalize_recipe_input(raw_input)
-		if normalized_input.is_empty():
-			return {}
-		var qty := int(normalized_input.get(&"qty", 0))
-		if qty <= 0:
-			return {}
-		normalized_inputs.append(normalized_input)
+	for input_entry: Dictionary in inputs:
+		normalized_inputs.append({
+			&"id": StringName(input_entry.get(&"id", &"")),
+			&"element_id": StringName(input_entry.get(&"id", &"")),
+			&"qty": int(input_entry.get(&"qty", 0)),
+		})
 
-	var raw_output = raw_recipe.get(&"output")
-	if not raw_output is Dictionary:
-		return {}
-	var normalized_output := _normalize_recipe_output(raw_output)
-	if normalized_output.is_empty():
-		return {}
-
-	var output_qty := int(normalized_output.get(&"qty", 0))
-	if output_qty <= 0:
-		return {}
-
-	var station_value = raw_recipe.get(&"station", raw_recipe.get(&"requires_station"))
-	var station: Variant = null
-	if station_value != null:
-		station = StringName(str(station_value))
-
-	var ratio: Dictionary[StringName, float] = {}
-	var raw_ratio = raw_recipe.get(&"ratio", {})
-	if raw_ratio is Dictionary:
-		for ratio_key in raw_ratio.keys():
-			ratio[StringName(str(ratio_key))] = float(raw_ratio[ratio_key])
-
-	var durability: Variant = null
-	if raw_recipe.has(&"durability"):
-		var raw_durability = raw_recipe.get(&"durability")
-		if raw_durability != null:
-			durability = clampf(float(raw_durability), 0.0, 1.0)
-	else:
-		durability = 1.0
-
-	var discovery_gate: Dictionary = {}
-	var raw_discovery_gate = raw_recipe.get(&"discovery_gate", {})
-	if raw_discovery_gate is Dictionary:
-		var gate_entry_id := StringName(str(raw_discovery_gate.get(&"entry_id", "")))
-		if not gate_entry_id.is_empty():
-			discovery_gate = {
-				&"entry_id": gate_entry_id,
-				&"hint": str(raw_discovery_gate.get(&"hint", "")),
-				&"locked_name": str(raw_discovery_gate.get(&"locked_name", "???")),
-			}
+	var output_id := StringName(output.get(&"id", &""))
+	var output_qty := int(output.get(&"qty", 0))
+	var discovery_gate := {}
+	if not requires_discovery.is_empty():
+		discovery_gate = {
+			&"entry_id": requires_discovery,
+			&"hint": _build_discovery_hint(requires_discovery),
+			&"locked_name": "???",
+		}
 
 	return {
-		&"id": StringName(str(raw_recipe.get(&"id"))),
+		&"id": recipe_id,
+		&"name": recipe_name,
+		&"station": station_id,
 		&"inputs": normalized_inputs,
 		&"output": {
-			&"item_id": StringName(str(normalized_output.get(&"item_id"))),
+			&"id": output_id,
+			&"item_id": output_id,
 			&"qty": output_qty,
 		},
-		&"durability": durability,
-		&"station": station,
-		&"requires_station": station,
-		&"ratio": ratio,
-		&"required_temp": raw_recipe.get(&"required_temp"),
-		&"reaction_type": StringName(str(raw_recipe.get(&"reaction_type", ""))),
-		&"requires_stabilization": bool(raw_recipe.get(&"requires_stabilization", false)),
+		&"unlocked": unlocked,
+		&"requires_discovery": requires_discovery,
 		&"discovery_gate": discovery_gate,
+		&"durability": durability,
 	}
 
 
-func _normalize_recipe_input(raw_input: Dictionary) -> Dictionary:
-	if raw_input.has(&"element_id") and raw_input.has(&"qty"):
-		return {
-			&"element_id": StringName(str(raw_input.get(&"element_id"))),
-			&"qty": int(raw_input.get(&"qty", 0)),
-		}
+func _is_recipe_unlocked(recipe: Dictionary) -> bool:
+	if bool(recipe.get(&"unlocked", false)):
+		return true
 
-	if raw_input.size() != 1:
-		return {}
+	var required_discovery := StringName(recipe.get(&"requires_discovery", &""))
+	if required_discovery.is_empty():
+		return false
 
-	var element_key = raw_input.keys()[0]
-	return {
-		&"element_id": StringName(str(element_key)),
-		&"qty": int(raw_input[element_key]),
-	}
+	if DiscoveryLog != null and DiscoveryLog.has_method("has_discovery"):
+		return bool(DiscoveryLog.has_discovery(required_discovery))
+
+	return false
 
 
-func _normalize_recipe_output(raw_output: Dictionary) -> Dictionary:
-	if raw_output.has(&"item_id") and raw_output.has(&"qty"):
-		return {
-			&"item_id": StringName(str(raw_output.get(&"item_id"))),
-			&"qty": int(raw_output.get(&"qty", 0)),
-		}
+func _build_discovery_hint(discovery_id: StringName) -> String:
+	match discovery_id:
+		&"distillation_kit":
+			return "Discover the Distillation Kit before attempting sulfur chemistry."
+		&"stabilization_success":
+			return "Achieve a successful stabilization to identify buffered sulfur chemistry."
+		_:
+			return "Discover %s to unlock this recipe." % _format_name(discovery_id)
 
-	if raw_output.size() != 1:
-		return {}
 
-	var item_key = raw_output.keys()[0]
-	return {
-		&"item_id": StringName(str(item_key)),
-		&"qty": int(raw_output[item_key]),
-	}
+func _format_name(value: StringName) -> String:
+	var words := String(value).split("_", false)
+	for i in range(words.size()):
+		words[i] = words[i].capitalize()
+	return " ".join(words)

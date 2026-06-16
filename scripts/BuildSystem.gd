@@ -1,5 +1,7 @@
 extends Node
 
+signal buildable_placed(buildable_id: StringName)
+
 const BUILDABLE_ORDER: Array[StringName] = [
 	&"wall",
 	&"door",
@@ -179,7 +181,7 @@ func _ready() -> void:
 	_ensure_prefab_configuration()
 	_ensure_build_menu()
 	if has_node("/root/InventoryManager"):
-		InventoryManager.inventory_changed.connect(_refresh_build_menu)
+		InventoryManager.inventory_changed.connect(_refresh_build_menu.unbind(1))
 	if has_node("/root/DiscoveryLog"):
 		DiscoveryLog.discovery_made.connect(func(_entry: Dictionary) -> void: _refresh_build_menu())
 	_select_prefab_by_index(_selected_prefab_index)
@@ -247,8 +249,8 @@ func is_build_mode_active() -> bool:
 func enter_build_mode_for_existing(scene_path: String, restore_data: Variant = null) -> void:
 	# Find the matching buildable ID by scene path
 	var target_id: StringName = &""
-	for bid: StringName in BUILDABLE_REGISTRY:
-		var prefab: PackedScene = BUILDABLE_REGISTRY[bid].get(&"prefab")
+	for bid: StringName in _get_buildable_order_source():
+		var prefab: PackedScene = _get_buildable_entry(bid).get(&"prefab") as PackedScene
 		if prefab != null and prefab.resource_path == scene_path:
 			target_id = bid
 			break
@@ -344,8 +346,8 @@ func _rotate_selected_prefab() -> void:
 
 func _ensure_prefab_configuration() -> void:
 	_buildable_ids.clear()
-	for buildable_id: StringName in BUILDABLE_ORDER:
-		if BUILDABLE_REGISTRY.has(buildable_id):
+	for buildable_id: StringName in _get_buildable_order_source():
+		if _has_buildable(buildable_id):
 			_buildable_ids.append(buildable_id)
 
 	if _buildable_ids.is_empty():
@@ -353,7 +355,7 @@ func _ensure_prefab_configuration() -> void:
 		selected_prefab = null
 		return
 
-	if selected_buildable_id.is_empty() or not BUILDABLE_REGISTRY.has(selected_buildable_id):
+	if selected_buildable_id.is_empty() or not _has_buildable(selected_buildable_id):
 		selected_buildable_id = _buildable_ids[0]
 
 	_selected_prefab_index = maxi(_buildable_ids.find(selected_buildable_id), 0)
@@ -402,6 +404,8 @@ func _is_valid_placement(context: Dictionary, tile_coords: Vector2i, world_posit
 
 	var ground := context.get(&"ground") as TileMapLayer
 	var objects := context.get(&"objects") as TileMapLayer
+	var scene_root := context.get(&"scene") as Node2D
+	var is_overlay := _selected_buildable_is_overlay()
 	if ground == null:
 		return false
 
@@ -411,8 +415,16 @@ func _is_valid_placement(context: Dictionary, tile_coords: Vector2i, world_posit
 			return false
 		if objects != null and objects.get_cell_source_id(occupied_tile) != -1:
 			return false
-		if _has_placed_object_at_tile(context.get(&"scene") as Node, occupied_tile):
+		if not is_overlay and _has_placed_object_at_tile(context.get(&"scene") as Node, occupied_tile):
 			return false
+		if is_overlay and _has_anchor_object_at_tile(context.get(&"scene") as Node, occupied_tile, selected_buildable_id):
+			return false
+		
+	if selected_buildable_id == &"shelter_roof" and not _has_shelter_roof_support(context.get(&"scene") as Node, tile_coords):
+		return false
+
+	if is_overlay:
+		return true
 
 	if _placement_shape == null:
 		return false
@@ -424,7 +436,6 @@ func _is_valid_placement(context: Dictionary, tile_coords: Vector2i, world_posit
 	query.collide_with_areas = false
 	query.collision_mask = 1
 
-	var scene_root := context.get(&"scene") as Node2D
 	if scene_root == null:
 		return false
 	var world_2d: World2D = scene_root.get_world_2d()
@@ -473,35 +484,9 @@ func import_from_world_save_data(world_save_data) -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 
-	for entry_variant in world_save_data.placed_stations:
-		if entry_variant is not Dictionary:
-			continue
-		var entry := entry_variant as Dictionary
-		var scene_path := str(entry.get(&"scene_path", ""))
-		if scene_path.is_empty():
-			continue
-		var packed_scene := load(scene_path) as PackedScene
-		if packed_scene == null:
-			continue
-
-		var placed_object := packed_scene.instantiate()
-		if not (placed_object is Node2D):
-			if placed_object != null:
-				placed_object.free()
-			continue
-
-		var placed_node := placed_object as Node2D
-		var tile_coords := Vector2i.ZERO
-		var tile_coords_variant: Variant = entry.get(&"placed_at", Vector2i.ZERO)
-		if tile_coords_variant is Vector2i:
-			tile_coords = tile_coords_variant
-		scene_root.add_child(placed_node)
-		placed_node.global_position = ground.to_global(ground.map_to_local(tile_coords))
-		placed_node.rotation_degrees = float(entry.get(&"placed_rotation_degrees", 0.0))
-		if placed_node.has_method("configure_placed_object"):
-			placed_node.call("configure_placed_object", tile_coords)
-		if placed_node.has_method("restore_from_pickup"):
-			placed_node.call("restore_from_pickup", entry)
+	_instantiate_saved_entries(world_save_data.placed_stations, scene_root, ground)
+	_instantiate_saved_entries(world_save_data.walls, scene_root, ground)
+	_instantiate_saved_entries(world_save_data.storage, scene_root, ground)
 
 
 func _has_placed_object_at_tile(scene_root: Node, tile_coords: Vector2i) -> bool:
@@ -517,7 +502,28 @@ func _has_placed_object_at_tile(scene_root: Node, tile_coords: Vector2i) -> bool
 			var occupied_tiles: Array = node.call("get_occupied_tile_coords")
 			if occupied_tiles.has(tile_coords):
 				return true
+			continue
 		if node.has_meta(&"build_tile_coords") and node.get_meta(&"build_tile_coords") == tile_coords:
+			return true
+
+	return false
+
+
+func _has_anchor_object_at_tile(scene_root: Node, tile_coords: Vector2i, object_type: StringName = &"") -> bool:
+	if scene_root == null:
+		return false
+
+	for node in get_tree().get_nodes_in_group(PLACED_OBJECT_GROUP):
+		if not is_instance_valid(node):
+			continue
+		if scene_root != node and not scene_root.is_ancestor_of(node):
+			continue
+		if not node.has_meta(&"build_tile_coords") or node.get_meta(&"build_tile_coords") != tile_coords:
+			continue
+		if object_type.is_empty():
+			return true
+		var node_object_type := StringName(str(node.get_meta(&"object_type", "")))
+		if node_object_type == object_type:
 			return true
 
 	return false
@@ -530,6 +536,39 @@ func _get_selected_buildable_occupied_offsets() -> Array[Vector2i]:
 			return [Vector2i(0, -1), Vector2i.ZERO, Vector2i(0, 1)]
 		return [Vector2i(-1, 0), Vector2i.ZERO, Vector2i(1, 0)]
 	return [Vector2i.ZERO]
+
+
+func _selected_buildable_is_overlay() -> bool:
+	if selected_buildable_id.is_empty() or not _has_buildable(selected_buildable_id):
+		return false
+	return bool(_get_buildable_entry(selected_buildable_id).get(&"overlay", false))
+
+
+func _has_shelter_roof_support(scene_root: Node, tile_coords: Vector2i) -> bool:
+	if scene_root == null:
+		return false
+
+	var support_count := 0
+	for offset in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		if _has_structural_support_at_tile(scene_root, tile_coords + offset):
+			support_count += 1
+			if support_count >= 2:
+				return true
+	return false
+
+
+func _has_structural_support_at_tile(scene_root: Node, tile_coords: Vector2i) -> bool:
+	for node in get_tree().get_nodes_in_group(PLACED_OBJECT_GROUP):
+		if not is_instance_valid(node):
+			continue
+		if scene_root != node and not scene_root.is_ancestor_of(node):
+			continue
+		if not node.has_meta(&"build_tile_coords") or node.get_meta(&"build_tile_coords") != tile_coords:
+			continue
+		var object_type := StringName(str(node.get_meta(&"object_type", "")))
+		if object_type == &"wall" or object_type == &"door":
+			return true
+	return false
 
 
 func _place_selected_prefab() -> void:
@@ -572,6 +611,7 @@ func _place_selected_prefab() -> void:
 			placed_node.call("restore_from_pickup", _restore_data)
 		_restore_data = {}
 
+	buildable_placed.emit(selected_buildable_id)
 	GameManager.mark_dirty()
 
 
@@ -722,9 +762,9 @@ func _refresh_build_menu() -> void:
 
 
 func _get_selected_buildable_prefab() -> PackedScene:
-	if selected_buildable_id.is_empty() or not BUILDABLE_REGISTRY.has(selected_buildable_id):
+	if selected_buildable_id.is_empty() or not _has_buildable(selected_buildable_id):
 		return null
-	return BUILDABLE_REGISTRY[selected_buildable_id].get(&"prefab") as PackedScene
+	return _get_buildable_entry(selected_buildable_id).get(&"prefab") as PackedScene
 
 
 func _get_selected_buildable_cost() -> Dictionary:
@@ -732,21 +772,73 @@ func _get_selected_buildable_cost() -> Dictionary:
 
 
 func _get_buildable_cost(buildable_id: StringName) -> Dictionary:
-	if buildable_id.is_empty() or not BUILDABLE_REGISTRY.has(buildable_id):
+	if buildable_id.is_empty() or not _has_buildable(buildable_id):
 		return {}
-	return (BUILDABLE_REGISTRY[buildable_id].get(&"cost", {}) as Dictionary).duplicate(true)
+	return (_get_buildable_entry(buildable_id).get(&"cost", {}) as Dictionary).duplicate(true)
 
 
 func _get_buildable_display_name(buildable_id: StringName) -> String:
-	if buildable_id.is_empty() or not BUILDABLE_REGISTRY.has(buildable_id):
+	if buildable_id.is_empty() or not _has_buildable(buildable_id):
 		return "Unknown"
-	return String(BUILDABLE_REGISTRY[buildable_id].get(&"label", String(buildable_id).capitalize()))
+	return String(_get_buildable_entry(buildable_id).get(&"label", String(buildable_id).capitalize()))
 
 
 func _is_selected_buildable_rotatable() -> bool:
-	if selected_buildable_id.is_empty() or not BUILDABLE_REGISTRY.has(selected_buildable_id):
+	if selected_buildable_id.is_empty() or not _has_buildable(selected_buildable_id):
 		return false
-	return bool(BUILDABLE_REGISTRY[selected_buildable_id].get(&"rotatable", false))
+	return bool(_get_buildable_entry(selected_buildable_id).get(&"rotatable", false))
+
+
+func _instantiate_saved_entries(entries: Array, scene_root: Node, ground: TileMapLayer) -> void:
+	for entry_variant in entries:
+		if entry_variant is not Dictionary:
+			continue
+		var entry := entry_variant as Dictionary
+		var scene_path := str(entry.get(&"scene_path", ""))
+		if scene_path.is_empty():
+			continue
+		var packed_scene := load(scene_path) as PackedScene
+		if packed_scene == null:
+			continue
+
+		var placed_object := packed_scene.instantiate()
+		if not (placed_object is Node2D):
+			if placed_object != null:
+				placed_object.free()
+			continue
+
+		var placed_node := placed_object as Node2D
+		var tile_coords := Vector2i.ZERO
+		var tile_coords_variant: Variant = entry.get(&"placed_at", Vector2i.ZERO)
+		if tile_coords_variant is Vector2i:
+			tile_coords = tile_coords_variant
+		scene_root.add_child(placed_node)
+		placed_node.global_position = ground.to_global(ground.map_to_local(tile_coords))
+		placed_node.rotation_degrees = float(entry.get(&"placed_rotation_degrees", 0.0))
+		if placed_node.has_method("configure_placed_object"):
+			placed_node.call("configure_placed_object", tile_coords)
+		if placed_node.has_method("restore_from_pickup"):
+			placed_node.call("restore_from_pickup", entry)
+
+
+func _get_buildable_order_source() -> Array[StringName]:
+	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_order"):
+		return BuildingDatabase.get_buildable_order()
+	return BUILDABLE_ORDER.duplicate()
+
+
+func _has_buildable(buildable_id: StringName) -> bool:
+	if BuildingDatabase != null and BuildingDatabase.has_method("has_buildable"):
+		return bool(BuildingDatabase.has_buildable(buildable_id))
+	return BUILDABLE_REGISTRY.has(buildable_id)
+
+
+func _get_buildable_entry(buildable_id: StringName) -> Dictionary:
+	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_entry"):
+		return BuildingDatabase.get_buildable_entry(buildable_id)
+	if not BUILDABLE_REGISTRY.has(buildable_id):
+		return {}
+	return (BUILDABLE_REGISTRY[buildable_id] as Dictionary).duplicate(true)
 
 
 func _format_cost(cost: Dictionary) -> String:
@@ -899,7 +991,7 @@ func _has_required_inputs(inputs: Array) -> bool:
 		var quantity := int(input_data.get(&"qty", input_data.get(&"quantity", 0)))
 		if item_id.is_empty() or quantity <= 0:
 			return false
-		if not InventoryManager.has_item(item_id, quantity):
+		if InventoryManager.get_stack(item_id).quantity < quantity:
 			return false
 	return true
 
@@ -1089,15 +1181,14 @@ func _is_pointer_over_build_menu() -> bool:
 
 func _can_afford_cost(cost: Dictionary) -> bool:
 	for item_id: StringName in cost.keys():
-		if not InventoryManager.has_item(item_id, int(cost[item_id])):
+		if InventoryManager.get_stack(item_id).quantity < int(cost[item_id]):
 			return false
 	return true
 
 
 func _deduct_build_cost(cost: Dictionary) -> bool:
 	for item_id: StringName in cost.keys():
-		if not InventoryManager.remove_item(item_id, int(cost[item_id])):
-			return false
+		InventoryManager.remove_element(item_id, int(cost[item_id]))
 	return true
 
 

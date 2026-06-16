@@ -38,7 +38,8 @@ var _seen_environment_entries: Dictionary[StringName, bool] = {}
 ## inputs  – Array of {item_id, quantity} describing what was consumed
 ## temp    – furnace temperature at time of smelt
 func log_smelt(result: Dictionary, inputs: Array, temp: float) -> void:
-	var output_id := StringName(str(result.get("output_id", "")))
+	var raw_output = result.get("output_id", "")
+	var output_id := StringName(str(raw_output) if raw_output != null else "")
 	var tier_str := str(result.get("tier", "unknown"))
 	var notes := str(result.get("notes", ""))
 	var quality := float(result.get("quality", 0.0))
@@ -65,7 +66,8 @@ func log_chemistry(
 	output_name_override: String = "",
 	discover_output: bool = true
 ) -> void:
-	var output_id := StringName(str(result.get("output_id", "")))
+	var raw_output = result.get("output_id", "")
+	var output_id := StringName(str(raw_output) if raw_output != null else "")
 	var tier_str := str(result.get("tier", "unknown"))
 	var notes := str(result.get("notes", ""))
 	var output_name := output_name_override if not output_name_override.is_empty() else _pretty_name(output_id)

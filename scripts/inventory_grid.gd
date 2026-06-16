@@ -17,7 +17,7 @@ extends CanvasLayer
 @onready var crafting_pulse_player: AnimationPlayer = $InventoryPanel/PanelContent/CraftingPanel/CraftingPulsePlayer
 
 const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
-const SLOT_COUNT := InventoryManager.DEFAULT_SLOT_COUNT
+const SLOT_COUNT := InventoryManager.MAX_SLOTS
 const TOOLTIP_DELAY := 0.3
 const TOOLTIP_OFFSET := Vector2(18, 18)
 const CRAFTING_PULSE_ANIMATION_NAME := "crafting_pulse"
@@ -76,8 +76,8 @@ func _ready():
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 
-	InventoryManager.inventory_changed.connect(refresh_grid)
-	InventoryManager.held_item_changed.connect(func(_id): refresh_grid())
+	InventoryManager.inventory_changed.connect(refresh_grid.unbind(1))
+	InventoryManager.active_slot_changed.connect(func(_id): refresh_grid())
 	InventoryManager.weight_changed.connect(_on_weight_changed)
 	if has_node("/root/DiscoveryLog"):
 		DiscoveryLog.discovery_made.connect(func(_entry: Dictionary) -> void:
@@ -136,7 +136,7 @@ func _input(event):
 	# Hotkeys for visible inventory slots.
 	for i in range(1, mini(SLOT_COUNT, 9) + 1):
 		if event.is_action_pressed("slot_%d" % i):
-			InventoryManager.select_slot(i - 1)
+			InventoryManager.set_active_slot(i - 1)
 			return
 
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
@@ -187,18 +187,18 @@ func _is_inventory_toggle_blocked() -> bool:
 	return player != null and player.has_method("is_input_paused") and bool(player.call("is_input_paused"))
 
 func refresh_grid():
-	var held_id = InventoryManager.get_held_item_id()
+	var active_index = InventoryManager.active_slot_index
 	for i in range(grid.get_child_count()):
 		var slot = grid.get_child(i)
-		var data = InventoryManager.get_slot_item(i)
+		var data = InventoryManager.get_slot_data(i)
 
-		slot.is_equipped = (not data.is_empty() and data.id == held_id)
+		slot.is_equipped = (i == active_index and data.item_id != &"")
 
-		if not data.is_empty():
-			slot.update_slot(data.id, data.quantity, data.purity, data.get("durability"), data.get("max_durability"))
+		if data.item_id != &"":
+			slot.update_slot(String(data.item_id), data.quantity, data.purity, null, null)
 		else:
 			slot.clear()
-		slot.set_carrier_risk_alert(not _carrier_risk_item_id.is_empty() and not data.is_empty() and StringName(str(data.get("id", ""))) == _carrier_risk_item_id)
+		slot.set_carrier_risk_alert(not _carrier_risk_item_id.is_empty() and data.item_id == _carrier_risk_item_id)
 
 	if tooltip_panel.visible and hover_slot_index >= 0:
 		_show_tooltip_for_slot(hover_slot_index)
@@ -229,8 +229,8 @@ func _on_carrier_risk_ignition(element_id: StringName) -> void:
 func _apply_carrier_risk_slot_state() -> void:
 	for i in range(grid.get_child_count()):
 		var slot = grid.get_child(i)
-		var data = InventoryManager.get_slot_item(i)
-		slot.set_carrier_risk_alert(not _carrier_risk_item_id.is_empty() and not data.is_empty() and StringName(str(data.get("id", ""))) == _carrier_risk_item_id)
+		var data = InventoryManager.get_slot_data(i)
+		slot.set_carrier_risk_alert(not _carrier_risk_item_id.is_empty() and data.item_id == _carrier_risk_item_id)
 
 func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 	_update_weight_display(total_weight, carry_capacity)
@@ -263,7 +263,7 @@ func _on_slot_drag_started(slot_index: int) -> void:
 
 	_hide_tooltip()
 	drag_origin_index = slot_index
-	drag_source_quantity = int(InventoryManager.get_slot_item(slot_index).get("quantity", 0))
+	drag_source_quantity = int(InventoryManager.get_slot_data(slot_index).get("quantity", 0))
 	drag_quantity = drag_source_quantity
 	slot.set_drag_origin(true)
 	_create_drag_ghost(slot)
@@ -274,7 +274,7 @@ func _on_slot_drag_released(slot_index: int) -> void:
 		_finish_drag(slot_index, get_viewport().get_mouse_position())
 
 func _on_slot_clicked(slot_index: int) -> void:
-	InventoryManager.select_slot(slot_index)
+	InventoryManager.set_active_slot(slot_index)
 
 func _create_drag_ghost(source_slot) -> void:
 	_clear_drag_ghost()
@@ -318,14 +318,13 @@ func _finish_drag(drop_slot_index: int, release_mouse_position: Vector2) -> void
 		grid.get_child(from_slot).set_drag_origin(false)
 
 	if drop_slot_index >= 0 and drop_slot_index < grid.get_child_count() and drop_slot_index != from_slot:
-		InventoryManager.swap_slots(from_slot, drop_slot_index)
 		return
 
 	if from_slot < 0:
 		return
 
-	var dragged_item := InventoryManager.get_slot_item(from_slot)
-	if dragged_item.is_empty():
+	var dragged_item := InventoryManager.get_slot_data(from_slot)
+	if dragged_item.item_id == &"":
 		return
 
 	if _try_drop_to_station_ui(dragged_item, quantity_to_drop):
@@ -401,7 +400,8 @@ func _try_drop_to_station_ui(dragged_item: Dictionary, initial_drag_quantity: in
 			continue
 		if not station_ui.handle_inventory_drop(mouse_position, item_id, quantity):
 			continue
-		return InventoryManager.remove_item(item_id, quantity)
+		InventoryManager.remove_element(item_id, quantity)
+		return true
 
 	return false
 
@@ -429,7 +429,8 @@ func _try_drop_to_world(dragged_item: Dictionary, initial_drag_quantity: int) ->
 	if pickup == null:
 		return false
 
-	if InventoryManager.remove_item(item_id, quantity):
+	if InventoryManager.get_stack(item_id).quantity >= quantity:
+		InventoryManager.remove_element(item_id, quantity)
 		return true
 
 	pickup.queue_free()
@@ -478,8 +479,8 @@ func _start_tooltip_delay(slot_index: int) -> void:
 	)
 
 func _show_tooltip_for_slot(slot_index: int) -> void:
-	var data = InventoryManager.get_slot_item(slot_index)
-	if data.is_empty():
+	var data = InventoryManager.get_slot_data(slot_index)
+	if data.item_id == &"":
 		_hide_tooltip()
 		return
 
@@ -527,18 +528,6 @@ func _format_category(category: String) -> String:
 	return " ".join(words)
 
 func _format_category_value(category_value) -> String:
-	if category_value is int:
-		match int(category_value):
-			InventoryManager.InventoryItemCategory.ELEMENT:
-				return "Element"
-			InventoryManager.InventoryItemCategory.TOOL:
-				return "Tool"
-			InventoryManager.InventoryItemCategory.CRAFTED:
-				return "Crafted"
-			InventoryManager.InventoryItemCategory.CONSUMABLE:
-				return "Consumable"
-			_:
-				return "Generic"
 	return _format_category(str(category_value))
 
 func _get_tooltip_item_name(item_data: Dictionary, element_data: Dictionary, item_id: StringName) -> String:

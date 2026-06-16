@@ -1,6 +1,6 @@
 extends StaticBody2D
 
-const UI_SCENE := preload("res://scenes/UI/BatteryStationUI.tscn")
+const UI_SCENE := preload("res://scenes/UI/PowerSwitchboard.tscn")
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var interaction_area: Area2D = $InteractionArea

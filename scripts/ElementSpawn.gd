@@ -1,17 +1,6 @@
 extends Node2D
 
 const ELEMENT_PICKUP_SCENE := preload("res://scenes/ElementPickup.tscn")
-const ELEMENT_SPAWN_TABLE: Array[Dictionary] = [
-	{
-		# Water is river-only — spawned by WorldGen._spawn_water_pickups(), not the weighted picker.
-		# Weight 0 keeps it out of random placement while still letting spawn_counts track it.
-		&"id": &"water",
-		&"weight": 0,
-		&"max_count": 6,
-	},
-]
-
-
 func spawn_elements(
 	ground_layer: TileMapLayer,
 	objects_layer: TileMapLayer,
@@ -19,86 +8,16 @@ func spawn_elements(
 	blocked_tiles: Dictionary = {}
 ) -> Dictionary[StringName, int]:
 	_clear_spawned_elements()
-
-	var rng := RandomNumberGenerator.new()
-	rng.seed = world_seed + 7919
-
-	var spawn_counts := _create_spawn_count_table()
-	var ground_cells := _get_shuffled_ground_cells(ground_layer, rng)
-
-	for coords: Vector2i in ground_cells:
-		if _are_all_caps_reached(spawn_counts):
-			break
-
-		if blocked_tiles.has(coords):
-			continue
-
-		if _is_blocked_by_collision_tile(objects_layer, coords):
-			continue
-
-		var element_id := _pick_weighted_element(rng, spawn_counts)
-		if element_id.is_empty():
-			break
-
-		_spawn_element(element_id, coords, ground_layer)
-		spawn_counts[element_id] += 1
-
-	_log_spawn_report(spawn_counts, ground_cells.size(), objects_layer)
-	return spawn_counts
+	# WorldGen places water, sulfur, and lithium explicitly in authored locations.
+	# Stone, iron, limestone, and wood come from their dedicated world sources instead
+	# of being scattered as ambient pickups.
+	return {}
 
 
 func _clear_spawned_elements() -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
-
-
-func _create_spawn_count_table() -> Dictionary[StringName, int]:
-	var spawn_counts: Dictionary[StringName, int] = {}
-	for element_data: Dictionary in ELEMENT_SPAWN_TABLE:
-		spawn_counts[element_data[&"id"]] = 0
-	return spawn_counts
-
-
-func _get_shuffled_ground_cells(ground_layer: TileMapLayer, rng: RandomNumberGenerator) -> Array[Vector2i]:
-	var ground_cells: Array[Vector2i] = []
-	for coords: Vector2i in ground_layer.get_used_cells():
-		ground_cells.append(coords)
-
-	for index in range(ground_cells.size() - 1, 0, -1):
-		var swap_index := rng.randi_range(0, index)
-		var current_coords := ground_cells[index]
-		ground_cells[index] = ground_cells[swap_index]
-		ground_cells[swap_index] = current_coords
-
-	return ground_cells
-
-
-func _is_blocked_by_collision_tile(objects_layer: TileMapLayer, coords: Vector2i) -> bool:
-	return objects_layer.get_cell_source_id(coords) != -1
-
-
-func _pick_weighted_element(rng: RandomNumberGenerator, spawn_counts: Dictionary[StringName, int]) -> StringName:
-	var total_weight := 0
-	for element_data: Dictionary in ELEMENT_SPAWN_TABLE:
-		var element_id: StringName = element_data[&"id"]
-		if spawn_counts[element_id] < element_data[&"max_count"]:
-			total_weight += element_data[&"weight"]
-
-	if total_weight <= 0:
-		return &""
-
-	var roll := rng.randi_range(1, total_weight)
-	for element_data: Dictionary in ELEMENT_SPAWN_TABLE:
-		var element_id: StringName = element_data[&"id"]
-		if spawn_counts[element_id] >= element_data[&"max_count"]:
-			continue
-
-		roll -= element_data[&"weight"]
-		if roll <= 0:
-			return element_id
-
-	return &""
 
 
 func _spawn_element(element_id: StringName, coords: Vector2i, ground_layer: TileMapLayer) -> void:
@@ -150,14 +69,6 @@ func get_pickup_at_tile(coords: Vector2i) -> Node2D:
 	return null
 
 
-func _are_all_caps_reached(spawn_counts: Dictionary[StringName, int]) -> bool:
-	for element_data: Dictionary in ELEMENT_SPAWN_TABLE:
-		var element_id: StringName = element_data[&"id"]
-		if spawn_counts[element_id] < element_data[&"max_count"]:
-			return false
-	return true
-
-
 func _log_spawn_report(spawn_counts: Dictionary[StringName, int], ground_cell_count: int, objects_layer: TileMapLayer) -> void:
 	var runtime := get_tree().root.get_node_or_null("MCPRuntime")
 	if runtime == null or not runtime.has_method("push_runtime_log"):
@@ -186,7 +97,7 @@ func _count_blocked_spawn_tiles(objects_layer: TileMapLayer) -> int:
 			continue
 
 		var coords: Vector2i = child.get_meta(&"tile_coords")
-		if _is_blocked_by_collision_tile(objects_layer, coords):
+		if objects_layer.get_cell_source_id(coords) != -1:
 			blocked_count += 1
 
 	return blocked_count

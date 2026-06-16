@@ -9,6 +9,7 @@ const REFUEL_COST_QUANTITY := 2
 const RELIGHT_COST_QUANTITY := 2
 const HEAL_PER_SECOND := 1.5
 const SUPPORT_RADIUS := 42.0
+const SHELTERED_SUPPORT_RADIUS := 58.0
 const LIGHT_ENERGY_LIT := 0.7
 const LIGHT_ENERGY_UNLIT := 0.0
 const LIGHT_TEXTURE_SCALE := 0.44
@@ -38,6 +39,7 @@ var _charcoal_progress_seconds := 0.0
 var _pending_output_charcoal := 0
 var _charcoal_status_text := ""
 var _charcoal_status_seconds := 0.0
+var _is_sheltered := false
 
 
 func _ready() -> void:
@@ -232,11 +234,11 @@ func _update_shelter_state() -> void:
 	if not has_node("/root/CarrierRiskSystem"):
 		return
 	var sheltered := false
-	if is_lit and _player_in_range:
-		var rain_system := _get_rain_system()
-		if rain_system != null and rain_system.has_method("is_raining"):
-			sheltered = bool(rain_system.call("is_raining"))
-	CarrierRiskSystem.set_sheltered(get_instance_id(), sheltered)
+	var weather_system := _get_rain_system()
+	if weather_system != null and weather_system.has_method("get_shelter_at"):
+		sheltered = bool(weather_system.call("get_shelter_at", global_position))
+	_set_shelter_bonus(sheltered)
+	CarrierRiskSystem.set_sheltered(get_instance_id(), sheltered and is_lit and _player_in_range)
 
 func _update_warmth_state() -> void:
 	if "is_player_warmed" in GameManager:
@@ -320,6 +322,18 @@ func _configure_support_area() -> void:
 	var circle_shape := support_shape.shape as CircleShape2D
 	if circle_shape != null:
 		circle_shape.radius = SUPPORT_RADIUS
+
+
+func _set_shelter_bonus(sheltered: bool) -> void:
+	if _is_sheltered == sheltered:
+		return
+	_is_sheltered = sheltered
+	if support_shape == null:
+		return
+	var circle_shape := support_shape.shape as CircleShape2D
+	if circle_shape == null:
+		return
+	circle_shape.radius = SHELTERED_SUPPORT_RADIUS if sheltered else SUPPORT_RADIUS
 
 
 func _configure_particles() -> void:
@@ -453,6 +467,9 @@ func _build_restore_payload() -> Dictionary:
 
 
 func _get_rain_system() -> Node:
+	var weather_system := get_node_or_null("/root/WeatherSystem")
+	if weather_system != null:
+		return weather_system
 	var current_scene := get_tree().current_scene
 	if current_scene == null:
 		return null

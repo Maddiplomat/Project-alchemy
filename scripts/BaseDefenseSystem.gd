@@ -52,9 +52,17 @@ func get_total_drain_per_second() -> float:
 	_prune_invalid_power_consumers()
 	var total_drain_per_minute := 0.0
 	for light_state: Dictionary in _active_lights.values():
-		total_drain_per_minute += float(light_state.get(&"drain_units_per_minute", 0.0))
+		var light_node: Node = light_state.get(&"node", null) as Node
+		if light_node != null and light_node.has_method("get_power_drain_units_per_minute"):
+			total_drain_per_minute += float(light_node.call("get_power_drain_units_per_minute"))
+		else:
+			total_drain_per_minute += float(light_state.get(&"drain_units_per_minute", 0.0))
 	for consumer_state: Dictionary in _active_power_consumers.values():
-		total_drain_per_minute += float(consumer_state.get(&"drain_units_per_minute", 0.0))
+		var consumer_node: Node = consumer_state.get(&"node", null) as Node
+		if consumer_node != null and consumer_node.has_method("get_power_drain_units_per_minute"):
+			total_drain_per_minute += float(consumer_node.call("get_power_drain_units_per_minute"))
+		else:
+			total_drain_per_minute += float(consumer_state.get(&"drain_units_per_minute", 0.0))
 	return total_drain_per_minute / 60.0
 
 

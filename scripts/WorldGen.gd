@@ -1176,6 +1176,18 @@ func is_rain_blocked_at_world_position(world_position: Vector2) -> bool:
 	)
 
 
+func is_sulfur_flats_at_world_position(world_position: Vector2) -> bool:
+	if ground_layer == null:
+		return false
+	var local_position := ground_layer.to_local(world_position)
+	var coords := ground_layer.local_to_map(local_position)
+	return (
+		_sulfur_flats_ash_tiles.has(coords)
+		or _sulfur_flats_cracked_tiles.has(coords)
+		or _sulfur_flats_lava_rock_tiles.has(coords)
+	)
+
+
 func _is_tree_canopy_tile(coords: Vector2i) -> bool:
 	if objects_layer.get_cell_source_id(coords) != TREE_CANOPY_SOURCE_ID:
 		return false
@@ -1311,8 +1323,8 @@ func get_world_bounds() -> Rect2:
 
 func _wire_camera_bounds() -> void:
 	var camera := find_child("Camera2D", true, false) as Camera2D
-	if camera != null:
-		camera.set("bounds_source_path", get_path())
+	if camera != null and camera.has_method("set_bounds"):
+		camera.call("set_bounds", get_world_bounds())
 
 
 func _ensure_generated_child(node_name: String) -> Node2D:

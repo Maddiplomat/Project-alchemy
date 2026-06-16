@@ -146,7 +146,7 @@ var _available_forge_output_ids: Array[StringName] = []
 var _selected_forge_output_index := 0
 var _power_status_label: Label
 var _power_button: Button
-var _power_state: Dictionary = {&"has_cell": false, &"charge_remaining_seconds": 0.0}
+var _power_state: Dictionary = {&"has_cell": false, &"charge_remaining_seconds": 0.0, &"switchboard_enabled": true, &"boost_active": false, &"grid_powered": false}
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
 	&"input_b": {&"item_id": &"", &"quantity": 0},
@@ -1388,7 +1388,7 @@ func _trigger_explosion(notes: String, inputs_log: Array, temp: float) -> void:
 	print("[FurnaceUI] EXPLOSION triggered at %d°C" % int(temp))
 
 	if has_node("/root/CameraShake"):
-		get_node("/root/CameraShake").shake.emit(
+		get_node("/root/CameraShake").shake(
 			FURNACE_EXPLOSION_SHAKE_STRENGTH,
 			FURNACE_EXPLOSION_SHAKE_DURATION
 		)
@@ -1925,23 +1925,23 @@ func _ensure_dynamic_ui_nodes() -> void:
 func _update_power_panel() -> void:
 	if _power_status_label == null or _power_button == null:
 		return
-	var has_cell := bool(_power_state.get(&"has_cell", false))
-	var remaining_seconds := float(_power_state.get(&"charge_remaining_seconds", 0.0))
-	if has_cell and remaining_seconds > 0.0:
-		_power_status_label.text = "Power bonus active: %.1f min remaining\nHigher heat cap, faster rise, lower fuel burn." % [remaining_seconds / 60.0]
-		_power_button.text = "Power Cell Installed"
-		_power_button.disabled = true
+	var switchboard_enabled := bool(_power_state.get(&"switchboard_enabled", true))
+	var boost_active := bool(_power_state.get(&"boost_active", false))
+	var grid_powered := bool(_power_state.get(&"grid_powered", false))
+	if boost_active:
+		_power_status_label.text = "Grid boost active\nHigher heat cap, faster rise, lower fuel burn."
+	elif not switchboard_enabled:
+		_power_status_label.text = "Boost disabled at the battery station switchboard."
+	elif not grid_powered:
+		_power_status_label.text = "Boost available through the battery station.\nCharge the defense grid to enable it."
 	else:
-		_power_status_label.text = "Insert an energy cell to raise the furnace cap to 2000C and improve efficiency."
-		_power_button.text = "Insert Energy Cell"
-		_power_button.disabled = not is_instance_valid(_bound_furnace) or not InventoryManager.has_item(&"energy_cell", 1)
+		_power_status_label.text = "Boost is managed by the battery station switchboard."
+	_power_button.text = "Managed at Battery Station"
+	_power_button.disabled = true
 
 
 func _on_power_button_pressed() -> void:
-	if not is_instance_valid(_bound_furnace) or not _bound_furnace.has_method("insert_power_cell"):
-		return
-	if _bound_furnace.insert_power_cell():
-		_pull_state_from_furnace()
+	return
 
 
 func _update_ratio_guidance() -> void:

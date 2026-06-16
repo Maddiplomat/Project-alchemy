@@ -548,23 +548,23 @@ func _ensure_power_controls() -> void:
 func _update_power_panel(power_state: Dictionary) -> void:
 	if _power_status_label == null or _power_button == null:
 		return
-	var has_cell := bool(power_state.get(&"has_cell", false))
-	var remaining_seconds := float(power_state.get(&"charge_remaining_seconds", 0.0))
-	if has_cell and remaining_seconds > 0.0:
-		_power_status_label.text = "Bench power active: %.1f min remaining\nStabilization gets wider pressure margins and faster vent recovery." % [remaining_seconds / 60.0]
-		_power_button.text = "Power Cell Installed"
-		_power_button.disabled = true
+	var switchboard_enabled := bool(power_state.get(&"switchboard_enabled", true))
+	var boost_active := bool(power_state.get(&"boost_active", false))
+	var grid_powered := bool(power_state.get(&"grid_powered", false))
+	if boost_active and switchboard_enabled:
+		_power_status_label.text = "Grid boost active\nStabilization gets wider pressure margins and faster vent recovery."
+	elif not switchboard_enabled:
+		_power_status_label.text = "Bench boost disabled at the battery station switchboard."
+	elif not grid_powered:
+		_power_status_label.text = "Boost available through the battery station.\nCharge the defense grid to enable it."
 	else:
-		_power_status_label.text = "Insert an energy cell to power the bench for stabilization bonuses."
-		_power_button.text = "Insert Energy Cell"
-		_power_button.disabled = not InventoryManager.has_item(&"energy_cell", 1) or _stabilization_active
+		_power_status_label.text = "Boost is managed by the battery station switchboard."
+	_power_button.text = "Managed at Battery Station"
+	_power_button.disabled = true
 
 
 func _on_power_button_pressed() -> void:
-	if not is_instance_valid(_chem_bench) or not _chem_bench.has_method("insert_power_cell"):
-		return
-	if _chem_bench.insert_power_cell():
-		_refresh_from_bench()
+	return
 
 
 func _get_stabilization_config() -> Dictionary:

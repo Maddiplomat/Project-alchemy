@@ -11,6 +11,7 @@ var _registered_with_defense := false
 
 
 func _ready() -> void:
+	add_to_group(&"powered_light")
 	_base_grid = get_node_or_null("/root/BaseGrid")
 	if _base_grid == null:
 		energy = 0.0
@@ -26,7 +27,16 @@ func _ready() -> void:
 			GameManager.night_started.connect(_refresh_power_state)
 		if GameManager.has_signal("day_started"):
 			GameManager.day_started.connect(_refresh_power_state)
+	if PowerSwitchboard != null and PowerSwitchboard.has_signal("switchboard_changed"):
+		PowerSwitchboard.switchboard_changed.connect(_refresh_power_state)
 	_refresh_power_state()
+
+
+func get_power_drain_units_per_minute() -> float:
+	if PowerSwitchboard != null and PowerSwitchboard.has_method("is_consumer_enabled"):
+		if not PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_PERIMETER_LIGHTS):
+			return 0.0
+	return drain_units_per_minute
 
 
 func _exit_tree() -> void:
@@ -54,6 +64,9 @@ func _refresh_power_state() -> void:
 func _should_show_visual_light() -> bool:
 	if _base_grid == null or not _base_grid.has_method("is_powered") or not _base_grid.is_powered():
 		return false
+	if PowerSwitchboard != null and PowerSwitchboard.has_method("is_consumer_enabled"):
+		if not PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_PERIMETER_LIGHTS):
+			return false
 	return _is_defense_light_source()
 
 

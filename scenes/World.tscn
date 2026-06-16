@@ -11,7 +11,6 @@
 [ext_resource type="PackedScene" path="res://scenes/ChemBench.tscn" id="9_cbnch"]
 [ext_resource type="PackedScene" path="res://scenes/EnemySpawner.tscn" id="10_spawner"]
 [ext_resource type="Script" path="res://scripts/IgnitionSystem.gd" id="11_ignite"]
-[ext_resource type="Script" path="res://scripts/RainSquallSystem.gd" id="12_rain"]
 
 [node name="World" type="Node2D" unique_id=1488050509]
 script = ExtResource("2_nvi4h")
@@ -39,9 +38,6 @@ tile_set = ExtResource("1_kqs1s")
 
 [node name="SulfurFlatsZone" type="Node2D" parent="."]
 script = ExtResource("11_ignite")
-
-[node name="IronHillsZone" type="Node2D" parent="."]
-script = ExtResource("12_rain")
 
 [node name="EnemySpawner" parent="." instance=ExtResource("10_spawner")]
 spawn_position = Array[Vector2]([Vector2(752, 448)])

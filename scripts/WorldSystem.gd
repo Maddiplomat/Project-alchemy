@@ -1,13 +1,17 @@
 extends Node
+# Autoload: WorldSystem
 
-const DEFAULT_SEED := 1337
-
-var current_seed: int = DEFAULT_SEED
-
-
-func set_seed(world_seed: int) -> void:
-	current_seed = world_seed
+var _current_seed: int = 0
 
 
 func get_seed() -> int:
-	return current_seed
+	return _current_seed
+
+
+func set_seed(value: int) -> void:
+	_current_seed = value
+
+
+func generate_seed() -> int:
+	_current_seed = randi()
+	return _current_seed

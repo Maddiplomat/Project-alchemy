@@ -50,6 +50,8 @@ func _ready() -> void:
 	call_deferred("_ensure_ui")
 	interaction_area.body_entered.connect(_on_body_entered)
 	interaction_area.body_exited.connect(_on_body_exited)
+	if PowerSwitchboard != null and PowerSwitchboard.has_signal("switchboard_changed"):
+		PowerSwitchboard.switchboard_changed.connect(_emit_state_changed)
 	_hide_prompt()
 
 
@@ -246,29 +248,29 @@ func get_ui_state() -> Dictionary:
 
 
 func insert_power_cell() -> bool:
-	if has_power_bonus():
-		return false
-	if not InventoryManager.has_item(&"energy_cell", 1):
-		return false
-	InventoryManager.remove_item(&"energy_cell", 1)
-	_power_cell_charge_remaining = POWER_CELL_DURATION_SECONDS
-	_emit_state_changed()
 	return true
 
 
+func has_power_cell_installed() -> bool:
+	return false
+
+
 func has_power_bonus() -> bool:
-	return _power_cell_charge_remaining > 0.0
+	return _is_switchboard_boost_enabled() and _is_base_grid_powered()
 
 
 func get_power_state() -> Dictionary:
 	return {
-		&"has_cell": has_power_bonus(),
-		&"charge_remaining_seconds": _power_cell_charge_remaining,
+		&"has_cell": false,
+		&"charge_remaining_seconds": 0.0,
+		&"switchboard_enabled": _is_switchboard_boost_enabled(),
+		&"boost_active": has_power_bonus(),
+		&"grid_powered": _is_base_grid_powered(),
 	}
 
 
 func restore_power_state(data: Dictionary) -> void:
-	_power_cell_charge_remaining = clampf(float(data.get(&"charge_remaining_seconds", 0.0)), 0.0, POWER_CELL_DURATION_SECONDS)
+	_power_cell_charge_remaining = 0.0
 	_emit_state_changed()
 
 
@@ -309,13 +311,19 @@ func _emit_state_changed() -> void:
 
 
 func _drain_power_bonus(delta: float) -> void:
-	if not has_power_bonus() or not _is_interacting:
-		return
-	var previous_charge := _power_cell_charge_remaining
-	_power_cell_charge_remaining = maxf(0.0, _power_cell_charge_remaining - delta)
-	if is_equal_approx(previous_charge, _power_cell_charge_remaining):
-		return
-	_emit_state_changed()
+	return
+
+
+func _is_switchboard_boost_enabled() -> bool:
+	if PowerSwitchboard == null or not PowerSwitchboard.has_method("allows_chem_bench_boost"):
+		return true
+	return bool(PowerSwitchboard.allows_chem_bench_boost())
+
+
+func _is_base_grid_powered() -> bool:
+	if BaseGrid == null or not BaseGrid.has_method("is_powered"):
+		return false
+	return bool(BaseGrid.is_powered())
 
 
 func _start_interaction() -> void:

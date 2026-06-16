@@ -17,6 +17,8 @@ var _check_timer: Timer = null
 var _countdowns: Dictionary = {}
 var _lithium_exposure_elapsed := 0.0
 var _shelter_sources: Dictionary = {}
+var _external_triggers: Dictionary = {}
+var _external_trigger_reasons: Dictionary = {}
 
 
 func _ready() -> void:
@@ -65,6 +67,9 @@ func _get_active_volatile_items() -> Array[StringName]:
 
 
 func _should_trigger_risk_for(element_id: StringName) -> bool:
+	if bool(_external_triggers.get(element_id, false)):
+		return true
+
 	var element_data: Dictionary = ElementDatabase.get_element(element_id)
 	if element_data.is_empty():
 		return false
@@ -130,19 +135,20 @@ func _is_lithium_exposed() -> bool:
 	if is_sheltered():
 		return false
 
-	if GameManager.active_environmental_warnings.has(&"rain"):
-		var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
-		var player := scene_root.find_child("Player", true, false) as Node2D
-		if player == null:
-			return false
-		if scene_root != null and scene_root.has_method("is_rain_blocked_at_world_position"):
-			return not bool(scene_root.call("is_rain_blocked_at_world_position", player.global_position))
-		return true
-
 	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
 	var player := scene_root.find_child("Player", true, false) as Node2D
 	if player == null:
 		return false
+
+	var weather_system := get_node_or_null("/root/WeatherSystem")
+
+	if GameManager.active_environmental_warnings.has(&"rain"):
+		if weather_system != null and weather_system.has_method("get_shelter_at"):
+			if bool(weather_system.call("get_shelter_at", player.global_position)):
+				return false
+		if scene_root != null and scene_root.has_method("is_rain_blocked_at_world_position"):
+			return not bool(scene_root.call("is_rain_blocked_at_world_position", player.global_position))
+		return true
 
 	if scene_root != null and scene_root.has_method("is_water_at_world_position"):
 		return bool(scene_root.call("is_water_at_world_position", player.global_position))
@@ -157,6 +163,10 @@ func get_active_risk_reason(element_id: StringName) -> String:
 		if GameManager.active_environmental_warnings.has(&"rain"):
 			var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
 			var player := scene_root.find_child("Player", true, false) as Node2D
+			var weather_system := get_node_or_null("/root/WeatherSystem")
+			if player != null and weather_system != null and weather_system.has_method("get_shelter_at"):
+				if bool(weather_system.call("get_shelter_at", player.global_position)):
+					return ""
 			if player != null and scene_root != null and scene_root.has_method("is_rain_blocked_at_world_position"):
 				if not bool(scene_root.call("is_rain_blocked_at_world_position", player.global_position)):
 					return "Lithium is decaying because it started raining."
@@ -169,6 +179,9 @@ func get_active_risk_reason(element_id: StringName) -> String:
 			if bool(scene_root.call("is_water_at_world_position", player.global_position)):
 				return "Lithium is decaying because you are in water."
 		return ""
+
+	if bool(_external_triggers.get(element_id, false)):
+		return str(_external_trigger_reasons.get(element_id, ""))
 
 	var element_data: Dictionary = ElementDatabase.get_element(element_id)
 	if element_data.is_empty():
@@ -187,6 +200,18 @@ func get_active_risk_reason(element_id: StringName) -> String:
 		return "Material is igniting because you are %s." % status_trigger
 
 	return ""
+
+
+func set_external_trigger(element_id: StringName, active: bool, reason: String = "") -> void:
+	if element_id.is_empty():
+		return
+	if active:
+		_external_triggers[element_id] = true
+		if not reason.is_empty():
+			_external_trigger_reasons[element_id] = reason
+		return
+	_external_triggers.erase(element_id)
+	_external_trigger_reasons.erase(element_id)
 
 func set_sheltered(source_or_state, sheltered_state: bool = true) -> void:
 	if source_or_state is bool:
