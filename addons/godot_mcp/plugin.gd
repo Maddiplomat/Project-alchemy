@@ -12,6 +12,10 @@ const MCP_RUNTIME_AUTOLOAD_PATH := "res://addons/godot_mcp/runtime/mcp_runtime.g
 var _mcp_client: Node  # MCPClient
 var _tool_executor: Node  # ToolExecutor
 var _status_label: Label
+var _server_connected := false
+var _agent_count := 0
+var _saw_agent_activity := false
+var _runtime_connected := false
 
 func _enter_tree() -> void:
 	print("[Godot MCP] Plugin loading...")
@@ -92,14 +96,8 @@ func _unregister_runtime_autoload() -> void:
 	print("[Godot MCP] Unregistered autoload '%s'" % MCP_RUNTIME_AUTOLOAD_NAME)
 
 func _on_runtime_status_changed(connected: bool) -> void:
-	if not _status_label:
-		return
-	if connected:
-		var current := _status_label.text
-		if current.find(" + Runtime") < 0:
-			_status_label.text = current + " + Runtime"
-	else:
-		_status_label.text = _status_label.text.replace(" + Runtime", "")
+	_runtime_connected = connected
+	_refresh_status_label()
 
 func _setup_status_indicator() -> void:
 	"""Add a small status label to the editor toolbar."""
@@ -111,24 +109,37 @@ func _setup_status_indicator() -> void:
 
 func _on_connected() -> void:
 	print("[Godot MCP] Connected to MCP server")
-	if _status_label:
-		_status_label.text = "MCP: No Agent"
-		_status_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.0))  # orange
+	_server_connected = true
+	_refresh_status_label()
 
 func _on_disconnected() -> void:
 	print("[Godot MCP] Disconnected from MCP server")
-	if _status_label:
-		_status_label.text = "MCP: Disconnected"
-		_status_label.add_theme_color_override("font_color", Color.RED)
+	_server_connected = false
+	_agent_count = 0
+	_saw_agent_activity = false
+	_refresh_status_label()
 
 func _on_client_count_changed(count: int) -> void:
+	_agent_count = count
+	if count > 0:
+		_saw_agent_activity = true
+	_refresh_status_label()
+
+func _refresh_status_label() -> void:
 	if not _status_label:
 		return
-	if count > 0:
-		_status_label.text = "MCP: Agent Active" if count == 1 else "MCP: Agents (%d)" % count
+	var runtime_suffix := " + Runtime" if _runtime_connected else ""
+	if not _server_connected:
+		_status_label.text = "MCP: Disconnected" + runtime_suffix
+		_status_label.add_theme_color_override("font_color", Color.RED)
+	elif _agent_count > 1:
+		_status_label.text = "MCP: Agents (%d)%s" % [_agent_count, runtime_suffix]
+		_status_label.add_theme_color_override("font_color", Color.GREEN)
+	elif _agent_count == 1 or _saw_agent_activity:
+		_status_label.text = "MCP: Agent Active" + runtime_suffix
 		_status_label.add_theme_color_override("font_color", Color.GREEN)
 	else:
-		_status_label.text = "MCP: No Agent"
+		_status_label.text = "MCP: No Agent" + runtime_suffix
 		_status_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.0))  # orange
 
 func _on_tool_requested(request_id: String, tool_name: String, args: Dictionary) -> void:
@@ -139,6 +150,8 @@ func _on_tool_requested(request_id: String, tool_name: String, args: Dictionary)
 	immediately with the Dictionary, so there is no overhead for the common
 	case."""
 	print("[Godot MCP] Executing tool: ", tool_name)
+	_saw_agent_activity = true
+	_refresh_status_label()
 
 	var result: Dictionary = await _tool_executor.execute_tool(tool_name, args)
 

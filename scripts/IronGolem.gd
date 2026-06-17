@@ -1,0 +1,642 @@
+extends CharacterBody2D
+
+signal patrol_waypoint_reached(waypoint_index: int)
+signal alert_triggered(reason: StringName)
+signal died(golem: CharacterBody2D)
+
+enum State {
+	IDLE,
+	PATROL,
+	ALERT,
+	CHASE,
+	ATTACK,
+	HIT,
+	DEAD,
+}
+
+const PATROL_WAIT_SECONDS := 1.5
+const SCANNER_ALERT_RADIUS := 150.0
+const CHASE_REPATH_INTERVAL := 0.3
+const HEALTH_BAR_HIDE_DELAY := 3.0
+const HEALTH_BAR_FULL_COLOR := Color(0.31, 0.82, 0.38, 1.0)
+const HEALTH_BAR_MID_COLOR := Color(0.91, 0.79, 0.23, 1.0)
+const HEALTH_BAR_LOW_COLOR := Color(0.86, 0.24, 0.22, 1.0)
+const ALERT_INDICATOR_OFFSET := Vector2(0.0, -48.0)
+const ALERT_INDICATOR_DURATION := 1.5
+
+@export var patrol_radius: float = 96.0
+@export var detection_radius: float = 180.0
+@export var attack_range: float = 48.0
+@export var move_speed: float = 60.0
+@export var health: int = 120
+@export var patrol_waypoint_a: Vector2 = Vector2(-48.0, 0.0)
+@export var patrol_waypoint_b: Vector2 = Vector2(48.0, 0.0)
+@export var resistances: Dictionary = {
+	&"physical_sharp": 0.4,
+	&"physical_blunt": 0.0,
+	&"oxidation": 3.0,
+	&"electrical": 1.5,
+	&"chemical": 1.2,
+}
+
+@onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
+@onready var sprite: Sprite2D = $Sprite2D
+@onready var enemy_health_bar: ProgressBar = $EnemyHealthBar
+@onready var detection_area: Area2D = $DetectionArea
+@onready var detection_shape: CollisionShape2D = $DetectionArea/CollisionShape2D
+@onready var alert_audio_player: AudioStreamPlayer2D = $AlertAudioPlayer2D
+
+var current_state: State = State.PATROL
+var spawn_position: Vector2
+var target_position: Vector2
+var _patrol_points: Array[Vector2] = []
+var _current_patrol_index := 0
+var _patrol_wait_timer := 0.0
+var _chase_repath_timer := 0.0
+var _player_target: CharacterBody2D = null
+var _attack_cooldown_timer := 0.0
+var _hit_timer := 0.0
+var _leash_timer := 0.0
+var _max_health: int = 120
+var _health_bar_hide_timer := 0.0
+var _base_move_speed: float = 0.0
+var _base_detection_radius: float = 0.0
+
+
+func _ready() -> void:
+	_max_health = health
+	_base_move_speed = move_speed
+	_base_detection_radius = detection_radius
+	
+	if GameManager.has_signal("day_started"):
+		GameManager.day_started.connect(_on_day_started)
+	if GameManager.has_signal("night_started"):
+		GameManager.night_started.connect(_on_night_started)
+		
+	add_to_group(&"enemy")
+	spawn_position = global_position
+	target_position = global_position
+	sprite.texture = _build_placeholder_texture()
+	navigation_agent.path_desired_distance = 4.0
+	navigation_agent.target_desired_distance = attack_range
+	_patrol_points = [
+		spawn_position + patrol_waypoint_a.limit_length(patrol_radius),
+		spawn_position + patrol_waypoint_b.limit_length(patrol_radius),
+	]
+	_apply_detection_radius()
+	detection_area.body_entered.connect(_on_detection_body_entered)
+	detection_area.body_exited.connect(_on_detection_body_exited)
+	_connect_scanner_tools()
+	_build_alert_audio_stream()
+	_setup_health_bar()
+	_set_patrol_destination(_current_patrol_index)
+	
+	if GameManager.has_method("is_night") and GameManager.is_night():
+		_on_night_started()
+
+func _on_day_started() -> void:
+	move_speed = _base_move_speed
+	detection_radius = _base_detection_radius
+	_apply_detection_radius()
+
+func _on_night_started() -> void:
+	move_speed = 80.0
+	detection_radius = _base_detection_radius * 1.5
+	_apply_detection_radius()
+
+func _physics_process(delta: float) -> void:
+	if _attack_cooldown_timer > 0.0:
+		_attack_cooldown_timer -= delta
+	_step_state(delta)
+	_update_health_bar_visibility(delta)
+	move_and_slide()
+
+
+func simulate_step(delta: float) -> void:
+	_step_state(delta)
+	global_position += velocity * delta
+
+
+func _step_state(delta: float) -> void:
+	match current_state:
+		State.IDLE:
+			velocity = Vector2.ZERO
+		State.PATROL:
+			_update_patrol_velocity(delta)
+		State.ALERT:
+			_update_alert_state(delta)
+		State.CHASE:
+			_update_chase_velocity(delta)
+		State.ATTACK:
+			_update_attack_state(delta)
+		State.HIT:
+			_update_hit_state(delta)
+		State.DEAD:
+			velocity = Vector2.ZERO
+
+
+func set_state(new_state: State) -> void:
+	if current_state == new_state:
+		return
+
+	current_state = new_state
+	if current_state == State.PATROL:
+		_patrol_wait_timer = 0.0
+		_set_patrol_destination(_current_patrol_index)
+	elif current_state == State.ALERT:
+		velocity = Vector2.ZERO
+		_chase_repath_timer = CHASE_REPATH_INTERVAL
+		_show_alert_indicator()
+		_play_alert_sfx()
+	elif current_state == State.CHASE:
+		_chase_repath_timer = 0.0
+	elif current_state == State.ATTACK:
+		velocity = Vector2.ZERO
+	elif current_state == State.HIT:
+		pass
+
+
+func set_patrol_target(world_position: Vector2) -> void:
+	target_position = spawn_position + (world_position - spawn_position).limit_length(patrol_radius)
+	navigation_agent.target_position = target_position
+
+
+func get_scan_data() -> Dictionary:
+	return {
+		&"composition": [
+			{&"element_id": &"iron", &"pct": 1.0},
+		],
+		&"weaknesses": [&"oxidation", &"electrical"],
+		&"immunities": [&"physical_blunt"],
+	}
+
+
+func _update_patrol_velocity(delta: float) -> void:
+	if _patrol_wait_timer > 0.0:
+		_patrol_wait_timer = maxf(0.0, _patrol_wait_timer - delta)
+		velocity = Vector2.ZERO
+		if _patrol_wait_timer <= 0.0:
+			_current_patrol_index = (_current_patrol_index + 1) % _patrol_points.size()
+			_set_patrol_destination(_current_patrol_index)
+		return
+
+	if global_position.distance_to(target_position) <= navigation_agent.path_desired_distance:
+		_patrol_wait_timer = PATROL_WAIT_SECONDS
+		patrol_waypoint_reached.emit(_current_patrol_index)
+		velocity = Vector2.ZERO
+		return
+
+	var next_position := _get_navigation_step(target_position)
+	velocity = global_position.direction_to(next_position) * move_speed
+
+
+func _update_alert_state(delta: float) -> void:
+	velocity = Vector2.ZERO
+	_chase_repath_timer = maxf(0.0, _chase_repath_timer - delta)
+	if is_zero_approx(_chase_repath_timer):
+		set_state(State.CHASE)
+
+
+func _update_chase_velocity(delta: float) -> void:
+	if not is_instance_valid(_player_target):
+		_player_target = _find_player()
+	if not is_instance_valid(_player_target):
+		set_state(State.PATROL)
+		return
+
+	var dist = global_position.distance_to(_player_target.global_position)
+	var effective_detection_radius := _get_effective_detection_radius()
+	if effective_detection_radius <= 0.0:
+		_report_lit_zone_presence()
+		_retreat()
+		return
+	if dist > effective_detection_radius * 1.5:
+		_leash_timer += delta
+		if _leash_timer >= 10.0:
+			_retreat()
+			return
+	else:
+		_leash_timer = 0.0
+	_report_lit_zone_presence()
+
+	if dist <= attack_range:
+		set_state(State.ATTACK)
+		velocity = Vector2.ZERO
+		return
+
+	_chase_repath_timer = maxf(0.0, _chase_repath_timer - delta)
+	if _chase_repath_timer <= 0.0:
+		navigation_agent.target_position = _player_target.global_position
+		target_position = _player_target.global_position
+		_chase_repath_timer = CHASE_REPATH_INTERVAL
+
+	var next_position := _get_navigation_step(target_position)
+	velocity = global_position.direction_to(next_position) * move_speed
+
+
+func _retreat() -> void:
+	set_state(State.PATROL)
+	_leash_timer = 0.0
+	health = _max_health
+	_refresh_health_bar()
+	
+	if alert_audio_player:
+		alert_audio_player.pitch_scale = 0.7
+		alert_audio_player.play()
+		
+	var label = Label.new()
+	label.text = "<Retreated>"
+	label.position = Vector2(-40, -40)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(label)
+	
+	var tween = create_tween()
+	tween.tween_property(label, "position:y", label.position.y - 30, 1.5)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.5)
+	tween.tween_callback(label.queue_free)
+
+
+func _update_attack_state(_delta: float) -> void:
+	if _attack_cooldown_timer <= 0.0:
+		_perform_ground_slam()
+		_attack_cooldown_timer = 0.8
+	
+	if not is_instance_valid(_player_target) or global_position.distance_to(_player_target.global_position) > attack_range:
+		set_state(State.CHASE)
+
+
+func _perform_ground_slam() -> void:
+	var space_state = get_world_2d().direct_space_state
+	var shape = CircleShape2D.new()
+	shape.radius = attack_range
+	var query = PhysicsShapeQueryParameters2D.new()
+	query.shape = shape
+	query.transform = Transform2D(0, global_position)
+	query.collision_mask = 1
+	var results = space_state.intersect_shape(query)
+	for res in results:
+			var col = res.collider
+			if col.name == "Player":
+				if col.has_node("HealthSystem"):
+					col.get_node("HealthSystem").take_damage(12, "physical_blunt", "Iron Golem ground slam")
+				elif col.has_method("take_damage"):
+					col.take_damage(12, "physical_blunt")
+
+
+func _update_hit_state(delta: float) -> void:
+	_hit_timer -= delta
+	velocity = velocity.move_toward(Vector2.ZERO, delta * 300)
+	if _hit_timer <= 0.0:
+		set_state(State.CHASE)
+
+
+func take_damage(amount: int, damage_type: String = "physical_blunt", attacker_pos: Vector2 = Vector2.ZERO) -> void:
+	if current_state == State.DEAD:
+		return
+		
+	var final_damage = int(DamageCalculator.calculate(float(amount), damage_type, self, global_position)) if ClassDB.class_exists("DamageCalculator") else amount
+	_show_health_bar_from_combat()
+	if final_damage <= 0:
+		_refresh_health_bar()
+		return
+		
+	health -= final_damage
+	_refresh_health_bar()
+	if health <= 0:
+		die()
+	else:
+		set_state(State.HIT)
+		_hit_timer = 0.3
+		sprite.modulate = Color(10, 10, 10, 1)
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+		if attacker_pos != Vector2.ZERO:
+			velocity = attacker_pos.direction_to(global_position) * (32.0 / 0.3)
+
+
+func take_resolved_damage(amount: int, damage_type: String = "physical_blunt", attacker_pos: Vector2 = Vector2.ZERO) -> void:
+	if current_state == State.DEAD or amount <= 0:
+		return
+
+	_show_health_bar_from_combat()
+	health -= amount
+	_refresh_health_bar()
+	if health <= 0:
+		die()
+	else:
+		set_state(State.HIT)
+		_hit_timer = 0.3
+		sprite.modulate = Color(10, 10, 10, 1)
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+		if attacker_pos != Vector2.ZERO:
+			velocity = attacker_pos.direction_to(global_position) * (32.0 / 0.3)
+
+
+func die() -> void:
+	set_state(State.DEAD)
+	enemy_health_bar.visible = false
+	died.emit(self)
+	
+	var rect = ColorRect.new()
+	rect.color = Color("8b4513")
+	rect.size = sprite.texture.get_size() if sprite.texture else Vector2(32, 32)
+	rect.position = -rect.size / 2.0
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(rect)
+	
+	var tween = create_tween()
+	tween.tween_property(sprite, "modulate:a", 0.0, 1.5)
+	tween.parallel().tween_property(rect, "modulate:a", 0.0, 1.5)
+	
+	if randf() <= 0.8:
+		InventoryManager.add_element("iron", 3, 1.0)
+	if randf() <= 0.4:
+		InventoryManager.add_element("water", 1, 1.0)
+		
+	await get_tree().create_timer(1.5).timeout
+	queue_free()
+
+
+func _set_patrol_destination(index: int) -> void:
+	if _patrol_points.is_empty():
+		return
+
+	target_position = _patrol_points[index]
+	navigation_agent.target_position = target_position
+
+
+func _get_navigation_step(destination: Vector2) -> Vector2:
+	var navigation_map := navigation_agent.get_navigation_map()
+	if navigation_map.is_valid() and not navigation_agent.is_navigation_finished():
+		var next_position := navigation_agent.get_next_path_position()
+		var desired_direction := global_position.direction_to(destination)
+		var path_direction := global_position.direction_to(next_position)
+		if global_position.distance_to(next_position) > 0.5 and desired_direction.dot(path_direction) > 0.1:
+			return next_position
+	return destination
+
+
+func _apply_detection_radius() -> void:
+	if detection_shape == null:
+		return
+	var circle_shape := detection_shape.shape as CircleShape2D
+	if circle_shape != null:
+		circle_shape.radius = detection_radius
+
+
+func _connect_scanner_tools() -> void:
+	for scanner in get_tree().get_nodes_in_group(&"scanner_tool"):
+		var scanner_tool := scanner as Node
+		if scanner_tool == null:
+			continue
+		var scan_started_callable := Callable(self, "_on_scanner_scan_started")
+		if not scanner_tool.scan_started.is_connected(scan_started_callable):
+			scanner_tool.scan_started.connect(scan_started_callable)
+
+
+func _find_player() -> CharacterBody2D:
+	var player := get_tree().current_scene.find_child("Player", true, false)
+	if player is CharacterBody2D:
+		return player as CharacterBody2D
+	return null
+
+
+func _get_effective_detection_radius() -> float:
+	var multiplier := 1.0
+	if GameManager.has_method("is_night") and GameManager.is_night() and BaseDefenseSystem != null and BaseDefenseSystem.has_method("get_detection_multiplier_at"):
+		multiplier = float(BaseDefenseSystem.get_detection_multiplier_at(global_position))
+	return detection_radius * multiplier
+
+
+func _report_lit_zone_presence() -> void:
+	if GameManager == null or not GameManager.has_method("is_night") or not GameManager.is_night():
+		return
+	if BaseDefenseSystem == null or not BaseDefenseSystem.has_method("is_position_in_powered_light"):
+		return
+	if not BaseDefenseSystem.is_position_in_powered_light(global_position):
+		return
+	BaseDefenseSystem.report_night_threat(get_instance_id(), global_position)
+
+
+func _trigger_alert(reason: StringName, player: CharacterBody2D) -> void:
+	if current_state == State.DEAD:
+		return
+
+	_player_target = player
+	_face_target(player.global_position)
+	alert_triggered.emit(reason)
+	if current_state != State.CHASE and current_state != State.ATTACK:
+		set_state(State.ALERT)
+
+
+func _face_target(world_position: Vector2) -> void:
+	var direction := world_position - global_position
+	if direction.length_squared() <= 0.001:
+		return
+	sprite.rotation = direction.angle()
+
+
+func _play_alert_sfx() -> void:
+	if alert_audio_player.stream == null:
+		return
+	alert_audio_player.stop()
+	alert_audio_player.pitch_scale = 1.0
+	alert_audio_player.play()
+
+
+func _build_alert_audio_stream() -> void:
+	var sample_rate := 22050
+	var duration_seconds := 0.28
+	var frame_count := int(sample_rate * duration_seconds)
+	var data := PackedByteArray()
+	data.resize(frame_count * 2)
+
+	for frame in range(frame_count):
+		var t := float(frame) / float(sample_rate)
+		var normalized_frame := float(frame) / float(frame_count)
+		var envelope := sin(normalized_frame * PI)
+		var creak_pitch := lerpf(210.0, 130.0, normalized_frame) + sin(TAU * 7.0 * t) * 12.0
+		var metallic_overtone := lerpf(440.0, 280.0, normalized_frame)
+		var rasp := sin(TAU * 31.0 * t) * 0.08
+		var sample := (
+			sin(TAU * creak_pitch * t) * 0.52
+			+ sin(TAU * metallic_overtone * t) * 0.22
+			+ rasp
+		) * envelope * 0.55
+		var sample_value := int(clampi(int(sample * 32767.0), -32768, 32767))
+		var packed_value := sample_value & 0xffff
+		data[frame * 2] = packed_value & 0xff
+		data[frame * 2 + 1] = (packed_value >> 8) & 0xff
+
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = sample_rate
+	stream.stereo = false
+	stream.data = data
+	alert_audio_player.stream = stream
+
+
+func _show_alert_indicator() -> void:
+	var existing_indicator := get_node_or_null("AlertIndicator") as Label
+	if existing_indicator != null:
+		existing_indicator.queue_free()
+
+	var indicator := Label.new()
+	indicator.name = "AlertIndicator"
+	indicator.text = "!"
+	indicator.position = ALERT_INDICATOR_OFFSET
+	indicator.modulate = Color(1.0, 0.93, 0.42, 0.0)
+	indicator.scale = Vector2(0.35, 0.35)
+	indicator.z_index = 10
+	indicator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	indicator.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	indicator.offset_left = -12.0
+	indicator.offset_top = -14.0
+	indicator.offset_right = 12.0
+	indicator.offset_bottom = 14.0
+	indicator.add_theme_font_size_override("font_size", 26)
+	add_child(indicator)
+
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(indicator, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(indicator, "modulate:a", 1.0, 0.08)
+	tween.chain()
+	tween.tween_interval(ALERT_INDICATOR_DURATION - 0.44)
+	tween.tween_property(indicator, "position:y", ALERT_INDICATOR_OFFSET.y - 10.0, 0.3)
+	tween.parallel().tween_property(indicator, "modulate:a", 0.0, 0.3)
+	tween.tween_callback(indicator.queue_free)
+
+
+func _on_detection_body_entered(body: Node) -> void:
+	if body.name != "Player" or not body is CharacterBody2D:
+		return
+	if global_position.distance_to(body.global_position) > _get_effective_detection_radius():
+		return
+	_trigger_alert(&"player_detected", body as CharacterBody2D)
+
+
+func _on_detection_body_exited(body: Node) -> void:
+	if body == _player_target and current_state == State.CHASE:
+		_player_target = null
+
+
+func _on_scanner_scan_started(origin: Vector2) -> void:
+	var player := _find_player()
+	if player == null:
+		return
+	if origin.distance_to(global_position) > SCANNER_ALERT_RADIUS:
+		return
+	_trigger_alert(&"scanner_hum", player)
+
+
+func _build_placeholder_texture() -> Texture2D:
+	var image := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+
+	for y in range(5, 27):
+		for x in range(8, 24):
+			image.set_pixel(x, y, Color(0.42, 0.48, 0.56, 1.0))
+
+	for y in range(7, 13):
+		for x in range(10, 22):
+			image.set_pixel(x, y, Color(0.55, 0.62, 0.72, 1.0))
+
+	for y in range(14, 23):
+		for x in range(7, 12):
+			image.set_pixel(x, y, Color(0.34, 0.39, 0.47, 1.0))
+		for x in range(20, 25):
+			image.set_pixel(x, y, Color(0.34, 0.39, 0.47, 1.0))
+
+	for y in range(24, 31):
+		for x in range(10, 14):
+			image.set_pixel(x, y, Color(0.28, 0.32, 0.40, 1.0))
+		for x in range(18, 22):
+			image.set_pixel(x, y, Color(0.28, 0.32, 0.40, 1.0))
+
+	for x in range(11, 15):
+		image.set_pixel(x, 10, Color(0.88, 0.73, 0.34, 1.0))
+	for x in range(17, 21):
+		image.set_pixel(x, 10, Color(0.88, 0.73, 0.34, 1.0))
+
+	return ImageTexture.create_from_image(image)
+
+
+func _setup_health_bar() -> void:
+	if enemy_health_bar == null:
+		return
+
+	enemy_health_bar.min_value = 0.0
+	enemy_health_bar.max_value = float(_max_health)
+	enemy_health_bar.value = float(health)
+	enemy_health_bar.show_percentage = false
+	enemy_health_bar.visible = false
+
+	var background_style := StyleBoxFlat.new()
+	background_style.bg_color = Color(0.08, 0.08, 0.08, 0.9)
+	background_style.corner_radius_top_left = 2
+	background_style.corner_radius_top_right = 2
+	background_style.corner_radius_bottom_left = 2
+	background_style.corner_radius_bottom_right = 2
+	enemy_health_bar.add_theme_stylebox_override("background", background_style)
+	enemy_health_bar.add_theme_stylebox_override("fill", _build_health_bar_fill_style(1.0))
+
+
+func _show_health_bar_from_combat() -> void:
+	if enemy_health_bar == null:
+		return
+	if current_state == State.IDLE or current_state == State.PATROL:
+		enemy_health_bar.visible = true
+	else:
+		enemy_health_bar.visible = true
+	_health_bar_hide_timer = HEALTH_BAR_HIDE_DELAY
+
+
+func _refresh_health_bar() -> void:
+	if enemy_health_bar == null:
+		return
+
+	var health_ratio := clampf(float(health) / float(maxi(_max_health, 1)), 0.0, 1.0)
+	enemy_health_bar.max_value = float(_max_health)
+	enemy_health_bar.value = float(maxi(health, 0))
+	enemy_health_bar.add_theme_stylebox_override("fill", _build_health_bar_fill_style(health_ratio))
+
+
+func _update_health_bar_visibility(delta: float) -> void:
+	if enemy_health_bar == null or not enemy_health_bar.visible:
+		return
+	if current_state == State.DEAD:
+		enemy_health_bar.visible = false
+		return
+	if _is_in_active_combat_state():
+		_health_bar_hide_timer = HEALTH_BAR_HIDE_DELAY
+		return
+
+	_health_bar_hide_timer = maxf(0.0, _health_bar_hide_timer - delta)
+	if _health_bar_hide_timer <= 0.0:
+		enemy_health_bar.visible = false
+
+
+func _is_in_active_combat_state() -> bool:
+	return current_state == State.ALERT or current_state == State.CHASE or current_state == State.ATTACK or current_state == State.HIT
+
+
+func _build_health_bar_fill_style(health_ratio: float) -> StyleBoxFlat:
+	var fill_style := StyleBoxFlat.new()
+	fill_style.bg_color = _get_health_bar_color(health_ratio)
+	fill_style.corner_radius_top_left = 2
+	fill_style.corner_radius_top_right = 2
+	fill_style.corner_radius_bottom_left = 2
+	fill_style.corner_radius_bottom_right = 2
+	return fill_style
+
+
+func _get_health_bar_color(health_ratio: float) -> Color:
+	if health_ratio <= 0.2:
+		return HEALTH_BAR_LOW_COLOR
+	if health_ratio <= 0.5:
+		var mid_ratio := inverse_lerp(0.2, 0.5, health_ratio)
+		return HEALTH_BAR_LOW_COLOR.lerp(HEALTH_BAR_MID_COLOR, mid_ratio)
+	var high_ratio := inverse_lerp(0.5, 1.0, health_ratio)
+	return HEALTH_BAR_MID_COLOR.lerp(HEALTH_BAR_FULL_COLOR, high_ratio)

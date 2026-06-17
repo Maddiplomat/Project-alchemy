@@ -1,0 +1,21 @@
+{
+  "id": "lithium",
+  "symbol": "Li",
+  "display_name": "Lithium",
+  "category": "volatile",
+  "weight": 0.3,
+  "stress_multiplier": 0.9,
+  "extraction_tool": null,
+  "properties": {
+    "flammability": 0.0,
+    "toxicity": 0.0,
+    "reactivity": 0.9,
+    "conductivity": 0.95,
+    "radiation": 0.0
+  },
+  "environmental_hint": "Silvery metallic deposits in rocky outcrops - oddly light for their size",
+  "carrier_risk": "Degrades in rain - loses 15% charge per second of exposure; explodes at 0% charge (radius 1, 15 damage)",
+  "biome_spawn": [
+    "iron_hills"
+  ]
+}

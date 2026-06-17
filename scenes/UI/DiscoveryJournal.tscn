@@ -1,0 +1,93 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/DiscoveryJournalPanel.gd" id="1_panel"]
+
+[node name="DiscoveryJournal" type="Panel"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -340.0
+offset_top = -250.0
+offset_right = 340.0
+offset_bottom = 250.0
+mouse_filter = 1
+z_index = 25
+script = ExtResource("1_panel")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = 18.0
+offset_right = -18.0
+offset_bottom = -18.0
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="Content" type="VBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="TitleRow" type="VBoxContainer" parent="MarginContainer/Content"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/Content/TitleRow"]
+layout_mode = 2
+text = "Discovery Journal"
+
+[node name="SubtitleLabel" type="Label" parent="MarginContainer/Content/TitleRow"]
+layout_mode = 2
+text = "Press J to close. Field notes save per entry."
+
+[node name="FilterRow" type="HBoxContainer" parent="MarginContainer/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AllButton" type="Button" parent="MarginContainer/Content/FilterRow"]
+custom_minimum_size = Vector2(108, 0)
+layout_mode = 2
+text = "All"
+
+[node name="SuccessesButton" type="Button" parent="MarginContainer/Content/FilterRow"]
+custom_minimum_size = Vector2(108, 0)
+layout_mode = 2
+text = "Successes"
+
+[node name="FailuresButton" type="Button" parent="MarginContainer/Content/FilterRow"]
+custom_minimum_size = Vector2(108, 0)
+layout_mode = 2
+text = "Failures"
+
+[node name="UnknownsButton" type="Button" parent="MarginContainer/Content/FilterRow"]
+custom_minimum_size = Vector2(108, 0)
+layout_mode = 2
+text = "Unknowns"
+
+[node name="EntriesFrame" type="PanelContainer" parent="MarginContainer/Content"]
+custom_minimum_size = Vector2(0, 320)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="EntriesScroll" type="ScrollContainer" parent="MarginContainer/Content/EntriesFrame"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="EntriesList" type="VBoxContainer" parent="MarginContainer/Content/EntriesFrame/EntriesScroll"]
+custom_minimum_size = Vector2(600, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="FooterLabel" type="Label" parent="MarginContainer/Content"]
+layout_mode = 2
+text = "No matching discoveries yet."

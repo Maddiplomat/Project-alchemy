@@ -1,0 +1,42 @@
+[gd_scene load_steps=5 format=4]
+
+[ext_resource type="Script" path="res://scripts/AcidCrawler.gd" id="1_crawler"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(18, 14)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_scan"]
+size = Vector2(30, 20)
+
+[node name="AcidCrawler" type="CharacterBody2D"]
+collision_layer = 1
+collision_mask = 3
+script = ExtResource("1_crawler")
+
+[node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(0, -4)
+
+[node name="EnemyHealthBar" type="ProgressBar" parent="."]
+visible = false
+offset_left = -18.0
+offset_top = -22.0
+offset_right = 18.0
+offset_bottom = -18.0
+show_percentage = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 2)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="ScanProxy" type="Area2D" parent="."]
+collision_layer = 1
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ScanProxy"]
+disabled = true
+shape = SubResource("RectangleShape2D_scan")

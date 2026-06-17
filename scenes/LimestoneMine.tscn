@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bbfjgjvxlytpy"]
+
+[ext_resource type="Script" path="res://scripts/LimestoneMine.gd" id="1_limem"]
+
+[node name="LimestoneMine" type="Node2D"]
+script = ExtResource("1_limem")

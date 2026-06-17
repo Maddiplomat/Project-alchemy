@@ -1,0 +1,18 @@
+{
+  "id": "stone",
+  "symbol": "Si",
+  "display_name": "Stone",
+  "category": "mineral",
+  "weight": 1.5,
+  "stress_multiplier": 0.7,
+  "properties": {
+    "flammability": 0.0,
+    "toxicity": 0.0,
+    "reactivity": 0.1
+  },
+  "carrier_risk": "none",
+  "biome_spawn": [
+    "starter_forest",
+    "iron_hills"
+  ]
+}

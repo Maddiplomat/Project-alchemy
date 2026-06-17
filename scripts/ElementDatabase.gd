@@ -6,11 +6,13 @@ enum ExtractionTool { HAND, PICKAXE, FURNACE, DISTILLATION_KIT, PRESSURE_CHAMBER
 
 signal element_registered(element_id: StringName)
 signal element_discovered(element_id: StringName)
+signal element_scanned(element_id: StringName)
 signal element_updated(element_id: StringName)
 signal database_ready(element_count: int)
 
 var elements: Dictionary[StringName, Dictionary] = {}
 var discovered_elements: Array[StringName] = []
+var scanned_elements: Dictionary[StringName, bool] = {}
 var biome_elements: Dictionary[StringName, Array] = {}
 
 const ELEMENT_DATA_DIR := "res://data/elements"
@@ -23,6 +25,7 @@ var late_game_element_ids: Array[StringName] = []
 func _ready() -> void:
 	_seed_elements()
 	database_ready.emit(elements.size())
+
 
 
 func has_element(element_id: StringName) -> bool:
@@ -82,6 +85,31 @@ func is_element_discovered(element_id: StringName) -> bool:
 	return discovered_elements.has(element_id)
 
 
+func mark_element_scanned(element_id: StringName) -> bool:
+	if not has_element(element_id) or scanned_elements.has(element_id):
+		return false
+
+	scanned_elements[element_id] = true
+	element_scanned.emit(element_id)
+	return true
+
+
+func is_element_scanned(element_id: StringName) -> bool:
+	return scanned_elements.has(element_id)
+
+
+func get_scanned_elements() -> Array[StringName]:
+	var result: Array[StringName] = []
+	for element_id: StringName in scanned_elements.keys():
+		result.append(element_id)
+	result.sort()
+	return result
+
+
+func clear_scanned_elements() -> void:
+	scanned_elements.clear()
+
+
 func register_element(element_data: Dictionary) -> bool:
 	var element_id: StringName = element_data.get(&"id", &"")
 	if element_id.is_empty():
@@ -102,6 +130,7 @@ func register_element(element_data: Dictionary) -> bool:
 func _seed_elements() -> void:
 	elements.clear()
 	discovered_elements.clear()
+	scanned_elements.clear()
 	biome_elements.clear()
 
 	var seed_data := _load_element_data_files()
@@ -176,7 +205,10 @@ func _normalize_element_data(raw_data: Dictionary) -> Dictionary:
 		&"category": str(raw_data.get(&"category")),
 		&"weight": float(raw_data.get(&"weight")),
 		&"stress_multiplier": float(raw_data.get(&"stress_multiplier")),
+		&"extraction_tool": raw_data.get(&"extraction_tool", ""),
 		&"properties": raw_properties.duplicate(true),
+		&"carrier_risk_conditions": raw_data.get(&"carrier_risk_conditions", {}).duplicate(true) if raw_data.get(&"carrier_risk_conditions", {}) is Dictionary else {},
+		&"environmental_hint": str(raw_data.get(&"environmental_hint", "")),
 		&"carrier_risk": raw_data.get(&"carrier_risk"),
 		&"biome_spawn": normalized_biomes,
 	}
@@ -229,9 +261,13 @@ func _get_seed_element_data() -> Array[Dictionary]:
 			0.8,
 			ExtractionTool.HAND,
 			{
-				&"flammability": 0.7,
+				&"flammability": 0.9,
 				&"toxicity": 0.0,
 				&"reactivity": 0.2,
+				&"carbon_pct_when_burned": 0.12,
+				&"steel_window_carbon_min_pct": 0.5,
+				&"steel_window_carbon_max_pct": 2.1,
+				&"fuel_value": 200.0,
 				&"conductivity": 0.0,
 				&"radiation": 0.0,
 			},
@@ -271,7 +307,8 @@ func _get_seed_element_data() -> Array[Dictionary]:
 			{
 				&"flammability": 0.0,
 				&"toxicity": 0.0,
-				&"reactivity": 0.35,
+				&"reactivity": 0.4,
+				&"melting_point": 1538.0,
 				&"conductivity": 0.55,
 				&"radiation": 0.0,
 			},
@@ -292,6 +329,10 @@ func _get_seed_element_data() -> Array[Dictionary]:
 				&"flammability": 0.85,
 				&"toxicity": 0.05,
 				&"reactivity": 0.45,
+				&"carbon_percentage": 0.85,
+				&"steel_window_carbon_min_pct": 0.6,
+				&"steel_window_carbon_max_pct": 2.5,
+				&"fuel_value": 600.0,
 				&"conductivity": 0.15,
 				&"radiation": 0.0,
 			},

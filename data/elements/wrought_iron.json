@@ -1,0 +1,20 @@
+{
+  "id": "wrought_iron",
+  "symbol": "Fe-",
+  "display_name": "Wrought Iron",
+  "category": "metal",
+  "weight": 2.5,
+  "stress_multiplier": 1.2,
+  "properties": {
+    "flammability": 0.0,
+    "toxicity": 0.0,
+    "reactivity": 0.3,
+    "melting_point": 1530.0,
+    "conductivity": 0.5,
+    "radiation": 0.0
+  },
+  "carrier_risk": "none",
+  "biome_spawn": [],
+  "environmental_hint": "Soft, fibrous iron with very little carbon — bends under stress.",
+  "primary_use": "Basic tools and structures; too soft for advanced weapons."
+}

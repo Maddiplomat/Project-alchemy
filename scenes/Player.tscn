@@ -1,14 +1,18 @@
 [gd_scene format=3 uid="uid://cxfen0v27oux3"]
 
 [ext_resource type="Script" uid="uid://c17fh4mvgtvhs" path="res://scripts/PlayerMovement.gd" id="1_p0vlq"]
-[ext_resource type="Texture2D" uid="uid://dcequn4h1sp0" path="res://assets/player/player_placeholder_16x16.png" id="2_v6fml"]
+[ext_resource type="Texture2D" path="res://assets/player/main_character_runtime_sheet.png" id="2_v6fml"]
 [ext_resource type="Script" uid="uid://d4mhxiqnf6cxf" path="res://scripts/PlayerAnimationStateMachine.gd" id="3_3li8b"]
 [ext_resource type="Script" uid="uid://dfmk1jvfvpfj2" path="res://scripts/PlayerCameraController.gd" id="4_jmcn4"]
 [ext_resource type="Script" uid="uid://dduid12nwmq5v" path="res://scripts/ScannerTool.gd" id="5_qu4a1"]
 [ext_resource type="Texture2D" uid="uid://bw1vwo1kan6kh" path="res://assets/generated/scan_ripple.png" id="6_70d11"]
+[ext_resource type="Script" path="res://scripts/HealthSystem.gd" id="7_q1w23"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_mdl7e"]
 size = Vector2(8, 8)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_steel_sword"]
+radius = 16.0
 
 [node name="Player" type="CharacterBody2D" unique_id=297416554]
 script = ExtResource("1_p0vlq")
@@ -19,15 +23,18 @@ shape = SubResource("RectangleShape2D_mdl7e")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1569599526]
 script = ExtResource("4_jmcn4")
+zoom = Vector2(2.5, 2.5)
 
-[node name="Visual" type="Sprite2D" parent="." unique_id=2108246815]
+[node name="Visual" type="AnimatedSprite2D" parent="." unique_id=2108246815]
+position = Vector2(0, -5)
+scale = Vector2(0.9, 0.9)
 texture_filter = 1
-texture = ExtResource("2_v6fml")
-hframes = 5
-vframes = 8
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=457091043]
 script = ExtResource("3_3li8b")
+
+[node name="HealthSystem" type="Node" parent="."]
+script = ExtResource("7_q1w23")
 
 [node name="ScannerTool" type="Node2D" parent="." unique_id=52746031]
 script = ExtResource("5_qu4a1")
@@ -40,3 +47,22 @@ scale = Vector2(1e-05, 1e-05)
 texture = ExtResource("6_70d11")
 
 [node name="ToolAnimationPlayer" type="AnimationPlayer" parent="ScannerTool" unique_id=1425251196]
+
+[node name="MeleePivot" type="Node2D" parent="."]
+
+[node name="SwordArcVisual" type="Line2D" parent="MeleePivot"]
+visible = false
+width = 3.0
+default_color = Color(0.87, 0.89, 0.94, 0.9)
+points = PackedVector2Array(0, 0, 24, 0)
+
+[node name="MeleeHitbox" type="Area2D" parent="MeleePivot"]
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="MeleePivot/MeleeHitbox"]
+position = Vector2(24, 0)
+disabled = true
+shape = SubResource("CircleShape2D_steel_sword")
+
+[node name="MeleeAnimationPlayer" type="AnimationPlayer" parent="MeleePivot"]

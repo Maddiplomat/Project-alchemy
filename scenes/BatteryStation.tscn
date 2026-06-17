@@ -1,0 +1,50 @@
+[gd_scene load_steps=7 format=3 uid="uid://ne1gv6gd873t"]
+
+[ext_resource type="Script" uid="uid://douvbv7u02vpn" path="res://scripts/BatteryStation.gd" id="1_yomfn"]
+[ext_resource type="Script" path="res://scripts/PoweredLight.gd" id="2_light"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(32, 24)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_interact"]
+radius = 48.0
+
+[sub_resource type="Gradient" id="Gradient_light"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_light"]
+gradient = SubResource("Gradient_light")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(0.8, 0.1)
+
+[node name="BatteryStation" type="StaticBody2D"]
+script = ExtResource("1_yomfn")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="InteractionArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 1
+monitoring = true
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+shape = SubResource("CircleShape2D_interact")
+
+[node name="PromptLabel" type="Label" parent="."]
+visible = false
+offset_left = -90.0
+offset_top = -46.0
+offset_right = 90.0
+offset_bottom = -8.0
+horizontal_alignment = 1
+
+[node name="PointLight2D" type="PointLight2D" parent="."]
+texture = SubResource("GradientTexture2D_light")
+energy = 0.0
+script = ExtResource("2_light")

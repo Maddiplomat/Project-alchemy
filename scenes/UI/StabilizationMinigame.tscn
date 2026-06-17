@@ -1,0 +1,209 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/StabilizationMinigame.gd" id="1_stab"]
+
+[node name="StabilizationMinigame" type="CanvasLayer"]
+layer = 20
+script = ExtResource("1_stab")
+
+[node name="Root" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="Overlay" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+color = Color(0, 0, 0, 0.85)
+
+[node name="PanelContainer" type="PanelContainer" parent="Root"]
+custom_minimum_size = Vector2(760, 420)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -380.0
+offset_top = -210.0
+offset_right = 380.0
+offset_bottom = 210.0
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="HeaderRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Stabilization"
+
+[node name="Spacer" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+text = "Keep the reaction stable."
+horizontal_alignment = 2
+autowrap_mode = 3
+
+[node name="GaugeRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+
+[node name="HeatPanel" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow"]
+custom_minimum_size = Vector2(220, 300)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/HeatPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/HeatPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PanelLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/HeatPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "HeatGauge"
+horizontal_alignment = 1
+
+[node name="HeatGauge" type="ProgressBar" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/HeatPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 170)
+layout_mode = 2
+fill_mode = 3
+show_percentage = false
+max_value = 100.0
+
+[node name="HeatValueLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/HeatPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Heat 0 / 100"
+horizontal_alignment = 1
+
+[node name="VentButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/HeatPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+text = "Vent"
+
+[node name="VentCooldownLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/HeatPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Vent ready"
+horizontal_alignment = 1
+
+[node name="PressurePanel" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow"]
+custom_minimum_size = Vector2(260, 300)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/PressurePanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/PressurePanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PanelLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/PressurePanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "PressureNeedle"
+horizontal_alignment = 1
+
+[node name="InstructionsLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/PressurePanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Drag pressure back into the 45-55 safe zone."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="PressureSlider" type="HSlider" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/PressurePanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+max_value = 100.0
+value = 50.0
+
+[node name="PressureValueLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/PressurePanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Pressure 50"
+horizontal_alignment = 1
+
+[node name="PressureTargetLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/PressurePanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Spike target 50"
+horizontal_alignment = 1
+
+[node name="SafeZoneLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/PressurePanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Safe Zone: 45 - 55"
+horizontal_alignment = 1
+
+[node name="TimerPanel" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow"]
+custom_minimum_size = Vector2(220, 300)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/TimerPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/TimerPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PanelLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/TimerPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "ReactionTimer"
+horizontal_alignment = 1
+
+[node name="TimerGauge" type="ProgressBar" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/TimerPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 170)
+layout_mode = 2
+fill_mode = 3
+show_percentage = false
+max_value = 20.0
+value = 20.0
+
+[node name="TimerValueLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/GaugeRow/TimerPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Reaction 20.0s"
+horizontal_alignment = 1
+
+[node name="FooterLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Stabilization locks the bench until the reaction resolves."
+horizontal_alignment = 1

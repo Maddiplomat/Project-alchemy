@@ -3,12 +3,147 @@
 [ext_resource type="Script" uid="uid://bye0gqyf7kcxg" path="res://scripts/inventory_grid.gd" id="1_pkvtp"]
 
 [node name="Node" type="CanvasLayer" unique_id=771886120]
+layer = 10
 script = ExtResource("1_pkvtp")
 
-[node name="InventoryPanel" type="Control" parent="." unique_id=1131795663]
-layout_mode = 3
-anchors_preset = 0
+[node name="InventoryPanel" type="Panel" parent="." unique_id=582636693]
+custom_minimum_size = Vector2(392, 216)
 
-[node name="Grid" type="GridContainer" parent="InventoryPanel" unique_id=123695224]
+[node name="PanelContent" type="HBoxContainer" parent="InventoryPanel" unique_id=181028481]
 layout_mode = 0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 376.0
+offset_bottom = 118.0
+theme_override_constants/separation = 18
+
+[node name="InventoryColumn" type="VBoxContainer" parent="InventoryPanel/PanelContent" unique_id=1442415162]
+custom_minimum_size = Vector2(330, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+
+[node name="Grid" type="GridContainer" parent="InventoryPanel/PanelContent/InventoryColumn" unique_id=123695224]
+custom_minimum_size = Vector2(330, 64)
+layout_mode = 2
 columns = 5
+
+[node name="WeightRow" type="HBoxContainer" parent="InventoryPanel/PanelContent/InventoryColumn" unique_id=1977411127]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="WeightBar" type="ProgressBar" parent="InventoryPanel/PanelContent/InventoryColumn/WeightRow" unique_id=1679782331]
+modulate = Color(0.45, 0.83, 0.61, 1)
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0, 0, 0, 0)
+max_value = 20.0
+show_percentage = false
+
+[node name="WeightLabel" type="Label" parent="InventoryPanel/PanelContent/InventoryColumn/WeightRow" unique_id=234948455]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+text = "0.0 / 20.0 kg"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="CraftingPanel" type="PanelContainer" parent="InventoryPanel/PanelContent" unique_id=944136859]
+visible = false
+custom_minimum_size = Vector2(332, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MarginContainer" type="MarginContainer" parent="InventoryPanel/PanelContent/CraftingPanel" unique_id=1927158014]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="CraftingContent" type="VBoxContainer" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer" unique_id=1671815692]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CraftingTitle" type="Label" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent" unique_id=1206868868]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Crafting"
+
+[node name="CraftingHint" type="Label" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent" unique_id=195734373]
+layout_mode = 2
+text = "Recipes appear here. Craft buttons enable automatically when the required materials are in your inventory."
+autowrap_mode = 3
+
+[node name="RecipesScroll" type="ScrollContainer" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent" unique_id=900397119]
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="RecipesList" type="VBoxContainer" parent="InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/RecipesScroll" unique_id=1048866388]
+custom_minimum_size = Vector2(290, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="CraftingHighlight" type="Panel" parent="InventoryPanel/PanelContent/CraftingPanel" unique_id=1651295995]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="CraftingPulsePlayer" type="AnimationPlayer" parent="InventoryPanel/PanelContent/CraftingPanel" unique_id=1891137308]
+
+[node name="KeybindStrip" type="HBoxContainer" parent="InventoryPanel" unique_id=1814229381]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 140.0
+offset_right = 376.0
+offset_bottom = 172.0
+theme_override_constants/separation = 18
+
+[node name="InventoryKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1822337350]
+layout_mode = 2
+text = "Tab: open inventory"
+
+[node name="SelectKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1590047737]
+layout_mode = 2
+text = "1-5: select active item"
+
+[node name="TooltipPanel" type="Panel" parent="." unique_id=391146286]
+visible = false
+offset_right = 180.0
+offset_bottom = 96.0
+mouse_filter = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="TooltipPanel" unique_id=272547761]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 172.0
+offset_bottom = 88.0
+mouse_filter = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="TooltipContent" type="VBoxContainer" parent="TooltipPanel/MarginContainer" unique_id=419235073]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="TooltipPanel/MarginContainer/TooltipContent" unique_id=1771532748]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Item Name"
+
+[node name="WeightLabel" type="Label" parent="TooltipPanel/MarginContainer/TooltipContent" unique_id=457005486]
+layout_mode = 2
+text = "Weight: 0.0"
+
+[node name="CategoryLabel" type="Label" parent="TooltipPanel/MarginContainer/TooltipContent" unique_id=382661166]
+layout_mode = 2
+text = "Category: Unknown"
+
+[node name="DurabilityLabel" type="Label" parent="TooltipPanel/MarginContainer/TooltipContent" unique_id=1073360525]
+visible = false
+layout_mode = 2
+text = "Durability: 100%"

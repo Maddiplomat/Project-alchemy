@@ -2,12 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dyoksmfbdxxe5"
-valid=false
+uid="uid://b5sgq7iutyigh"
+path="res://.godot/imported/forest_16x16.png-d9faf0f1c766666b930c8227cec3788f.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/tilesets/forest_16x16.png"
+dest_files=["res://.godot/imported/forest_16x16.png-d9faf0f1c766666b930c8227cec3788f.ctex"]
 
 [params]
 

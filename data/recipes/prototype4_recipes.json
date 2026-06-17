@@ -1,0 +1,47 @@
+[
+  {
+    "id": "rust_bolt",
+    "inputs": [
+      {
+        "element_id": "iron",
+        "qty": 2
+      },
+      {
+        "element_id": "water",
+        "qty": 1
+      }
+    ],
+    "output": {
+      "item_id": "rust_bolt",
+      "qty": 8
+    },
+    "station": "chem_bench",
+    "ratio": {
+      "iron": 0.67,
+      "water": 0.33
+    },
+    "required_temp": null,
+    "reaction_type": "oxidation",
+    "durability": null
+  },
+  {
+    "id": "distillation_kit",
+    "inputs": [
+      {
+        "element_id": "iron",
+        "qty": 2
+      },
+      {
+        "element_id": "wood",
+        "qty": 3
+      }
+    ],
+    "output": {
+      "item_id": "distillation_kit",
+      "qty": 1
+    },
+    "required_temp": null,
+    "reaction_type": "",
+    "durability": 1.0
+  }
+]

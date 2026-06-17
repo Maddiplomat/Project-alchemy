@@ -1,0 +1,48 @@
+[gd_scene load_steps=7 format=4]
+
+[ext_resource type="Script" path="res://scripts/ChemBenchPlaced.gd" id="1_chem_placed"]
+[ext_resource type="Script" path="res://scripts/PoweredLight.gd" id="99_light_script"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_solid"]
+size = Vector2(24, 20)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_interaction"]
+size = Vector2(56, 56)
+
+[sub_resource type="Gradient" id="Gradient_light"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_light"]
+gradient = SubResource("Gradient_light")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(0.8, 0.1)
+
+
+[node name="ChemBenchPlaced" type="StaticBody2D"]
+script = ExtResource("1_chem_placed")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_solid")
+
+[node name="InteractionArea" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+shape = SubResource("RectangleShape2D_interaction")
+
+[node name="PromptLabel" type="Label" parent="."]
+visible = false
+offset_left = -90.0
+offset_top = -46.0
+offset_right = 90.0
+offset_bottom = -8.0
+text = "Press E to use ChemBench"
+horizontal_alignment = 1
+
+[node name="PointLight2D" type="PointLight2D" parent="."]
+texture = SubResource("GradientTexture2D_light")
+script = ExtResource("99_light_script")

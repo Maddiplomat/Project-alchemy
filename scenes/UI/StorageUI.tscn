@@ -1,0 +1,69 @@
+[gd_scene load_steps=2 format=4]
+
+[ext_resource type="Script" path="res://scripts/StorageUI.gd" id="1_storage_ui"]
+
+[node name="StorageUI" type="CanvasLayer"]
+layer = 11
+script = ExtResource("1_storage_ui")
+
+[node name="StoragePanel" type="Panel" parent="."]
+visible = false
+offset_left = 220.0
+offset_top = 110.0
+offset_right = 1060.0
+offset_bottom = 610.0
+
+[node name="PanelContent" type="HBoxContainer" parent="StoragePanel"]
+layout_mode = 0
+offset_left = 18.0
+offset_top = 18.0
+offset_right = 822.0
+offset_bottom = 426.0
+theme_override_constants/separation = 24
+
+[node name="PlayerColumn" type="VBoxContainer" parent="StoragePanel/PanelContent"]
+custom_minimum_size = Vector2(350, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="PlayerTitle" type="Label" parent="StoragePanel/PanelContent/PlayerColumn"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Player Inventory"
+
+[node name="PlayerGrid" type="GridContainer" parent="StoragePanel/PanelContent/PlayerColumn"]
+custom_minimum_size = Vector2(280, 320)
+layout_mode = 2
+columns = 4
+
+[node name="WeightLabel" type="Label" parent="StoragePanel/PanelContent/PlayerColumn"]
+layout_mode = 2
+text = "0.0 / 20.0 kg"
+
+[node name="ChestColumn" type="VBoxContainer" parent="StoragePanel/PanelContent"]
+custom_minimum_size = Vector2(350, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="ChestTitle" type="Label" parent="StoragePanel/PanelContent/ChestColumn"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Chest"
+
+[node name="ChestGrid" type="GridContainer" parent="StoragePanel/PanelContent/ChestColumn"]
+custom_minimum_size = Vector2(280, 320)
+layout_mode = 2
+columns = 4
+
+[node name="Footer" type="HBoxContainer" parent="StoragePanel"]
+layout_mode = 0
+offset_left = 18.0
+offset_top = 452.0
+offset_right = 822.0
+offset_bottom = 482.0
+
+[node name="HintLabel" type="Label" parent="StoragePanel/Footer"]
+layout_mode = 2
+text = "Drag between player and chest."

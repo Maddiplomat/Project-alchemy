@@ -1,0 +1,16 @@
+{
+  "id": "corrosive_slurry",
+  "symbol": "H2SO4*",
+  "display_name": "Corrosive Slurry",
+  "category": "volatile",
+  "weight": 0.7,
+  "stress_multiplier": 1.2,
+  "extraction_tool": null,
+  "properties": {
+    "toxicity": 0.7,
+    "reactivity": 0.8
+  },
+  "carrier_risk": "medium",
+  "environmental_hint": "A buffered acidic suspension that still fumes through its container seams.",
+  "biome_spawn": []
+}

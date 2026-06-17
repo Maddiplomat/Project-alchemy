@@ -1,0 +1,171 @@
+[gd_scene format=3 uid="uid://b75x1ql2wkeqa"]
+
+[ext_resource type="Script" path="res://scripts/BatteryStationUI.gd" id="1_1cnci"]
+
+[node name="BatteryStationUI" type="Control" unique_id=300473119]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_1cnci")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.55)
+mouse_filter = 2
+
+[node name="Panel" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 24.0
+offset_top = 56.0
+offset_right = 384.0
+offset_bottom = 516.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Panel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "⚡ Battery Station"
+horizontal_alignment = 1
+
+[node name="HSep0" type="HSeparator" parent="Panel/VBoxContainer"]
+layout_mode = 2
+
+[node name="InputsLabel" type="Label" parent="Panel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "INPUTS"
+modulate = Color(0.7, 0.7, 0.7, 1)
+
+[node name="InputContainer" type="HBoxContainer" parent="Panel/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="LithiumSlot" type="VBoxContainer" parent="Panel/VBoxContainer/InputContainer"]
+layout_mode = 2
+size_flags_horizontal = 4
+custom_minimum_size = Vector2(70, 0)
+
+[node name="ColorRect" type="ColorRect" parent="Panel/VBoxContainer/InputContainer/LithiumSlot"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 50)
+color = Color(0.2, 0.2, 0.4, 1)
+
+[node name="Label" type="Label" parent="Panel/VBoxContainer/InputContainer/LithiumSlot"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "Lithium x1"
+horizontal_alignment = 1
+
+[node name="ArrowLabel" type="Label" parent="Panel/VBoxContainer/InputContainer"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 16
+text = "→"
+
+[node name="IronSlot" type="VBoxContainer" parent="Panel/VBoxContainer/InputContainer"]
+layout_mode = 2
+size_flags_horizontal = 4
+custom_minimum_size = Vector2(70, 0)
+
+[node name="ColorRect" type="ColorRect" parent="Panel/VBoxContainer/InputContainer/IronSlot"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 50)
+color = Color(0.3, 0.2, 0.2, 1)
+
+[node name="Label" type="Label" parent="Panel/VBoxContainer/InputContainer/IronSlot"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "Iron x1"
+horizontal_alignment = 1
+
+[node name="OutputLabel" type="Label" parent="Panel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "→ Energy Cell x2"
+horizontal_alignment = 1
+modulate = Color(0.6, 1.0, 0.6, 1)
+
+[node name="ReactButton" type="Button" parent="Panel/VBoxContainer"]
+layout_mode = 2
+text = "React"
+
+[node name="HSep1" type="HSeparator" parent="Panel/VBoxContainer"]
+layout_mode = 2
+
+[node name="PowerLabel" type="Label" parent="Panel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "BASE GRID POWER"
+modulate = Color(0.7, 0.7, 0.7, 1)
+
+[node name="ChargeBar" type="ProgressBar" parent="Panel/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 18)
+value = 0.0
+show_percentage = true
+
+[node name="ChargeMinsLabel" type="Label" parent="Panel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "0 / 60 min"
+horizontal_alignment = 1
+
+[node name="PowerSlot" type="VBoxContainer" parent="Panel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Panel/VBoxContainer/PowerSlot"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "Power Slot"
+horizontal_alignment = 1
+
+[node name="Button" type="Button" parent="Panel/VBoxContainer/PowerSlot"]
+layout_mode = 2
+text = "Insert Energy Cell (+60 min)"
+
+[node name="HSep2" type="HSeparator" parent="Panel/VBoxContainer"]
+layout_mode = 2
+
+[node name="TurretLabel" type="Label" parent="Panel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "EXPANSION PORTS"
+modulate = Color(0.7, 0.7, 0.7, 1)
+
+[node name="TurretSlot" type="VBoxContainer" parent="Panel/VBoxContainer"]
+layout_mode = 2
+modulate = Color(0.45, 0.45, 0.45, 1)
+tooltip_text = "Unlocked in future update"
+mouse_filter = 0
+
+[node name="ColorRect" type="ColorRect" parent="Panel/VBoxContainer/TurretSlot"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 36)
+color = Color(0.15, 0.15, 0.15, 1)
+
+[node name="Label" type="Label" parent="Panel/VBoxContainer/TurretSlot"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "🔒 Turret Port — Unlocked in future update"
+horizontal_alignment = 1
+modulate = Color(0.55, 0.55, 0.55, 1)
+
+[node name="CloseButton" type="Button" parent="Panel/VBoxContainer"]
+layout_mode = 2
+text = "Close"

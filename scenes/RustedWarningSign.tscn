@@ -1,0 +1,21 @@
+[gd_scene load_steps=2 format=4]
+
+[ext_resource type="Script" path="res://scripts/RustedWarningSign.gd" id="1_sign"]
+
+[node name="RustedWarningSign" type="Node2D"]
+script = ExtResource("1_sign")
+z_index = 20
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="Label" type="Label" parent="."]
+offset_left = -52.0
+offset_top = -40.0
+offset_right = 52.0
+offset_bottom = -8.0
+theme_override_colors/font_color = Color(0.84, 0.78, 0.66, 1)
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3

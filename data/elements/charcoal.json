@@ -1,17 +1,21 @@
 {
   "id": "charcoal",
-  "symbol": "C+",
+  "symbol": "C*",
   "display_name": "Charcoal",
   "category": "organic",
-  "weight": 0.4,
-  "stress_multiplier": 0.5,
+  "weight": 1.0,
+  "stress_multiplier": 1.0,
   "properties": {
-    "flammability": 0.8,
-    "toxicity": 0.0,
-    "reactivity": 0.6,
-    "carbon_pct_when_burned": 0.85,
+    "flammability": 0.85,
+    "toxicity": 0.05,
+    "reactivity": 0.45,
+    "carbon_percentage": 0.85,
+    "steel_window_carbon_min_pct": 0.6,
+    "steel_window_carbon_max_pct": 2.5,
     "fuel_value": 600
   },
   "carrier_risk": "low",
-  "biome_spawn": []
+  "biome_spawn": ["starter_forest", "iron_hills", "deep_mines"],
+  "environmental_hint": "Black, porous carbon produced by controlled wood burning.",
+  "primary_use": "High-grade fuel and steel alloying agent."
 }
