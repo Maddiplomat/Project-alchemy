@@ -12,10 +12,6 @@ script = ExtResource("1_mrmnk")
 color = Color(0.141176, 0.0745098, 0.0980392, 1)
 polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 
-[node name="Spikes" type="Polygon2D" parent="."]
-color = Color(0.788235, 0.227451, 0.196078, 1)
-polygon = PackedVector2Array(-8, 8, -6, -4, -2, 8, 0, -4, 4, 8, 6, -4, 8, 8)
-
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_a2h0j")
 
