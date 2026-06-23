@@ -169,15 +169,15 @@ func get_active_risk_reason(element_id: StringName) -> String:
 					return ""
 			if player != null and scene_root != null and scene_root.has_method("is_rain_blocked_at_world_position"):
 				if not bool(scene_root.call("is_rain_blocked_at_world_position", player.global_position)):
-					return "Lithium is decaying because it started raining."
+					return "Lithium charge is draining in rain. Get under shelter or store it dry."
 			else:
-				return "Lithium is decaying because it started raining."
+				return "Lithium charge is draining in rain. Get under shelter or store it dry."
 				
 		var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
 		var player := scene_root.find_child("Player", true, false) as Node2D
 		if player != null and scene_root != null and scene_root.has_method("is_water_at_world_position"):
 			if bool(scene_root.call("is_water_at_world_position", player.global_position)):
-				return "Lithium is decaying because you are in water."
+				return "Lithium charge is draining because you are standing in water."
 		return ""
 
 	if bool(_external_triggers.get(element_id, false)):
@@ -193,13 +193,26 @@ func get_active_risk_reason(element_id: StringName) -> String:
 
 	var hp_threshold := float(conditions.get(&"hp_threshold", -1.0))
 	if hp_threshold >= 0.0 and float(GameManager.player_health) <= float(GameManager.max_player_health) * hp_threshold:
-		return "Material is igniting because your health is critically low (<= %d%%)." % int(hp_threshold * 100)
+		return "%s is igniting because your health is critically low (<= %d%%)." % [
+			_get_item_display_name(element_id),
+			int(hp_threshold * 100)
+		]
 
 	var status_trigger := StringName(str(conditions.get(&"status_trigger", "")))
 	if not status_trigger.is_empty() and GameManager.player_status_effects.has(status_trigger):
-		return "Material is igniting because you are %s." % status_trigger
+		return "%s is igniting because you are %s." % [
+			_get_item_display_name(element_id),
+			status_trigger
+		]
 
 	return ""
+
+
+func _get_item_display_name(item_id: StringName) -> String:
+	var element_data := ElementDatabase.get_element(item_id)
+	if not element_data.is_empty():
+		return str(element_data.get(&"display_name", item_id))
+	return String(item_id).replace("_", " ").capitalize()
 
 
 func set_external_trigger(element_id: StringName, active: bool, reason: String = "") -> void:

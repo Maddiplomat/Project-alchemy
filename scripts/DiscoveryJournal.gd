@@ -56,7 +56,7 @@ const DISCOVERY_DATA := {
 	&"sulfur": {
 		&"unlocks_recipe": [StringName(&"sulfuric_bolt"), StringName(&"distillation_kit")],
 		&"next_hint": "Take sulfur to the chem bench and start with bolt compounds or distillation tools.",
-		&"hazard_notes": "Chemically reactive and unstable in the wrong carrying conditions.",
+		&"hazard_notes": "Carried sulfur can ignite at low HP, while burning, or near active heat sources. Store it in a Volatile Locker when possible. Exposed sulfur nodes degrade during Acid Mist.",
 		&"scanner_clue": "Volatile yellow reagent with strong chemical branching paths.",
 	},
 	&"distillation_kit": {
@@ -64,6 +64,12 @@ const DISCOVERY_DATA := {
 		&"next_hint": "Use distilled outputs and reactive materials at the chem bench.",
 		&"hazard_notes": "Process tool. Safety depends on whatever it is distilling.",
 		&"scanner_clue": "Precision apparatus tuned for separation and purification workflows.",
+	},
+	&"lithium": {
+		&"unlocks_recipe": [],
+		&"next_hint": "Keep lithium dry, then route it into power cells, traps, or late-base infrastructure.",
+		&"hazard_notes": "Rain or open water drains lithium charge. Electrical storms recharge it slowly. Keep it dry or store it in a Dry Box.",
+		&"scanner_clue": "Highly reactive light metal with strong charge-storage behavior.",
 	},
 	&"rust_bolt": {
 		&"unlocks_recipe": [],

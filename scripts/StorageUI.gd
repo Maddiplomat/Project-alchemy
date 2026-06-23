@@ -9,6 +9,7 @@ const DRAG_HINT_TEXT := "Drag between player and chest. Wheel or Q/E adjusts qty
 
 @onready var panel: Panel = $StoragePanel
 @onready var player_grid: GridContainer = $StoragePanel/PanelContent/PlayerColumn/PlayerGrid
+@onready var chest_column: VBoxContainer = $StoragePanel/PanelContent/ChestColumn
 @onready var chest_grid: GridContainer = $StoragePanel/PanelContent/ChestColumn/ChestGrid
 @onready var player_weight_label: Label = $StoragePanel/PanelContent/PlayerColumn/WeightLabel
 @onready var chest_title_label: Label = $StoragePanel/PanelContent/ChestColumn/ChestTitle
@@ -20,12 +21,16 @@ var drag_origin_container := ""
 var drag_quantity := 0
 var drag_source_quantity := 0
 var drag_ghost: TextureRect = null
+var _storage_context: Dictionary = {}
+var _storage_status_label: Label = null
+var _storage_detail_label: Label = null
 
 
 func _ready() -> void:
 	layer = 11
 	_ensure_grid_slot_count(player_grid, InventoryManager.DEFAULT_SLOT_COUNT, "player")
 	_ensure_grid_slot_count(chest_grid, DEFAULT_STORAGE_SLOT_COUNT, "chest")
+	_ensure_storage_info_labels()
 	panel.visible = false
 	InventoryManager.inventory_changed.connect(_refresh_all.unbind(1))
 	InventoryManager.active_slot_changed.connect(_refresh_all.unbind(1))
@@ -36,18 +41,25 @@ func _ready() -> void:
 
 
 func bind_chest(bound_chest_id: StringName) -> void:
+	bind_storage(bound_chest_id, {})
+
+
+func bind_storage(bound_chest_id: StringName, context: Dictionary = {}) -> void:
 	chest_id = bound_chest_id
+	_storage_context = context.duplicate(true)
 	StorageManager.ensure_container(chest_id)
 	var title := StorageManager.get_container_title(chest_id)
 	if title == "Storage Chest":
 		chest_title_label.text = "%s %s" % [title, String(chest_id).substr(0, 8)]
 	else:
 		chest_title_label.text = title
+	_refresh_storage_info()
 	_refresh_all()
 
 
 func open_ui() -> void:
 	panel.visible = true
+	_refresh_storage_info()
 	_refresh_all()
 
 
@@ -129,6 +141,7 @@ func _refresh_all(_unused = null) -> void:
 	if chest_id.is_empty():
 		return
 	_ensure_grid_slot_count(chest_grid, StorageManager.get_slot_count(chest_id), "chest")
+	_refresh_storage_info()
 	_refresh_player_grid()
 	_refresh_chest_grid()
 
@@ -158,6 +171,32 @@ func _refresh_chest_grid() -> void:
 
 func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 	player_weight_label.text = "%.1f / %.1f kg" % [total_weight, carry_capacity]
+
+
+func _ensure_storage_info_labels() -> void:
+	if chest_column == null or _storage_status_label != null:
+		return
+
+	_storage_status_label = Label.new()
+	_storage_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_storage_status_label.modulate = Color(0.94, 0.92, 0.78, 1.0)
+	chest_column.add_child(_storage_status_label)
+	chest_column.move_child(_storage_status_label, chest_grid.get_index())
+
+	_storage_detail_label = Label.new()
+	_storage_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_storage_detail_label.modulate = Color(0.78, 0.84, 0.90, 1.0)
+	chest_column.add_child(_storage_detail_label)
+	chest_column.move_child(_storage_detail_label, chest_grid.get_index())
+
+
+func _refresh_storage_info() -> void:
+	if chest_id.is_empty() or _storage_status_label == null or _storage_detail_label == null:
+		return
+
+	var sheltered := bool(_storage_context.get(&"sheltered", false))
+	_storage_status_label.text = StorageManager.get_container_protection_summary(chest_id)
+	_storage_detail_label.text = StorageManager.get_container_exposure_summary(chest_id, sheltered)
 
 
 func _on_chest_inventory_changed(changed_chest_id: StringName) -> void:

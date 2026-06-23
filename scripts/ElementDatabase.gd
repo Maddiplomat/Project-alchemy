@@ -356,8 +356,8 @@ func _get_seed_element_data() -> Array[Dictionary]:
 				&"conductivity": 0.0,
 				&"radiation": 0.0,
 			},
-			"Yellow crust near geothermal vents.",
-			"Ignites if carried while the player is burning or severely overheated.",
+			"Yellow crust near geothermal vents and unstable weather pockets.",
+			"Carried sulfur ignites at low HP, while burning, or near active heat sources. Exposed sulfur nodes degrade during Acid Mist.",
 			[&"sulfur_flats", &"volcanic", &"cave_deep"],
 			"Explosives, acids, and sulfuric weapons."
 		),
@@ -376,8 +376,8 @@ func _get_seed_element_data() -> Array[Dictionary]:
 				&"conductivity": 0.8,
 				&"radiation": 0.0,
 			},
-			"Electric-blue shimmer in dry salt flats.",
-			"Reacts violently with rain and open water.",
+			"Electric-blue shimmer in dry, storm-prone flats.",
+			"Rain or open water drains charge. Electrical storms recharge it slowly if you keep carrying it.",
 			[&"lithium_wastes", &"deep_mines"],
 			"Batteries, charge cells, and high-risk energy tech."
 		),

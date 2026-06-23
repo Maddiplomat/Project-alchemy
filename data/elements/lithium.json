@@ -13,8 +13,8 @@
     "conductivity": 0.95,
     "radiation": 0.0
   },
-  "environmental_hint": "Silvery metallic deposits in rocky outcrops - oddly light for their size",
-  "carrier_risk": "Degrades in rain - loses 15% charge per second of exposure; explodes at 0% charge (radius 1, 15 damage)",
+  "environmental_hint": "Silvery metallic deposits in rocky outcrops and storm-prone dry ground",
+  "carrier_risk": "Rain or open water drains 15% charge per second; electrical storms recharge 1% charge per second; keep it dry or stored in a Dry Box; explodes at 0% charge (15 damage).",
   "biome_spawn": [
     "iron_hills"
   ]

@@ -158,7 +158,11 @@ func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -
 	reset_player_state()
 	clear_dirty()
 	new_game_started.emit()
-	resume_game()
+	var was_paused := is_paused or get_tree().paused
+	is_paused = false
+	get_tree().paused = false
+	if was_paused:
+		pause_changed.emit(is_paused)
 	set_game_state(GameState.PLAYING)
 
 

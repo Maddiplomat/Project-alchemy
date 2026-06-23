@@ -46,8 +46,7 @@ func open_ui() -> void:
 		_player.pause_input()
 	_ensure_ui()
 	if _ui != null:
-		if _ui.has_method("bind_chest"):
-			_ui.bind_chest(container_id)
+		_bind_storage_ui()
 		_ui.open_ui()
 
 
@@ -74,8 +73,7 @@ func restore_from_pickup(entry: Dictionary) -> void:
 	if not restored_id.is_empty():
 		container_id = restored_id
 	_ensure_storage_container()
-	if _ui != null and _ui.has_method("bind_chest"):
-		_ui.bind_chest(container_id)
+	_bind_storage_ui()
 
 
 func _ensure_storage_container() -> void:
@@ -98,8 +96,7 @@ func _ensure_ui() -> void:
 	_ui = STORAGE_UI_SCENE.instantiate()
 	ui_parent.add_child(_ui)
 	_ui.ui_closed.connect(_on_ui_closed)
-	if _ui.has_method("bind_chest"):
-		_ui.bind_chest(container_id)
+	_bind_storage_ui()
 
 
 func _on_ui_closed() -> void:
@@ -165,3 +162,25 @@ func _get_slot_count() -> int:
 
 func _build_storage_texture() -> void:
 	pass
+
+
+func _bind_storage_ui() -> void:
+	if _ui == null:
+		return
+	var context := _build_storage_ui_context()
+	if _ui.has_method("bind_storage"):
+		_ui.bind_storage(container_id, context)
+	elif _ui.has_method("bind_chest"):
+		_ui.bind_chest(container_id)
+
+
+func _build_storage_ui_context() -> Dictionary:
+	return {
+		&"sheltered": _is_sheltered_from_rain(),
+	}
+
+
+func _is_sheltered_from_rain() -> bool:
+	return WeatherSystem != null \
+		and WeatherSystem.has_method("get_shelter_at") \
+		and bool(WeatherSystem.get_shelter_at(global_position))

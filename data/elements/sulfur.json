@@ -17,7 +17,7 @@
     "hp_threshold": 0.2,
     "status_trigger": "burning"
   },
-  "environmental_hint": "Yellow crust near geothermal vents",
-  "carrier_risk": "Ignites if player HP < 20% or burning status active",
+  "environmental_hint": "Yellow crust near geothermal vents and unstable weather pockets",
+  "carrier_risk": "Carried sulfur ignites at low HP, while burning, or near active heat sources; move it into a Volatile Locker when possible; exposed sulfur nodes degrade during Acid Mist.",
   "biome_spawn": ["volcanic"]
 }

@@ -196,6 +196,39 @@ func get_container_title(chest_id: StringName) -> String:
 	return str(config.get(&"title", "Storage"))
 
 
+func get_container_filter_id(chest_id: StringName) -> StringName:
+	var config: Dictionary = container_configs.get(chest_id, {})
+	return StringName(config.get(&"filter_id", FILTER_ANY))
+
+
+func get_container_protection_summary(chest_id: StringName) -> String:
+	match get_container_filter_id(chest_id):
+		FILTER_VOLATILE_ELEMENTS:
+			return "Volatile locker: accepts volatile reagents and keeps them out of your pack, but it is not weather-sealed."
+		FILTER_WATER_REACTIVE_ELEMENTS:
+			return "Dry Box: accepts water-reactive materials and keeps them dry even when the box sits exposed."
+		_:
+			return "Storage Chest: general-purpose storage. Rain protection only comes from roof cover."
+
+
+func get_container_exposure_summary(chest_id: StringName, sheltered: bool) -> String:
+	match get_container_filter_id(chest_id):
+		FILTER_VOLATILE_ELEMENTS:
+			return "Current placement: %s." % (
+				"Sheltered from rain" if sheltered else "Exposed to rain"
+			)
+		FILTER_WATER_REACTIVE_ELEMENTS:
+			return "Current placement: %s." % (
+				"Sheltered, with dry seal intact"
+				if sheltered
+				else "Exposed, but contents stay dry inside the sealed box"
+			)
+		_:
+			return "Current placement: %s." % (
+				"Sheltered from rain" if sheltered else "Exposed to rain"
+			)
+
+
 func can_store_item(chest_id: StringName, item_data: Dictionary) -> bool:
 	var item_id := StringName(str(item_data.get(&"id", item_data.get("id", &""))))
 	if item_id.is_empty():

@@ -2,154 +2,16 @@ extends Node
 
 signal buildable_placed(buildable_id: StringName)
 
-const BUILDABLE_ORDER: Array[StringName] = [
-	&"wall",
-	&"door",
-	&"furnace",
-	&"chem_bench",
-	&"campfire",
-	&"storage_chest",
-	&"powered_light_post",
-	&"electric_trap",
-]
-const BUILDABLE_REGISTRY := {
-	&"wall": {
-		&"prefab": preload("res://scenes/Wall.tscn"),
-		&"cost": {&"stone": 2},
-		&"label": "Wall",
-	},
-	&"door": {
-		&"prefab": preload("res://scenes/Door.tscn"),
-		&"cost": {&"wood": 1, &"stone": 1},
-		&"label": "Door",
-	},
-	&"furnace": {
-		&"prefab": preload("res://scenes/FurnacePlaced.tscn"),
-		&"cost": {&"iron": 3, &"stone": 2},
-		&"label": "Furnace",
-	},
-	&"chem_bench": {
-		&"prefab": preload("res://scenes/ChemBenchPlaced.tscn"),
-		&"cost": {&"iron": 4, &"wood": 2},
-		&"label": "Chem Bench",
-	},
-	&"campfire": {
-		&"prefab": preload("res://scenes/Campfire.tscn"),
-		&"cost": {&"wood": 5},
-		&"label": "Campfire",
-	},
-	&"storage_chest": {
-		&"prefab": preload("res://scenes/StorageChest.tscn"),
-		&"cost": {&"wood": 4},
-		&"label": "Storage Chest",
-	},
-	&"powered_light_post": {
-		&"prefab": preload("res://scenes/PoweredLightPost.tscn"),
-		&"cost": {&"iron": 1, &"energy_cell": 1},
-		&"label": "Powered Light",
-	},
-	&"electric_trap": {
-		&"prefab": preload("res://scenes/ElectricTrap.tscn"),
-		&"cost": {&"iron": 2, &"lithium": 1, &"energy_cell": 1},
-		&"label": "Electric Trap",
-		&"rotatable": true,
-	},
-}
 const DEFAULT_GHOST_SIZE := Vector2i(32, 32)
 const GHOST_VALID_COLOR := Color(0.36, 0.92, 0.48, 0.6)
 const GHOST_INVALID_COLOR := Color(0.92, 0.28, 0.24, 0.6)
 const PLACED_OBJECT_GROUP := &"placed_objects"
-const BUILD_MENU_PANEL_SIZE := Vector2(472.0, 548.0)
-const BUILD_MENU_SECTION_ORDER: Array[StringName] = [&"buildables", &"tools", &"weapons", &"smelting"]
-const BUILD_MENU_TAB_TITLES := {
-	&"buildables": "Build",
-	&"tools": "Tools",
-	&"weapons": "Weapons",
-	&"smelting": "Smelting",
-}
-const MANUAL_RECIPE_DEFINITIONS := {
-	&"iron_axe": {
-		&"display_name": "Iron Axe",
-		&"station": "Furnace Forge",
-		&"inputs": [{&"item_id": &"iron", &"qty": 2}, {&"item_id": &"wood", &"qty": 2}],
-		&"summary": "Forged harvesting axe. Cuts wood faster than hand gathering.",
-	},
-	&"steel_axe": {
-		&"display_name": "Steel Axe",
-		&"station": "Furnace Forge",
-		&"inputs": [{&"item_id": &"steel", &"qty": 2}, {&"item_id": &"wood", &"qty": 2}],
-		&"summary": "Best axe tier. Delivers one wood per chop.",
-		&"discovery_gate": {
-			&"entry_id": &"steel",
-			&"hint": "Discover Steel in the furnace to unlock advanced forge patterns.",
-			&"locked_name": "???",
-		},
-	},
-	&"iron_pickaxe": {
-		&"display_name": "Iron Pickaxe",
-		&"station": "Furnace Forge",
-		&"inputs": [{&"item_id": &"iron", &"qty": 2}, {&"item_id": &"wood", &"qty": 2}],
-		&"summary": "Forged mining tool for stone, iron, and limestone.",
-	},
-	&"steel_pickaxe": {
-		&"display_name": "Steel Pickaxe",
-		&"station": "Furnace Forge",
-		&"inputs": [{&"item_id": &"steel", &"qty": 2}, {&"item_id": &"wood", &"qty": 2}],
-		&"summary": "Best mining tier. Delivers one unit per swing.",
-		&"discovery_gate": {
-			&"entry_id": &"steel",
-			&"hint": "Discover Steel in the furnace to unlock advanced forge patterns.",
-			&"locked_name": "???",
-		},
-	},
-	&"steel_sword": {
-		&"display_name": "Steel Sword",
-		&"station": "Furnace Forge",
-		&"inputs": [{&"item_id": &"steel", &"qty": 1}],
-		&"summary": "Primary melee weapon. Reliable physical sharp damage.",
-		&"discovery_gate": {
-			&"entry_id": &"steel",
-			&"hint": "Discover Steel in the furnace to unlock advanced forge patterns.",
-			&"locked_name": "???",
-		},
-	},
-	&"charcoal": {
-		&"display_name": "Charcoal",
-		&"station": "Furnace Smelt",
-		&"inputs": [{&"item_id": &"wood", &"qty": 1}],
-		&"summary": "Carbonise wood at 400-699C for furnace-grade carbon.",
-	},
-	&"slag": {
-		&"display_name": "Slag",
-		&"station": "Furnace Smelt",
-		&"inputs": [{&"item_id": &"wood", &"qty": 1}],
-		&"summary": "Overburn result. At 700C or above wood collapses into slag.",
-	},
-	&"wrought_iron": {
-		&"display_name": "Wrought Iron",
-		&"station": "Furnace Smelt",
-		&"inputs": [{&"item_id": &"iron", &"qty": 1}, {&"item_id": &"charcoal", &"qty": 1}],
-		&"summary": "Smelt at 1200-1599C with low carbon ratio under 0.5.",
-	},
-	&"steel": {
-		&"display_name": "Steel",
-		&"station": "Furnace Smelt",
-		&"inputs": [{&"item_id": &"iron", &"qty": 1}, {&"item_id": &"charcoal", &"qty": 1}],
-		&"summary": "Optimal alloy window: 1200-1599C with carbon ratio from 0.5 to 2.1.",
-	},
-	&"cast_iron": {
-		&"display_name": "Cast Iron",
-		&"station": "Furnace Smelt",
-		&"inputs": [{&"item_id": &"iron", &"qty": 1}, {&"item_id": &"charcoal", &"qty": 1}],
-		&"summary": "High-carbon result. Use 1200-1599C with ratio above 2.1 up to 4.5.",
-	},
-	&"coke_slag": {
-		&"display_name": "Coke Slag",
-		&"station": "Furnace Smelt",
-		&"inputs": [{&"item_id": &"iron", &"qty": 1}, {&"item_id": &"charcoal", &"qty": 2}],
-		&"summary": "Waste output when carbon overwhelms the iron above a 4.5 ratio.",
-	},
-}
+const BUILD_MENU_PANEL_SIZE := Vector2(456.0, 420.0)
+const SHELTER_COVER_RADIUS_TILES := 1
+const SHELTER_COVER_VALID_COLOR := Color(0.38, 0.76, 0.98, 0.26)
+const SHELTER_COVER_INVALID_COLOR := Color(0.98, 0.54, 0.22, 0.22)
+const SHELTER_SUPPORT_OK_COLOR := Color(0.36, 0.92, 0.48, 0.76)
+const SHELTER_SUPPORT_MISSING_COLOR := Color(0.92, 0.28, 0.24, 0.76)
 
 @export var selected_prefab: PackedScene
 @export var selected_buildable_id: StringName = &"wall"
@@ -162,9 +24,7 @@ var _build_menu_layer: CanvasLayer = null
 var _build_menu_panel: PanelContainer = null
 var _build_menu_title: Label = null
 var _build_menu_hint: Label = null
-var _build_menu_tabs: TabContainer = null
 var _build_menu_buildables_text: RichTextLabel = null
-var _build_menu_section_lists: Dictionary[StringName, VBoxContainer] = {}
 var _ghost_texture: Texture2D = null
 var _placement_shape: Shape2D = null
 var _placement_shape_transform := Transform2D.IDENTITY
@@ -174,6 +34,11 @@ var _last_tile_coords := Vector2i.ZERO
 var _last_world_position := Vector2.ZERO
 var _last_placement_valid := false
 var _restore_data: Dictionary = {}
+var _shelter_preview_root: Node2D = null
+var _shelter_coverage_markers: Array[Sprite2D] = []
+var _shelter_support_markers: Array[Sprite2D] = []
+var _preview_tile_texture: Texture2D = null
+var _dynamic_build_hint := ""
 
 
 func _ready() -> void:
@@ -294,8 +159,10 @@ func _set_build_mode(enabled: bool) -> void:
 	build_mode = enabled
 	if not enabled:
 		_last_placement_valid = false
+		_dynamic_build_hint = ""
 		if is_instance_valid(_ghost):
 			_ghost.visible = false
+		_hide_shelter_preview()
 		if is_instance_valid(_build_menu_layer):
 			_build_menu_layer.visible = false
 		return
@@ -347,7 +214,7 @@ func _rotate_selected_prefab() -> void:
 func _ensure_prefab_configuration() -> void:
 	_buildable_ids.clear()
 	for buildable_id: StringName in _get_buildable_order_source():
-		if _has_buildable(buildable_id):
+		if _has_buildable(buildable_id) and _is_buildable_unlocked(buildable_id):
 			_buildable_ids.append(buildable_id)
 
 	if _buildable_ids.is_empty():
@@ -355,7 +222,7 @@ func _ensure_prefab_configuration() -> void:
 		selected_prefab = null
 		return
 
-	if selected_buildable_id.is_empty() or not _has_buildable(selected_buildable_id):
+	if selected_buildable_id.is_empty() or not _has_buildable(selected_buildable_id) or not _is_buildable_unlocked(selected_buildable_id):
 		selected_buildable_id = _buildable_ids[0]
 
 	_selected_prefab_index = maxi(_buildable_ids.find(selected_buildable_id), 0)
@@ -396,6 +263,8 @@ func _update_build_preview(context: Dictionary) -> void:
 	_ghost.rotation_degrees = _selected_rotation_degrees
 	_ghost.modulate = GHOST_VALID_COLOR if _last_placement_valid else GHOST_INVALID_COLOR
 	_ghost.visible = true
+	_update_shelter_preview(context, tile_coords, _last_placement_valid)
+	_update_dynamic_build_hint(context, tile_coords)
 
 
 func _is_valid_placement(context: Dictionary, tile_coords: Vector2i, world_position: Vector2) -> bool:
@@ -545,16 +414,18 @@ func _selected_buildable_is_overlay() -> bool:
 
 
 func _has_shelter_roof_support(scene_root: Node, tile_coords: Vector2i) -> bool:
+	return _count_shelter_roof_supports(scene_root, tile_coords) >= 2
+
+
+func _count_shelter_roof_supports(scene_root: Node, tile_coords: Vector2i) -> int:
 	if scene_root == null:
-		return false
+		return 0
 
 	var support_count := 0
 	for offset in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
 		if _has_structural_support_at_tile(scene_root, tile_coords + offset):
 			support_count += 1
-			if support_count >= 2:
-				return true
-	return false
+	return support_count
 
 
 func _has_structural_support_at_tile(scene_root: Node, tile_coords: Vector2i) -> bool:
@@ -631,6 +502,97 @@ func _ensure_ghost() -> void:
 	_ghost.texture = _ghost_texture if _ghost_texture != null else _build_default_ghost_texture()
 	_ghost.rotation_degrees = _selected_rotation_degrees
 	current_scene.add_child(_ghost)
+
+
+func _ensure_shelter_preview() -> void:
+	if is_instance_valid(_shelter_preview_root):
+		return
+
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return
+	if _preview_tile_texture == null:
+		_preview_tile_texture = _build_preview_tile_texture()
+
+	_shelter_preview_root = Node2D.new()
+	_shelter_preview_root.name = "ShelterPreview"
+	_shelter_preview_root.z_index = 4095
+	current_scene.add_child(_shelter_preview_root)
+
+	_shelter_coverage_markers.clear()
+	for _i in range(9):
+		var coverage_marker := Sprite2D.new()
+		coverage_marker.texture = _preview_tile_texture
+		coverage_marker.visible = false
+		_shelter_preview_root.add_child(coverage_marker)
+		_shelter_coverage_markers.append(coverage_marker)
+
+	_shelter_support_markers.clear()
+	for _i in range(4):
+		var support_marker := Sprite2D.new()
+		support_marker.texture = _preview_tile_texture
+		support_marker.scale = Vector2(0.55, 0.55)
+		support_marker.visible = false
+		_shelter_preview_root.add_child(support_marker)
+		_shelter_support_markers.append(support_marker)
+
+
+func _hide_shelter_preview() -> void:
+	if not is_instance_valid(_shelter_preview_root):
+		return
+	for marker in _shelter_coverage_markers:
+		marker.visible = false
+	for marker in _shelter_support_markers:
+		marker.visible = false
+
+
+func _update_shelter_preview(context: Dictionary, tile_coords: Vector2i, placement_valid: bool) -> void:
+	if selected_buildable_id != &"shelter_roof":
+		_hide_shelter_preview()
+		return
+
+	_ensure_shelter_preview()
+	if not is_instance_valid(_shelter_preview_root):
+		return
+
+	var ground := context.get(&"ground") as TileMapLayer
+	var scene_root := context.get(&"scene") as Node
+	if ground == null or scene_root == null:
+		_hide_shelter_preview()
+		return
+
+	var coverage_color := SHELTER_COVER_VALID_COLOR if placement_valid else SHELTER_COVER_INVALID_COLOR
+	var coverage_index := 0
+	for y in range(-SHELTER_COVER_RADIUS_TILES, SHELTER_COVER_RADIUS_TILES + 1):
+		for x in range(-SHELTER_COVER_RADIUS_TILES, SHELTER_COVER_RADIUS_TILES + 1):
+			var coverage_tile := tile_coords + Vector2i(x, y)
+			var coverage_marker := _shelter_coverage_markers[coverage_index]
+			coverage_marker.global_position = ground.to_global(ground.map_to_local(coverage_tile))
+			coverage_marker.modulate = coverage_color
+			coverage_marker.visible = true
+			coverage_index += 1
+
+	var support_offsets: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
+	for support_index in range(support_offsets.size()):
+		var support_tile: Vector2i = tile_coords + support_offsets[support_index]
+		var support_marker := _shelter_support_markers[support_index]
+		support_marker.global_position = ground.to_global(ground.map_to_local(support_tile))
+		support_marker.modulate = SHELTER_SUPPORT_OK_COLOR \
+			if _has_structural_support_at_tile(scene_root, support_tile) \
+			else SHELTER_SUPPORT_MISSING_COLOR
+		support_marker.visible = true
+
+
+func _update_dynamic_build_hint(context: Dictionary, tile_coords: Vector2i) -> void:
+	_dynamic_build_hint = ""
+	if selected_buildable_id == &"shelter_roof":
+		var support_count := _count_shelter_roof_supports(context.get(&"scene") as Node, tile_coords)
+		_dynamic_build_hint = (
+			"Shelter Roof covers a 3x3 area. Needs 2 adjacent walls or doors. "
+			+ "Support near cursor: %d/2." % support_count
+		)
+	if _build_menu_hint != null:
+		_build_menu_hint.text = _build_hint_text()
 
 
 func _cache_prefab_preview_data() -> void:
@@ -715,33 +677,20 @@ func _ensure_build_menu() -> void:
 	_build_menu_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(_build_menu_hint)
 
-	_build_menu_tabs = TabContainer.new()
-	_build_menu_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content.add_child(_build_menu_tabs)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(scroll)
 
-	for section_id: StringName in BUILD_MENU_SECTION_ORDER:
-		var scroll := ScrollContainer.new()
-		scroll.name = str(BUILD_MENU_TAB_TITLES.get(section_id, String(section_id).capitalize()))
-		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		_build_menu_tabs.add_child(scroll)
-
-		if section_id == &"buildables":
-			var text := RichTextLabel.new()
-			text.bbcode_enabled = false
-			text.fit_content = true
-			text.scroll_active = false
-			text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			text.selection_enabled = false
-			text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			scroll.add_child(text)
-			_build_menu_buildables_text = text
-		else:
-			var list := VBoxContainer.new()
-			list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			list.add_theme_constant_override("separation", 8)
-			scroll.add_child(list)
-			_build_menu_section_lists[section_id] = list
+	var text := RichTextLabel.new()
+	text.bbcode_enabled = false
+	text.fit_content = true
+	text.scroll_active = false
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.selection_enabled = false
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(text)
+	_build_menu_buildables_text = text
 
 
 func _refresh_build_menu() -> void:
@@ -749,16 +698,10 @@ func _refresh_build_menu() -> void:
 		return
 
 	_build_menu_title.text = "Build Mode"
-	_build_menu_hint.text = "B or Esc closes. Tab cycles placeables. Recipes live here now; station lines tell you where each one is made."
+	_build_menu_hint.text = _build_hint_text()
 
 	if _build_menu_buildables_text != null:
 		_build_menu_buildables_text.text = _build_buildables_text()
-
-	for section_id: StringName in _build_menu_section_lists.keys():
-		var section_list: VBoxContainer = _build_menu_section_lists[section_id]
-		if section_list == null:
-			continue
-		_populate_recipe_section(section_id, section_list)
 
 
 func _get_selected_buildable_prefab() -> PackedScene:
@@ -824,21 +767,19 @@ func _instantiate_saved_entries(entries: Array, scene_root: Node, ground: TileMa
 func _get_buildable_order_source() -> Array[StringName]:
 	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_order"):
 		return BuildingDatabase.get_buildable_order()
-	return BUILDABLE_ORDER.duplicate()
+	return []
 
 
 func _has_buildable(buildable_id: StringName) -> bool:
 	if BuildingDatabase != null and BuildingDatabase.has_method("has_buildable"):
 		return bool(BuildingDatabase.has_buildable(buildable_id))
-	return BUILDABLE_REGISTRY.has(buildable_id)
+	return false
 
 
 func _get_buildable_entry(buildable_id: StringName) -> Dictionary:
 	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_entry"):
 		return BuildingDatabase.get_buildable_entry(buildable_id)
-	if not BUILDABLE_REGISTRY.has(buildable_id):
-		return {}
-	return (BUILDABLE_REGISTRY[buildable_id] as Dictionary).duplicate(true)
+	return {}
 
 
 func _format_cost(cost: Dictionary) -> String:
@@ -847,7 +788,7 @@ func _format_cost(cost: Dictionary) -> String:
 
 	var parts: Array[String] = []
 	for item_id: StringName in cost.keys():
-		parts.append("%s x%d" % [String(item_id).capitalize(), int(cost[item_id])])
+		parts.append("%s x%d" % [_format_resource_name(item_id), int(cost[item_id])])
 	parts.sort()
 	return ", ".join(parts)
 
@@ -858,321 +799,84 @@ func _build_buildables_text() -> String:
 		"",
 	]
 
-	if _buildable_ids.is_empty():
+	var ordered_ids := _get_buildable_order_source()
+	if ordered_ids.is_empty():
 		lines.append("No buildables configured.")
 		return "\n".join(lines)
 
-	for i in range(_buildable_ids.size()):
-		var buildable_id := _buildable_ids[i]
-		var is_selected := i == _selected_prefab_index
+	var current_category := &""
+	for buildable_id: StringName in ordered_ids:
+		if not _has_buildable(buildable_id):
+			continue
+		var category_id := StringName(_get_buildable_entry(buildable_id).get(&"category", &""))
+		if category_id != current_category:
+			if not current_category.is_empty():
+				lines.append("")
+			current_category = category_id
+			lines.append(_get_buildable_category_label(category_id))
+			lines.append("")
+
+		var is_unlocked := _is_buildable_unlocked(buildable_id)
+		var is_selected := is_unlocked and _buildable_ids.find(buildable_id) == _selected_prefab_index
 		var cost := _get_buildable_cost(buildable_id)
-		lines.append("%s%s" % ["> " if is_selected else "  ", _get_buildable_display_name(buildable_id)])
-		lines.append("  Cost: %s" % _format_cost(cost))
-		if is_selected and _is_selected_buildable_rotatable():
-			lines.append("  Rotation: %d degrees (R rotates)" % int(round(_selected_rotation_degrees)))
-		lines.append("  Status: %s" % ("Ready to place" if _can_afford_cost(cost) else "Missing materials"))
+		var display_name := _get_buildable_display_name(buildable_id) if is_unlocked else _get_buildable_locked_name(buildable_id)
+		lines.append("%s%s" % ["> " if is_selected else "  ", display_name])
+		if is_unlocked:
+			lines.append("  Cost: %s" % _format_cost(cost))
+			var description := _get_buildable_description(buildable_id)
+			if not description.is_empty():
+				lines.append("  %s" % description)
+			if bool(_get_buildable_entry(buildable_id).get(&"overlay", false)):
+				lines.append("  Placement: overlay")
+			if bool(_get_buildable_entry(buildable_id).get(&"rotatable", false)):
+				if is_selected:
+					lines.append("  Rotation: %d degrees (R rotates)" % int(round(_selected_rotation_degrees)))
+				else:
+					lines.append("  Rotation: rotatable")
+			lines.append("  Status: %s" % ("Ready to place" if _can_afford_cost(cost) else "Missing materials"))
+		else:
+			lines.append("  Locked: %s" % _get_buildable_gate_hint(buildable_id))
 		lines.append("")
 
 	return "\n".join(lines)
 
 
-func _populate_recipe_section(section_id: StringName, section_list: VBoxContainer) -> void:
-	for child in section_list.get_children():
-		child.queue_free()
-
-	var entries := _get_recipe_browser_entries(section_id)
-	if entries.is_empty():
-		var empty_label := Label.new()
-		empty_label.text = "No entries."
-		section_list.add_child(empty_label)
-		return
-
-	for entry: Dictionary in entries:
-		section_list.add_child(_create_recipe_entry_card(entry))
-
-
-func _get_recipe_browser_entries(section_id: StringName) -> Array[Dictionary]:
-	match section_id:
-		&"tools":
-			return _get_tool_recipe_entries()
-		&"weapons":
-			return _get_weapon_recipe_entries()
-		&"smelting":
-			return _get_smelting_recipe_entries()
-		_:
-			return []
-
-
-func _get_tool_recipe_entries() -> Array[Dictionary]:
-	var entries: Array[Dictionary] = []
-	var distillation_recipe := _get_recipe_entry_from_database(&"distillation_kit")
-	if not distillation_recipe.is_empty():
-		entries.append(distillation_recipe)
-	for output_id: StringName in [&"iron_axe", &"steel_axe", &"iron_pickaxe", &"steel_pickaxe"]:
-		entries.append(_get_manual_recipe_entry(output_id))
-	return entries
-
-
-func _get_weapon_recipe_entries() -> Array[Dictionary]:
-	var entries: Array[Dictionary] = []
-	for recipe_id: StringName in [&"rust_bolt", &"sulfuric_bolt", &"corrosive_slurry"]:
-		var recipe_entry := _get_recipe_entry_from_database(recipe_id)
-		if not recipe_entry.is_empty():
-			entries.append(recipe_entry)
-	entries.append(_get_manual_recipe_entry(&"steel_sword"))
-	return entries
-
-
-func _get_smelting_recipe_entries() -> Array[Dictionary]:
-	var entries: Array[Dictionary] = []
-	for output_id: StringName in [&"charcoal", &"slag", &"wrought_iron", &"steel", &"cast_iron", &"coke_slag"]:
-		entries.append(_get_manual_recipe_entry(output_id))
-	return entries
-
-
-func _get_recipe_entry_from_database(recipe_id: StringName) -> Dictionary:
-	var recipe := RecipeDatabase.get_recipe(recipe_id)
-	if recipe.is_empty():
-		return {}
-
-	var output: Dictionary = recipe.get(&"output", {})
-	var output_id: StringName = output.get(&"item_id", &"")
-	var station_id: StringName = &""
-	if recipe.get(&"station", null) != null:
-		station_id = StringName(recipe.get(&"station", &""))
-	var is_unlocked := _is_recipe_unlocked(recipe)
-	var entry := {
-		&"recipe_id": recipe_id,
-		&"display_name": _get_database_recipe_display_name(recipe_id, output_id),
-		&"station_id": station_id,
-		&"station": _get_station_label(station_id),
-		&"inputs": (recipe.get(&"inputs", []) as Array).duplicate(true),
-		&"output_id": output_id,
-		&"output_qty": int(output.get(&"qty", 1)),
-		&"summary": _get_database_recipe_summary(recipe_id),
-		&"status_text": "Use station" if not station_id.is_empty() else ("Ready now" if CraftingManager.can_craft(recipe_id) else "Missing materials"),
-		&"can_execute_from_menu": station_id.is_empty(),
-		&"is_unlocked": is_unlocked,
-		&"locked_name": _get_locked_name(recipe),
-		&"locked_hint": _get_recipe_gate_hint(recipe),
-	}
-	return entry
-
-
-func _get_manual_recipe_entry(output_id: StringName) -> Dictionary:
-	var recipe: Dictionary = MANUAL_RECIPE_DEFINITIONS.get(output_id, {})
-	if recipe.is_empty():
-		return {}
-
-	var inputs: Array = recipe.get(&"inputs", [])
-	var is_unlocked := _is_recipe_unlocked(recipe)
-	return {
-		&"recipe_id": &"",
-		&"display_name": str(recipe.get(&"display_name", _format_item_name(output_id))),
-		&"station_id": StringName(str(recipe.get(&"station", ""))),
-		&"station": str(recipe.get(&"station", "")),
-		&"inputs": inputs.duplicate(true),
-		&"output_id": output_id,
-		&"output_qty": 1,
-		&"summary": str(recipe.get(&"summary", "")),
-		&"status_text": "Use station" if _has_required_inputs(inputs) else "Missing materials",
-		&"can_execute_from_menu": false,
-		&"is_unlocked": is_unlocked,
-		&"locked_name": _get_locked_name(recipe),
-		&"locked_hint": _get_recipe_gate_hint(recipe),
-	}
-
-
-func _has_required_inputs(inputs: Array) -> bool:
-	for input_data in inputs:
-		if not (input_data is Dictionary):
-			return false
-		var item_id: StringName = input_data.get(&"item_id", input_data.get(&"element_id", &""))
-		var quantity := int(input_data.get(&"qty", input_data.get(&"quantity", 0)))
-		if item_id.is_empty() or quantity <= 0:
-			return false
-		if InventoryManager.get_stack(item_id).quantity < quantity:
-			return false
+func _is_buildable_unlocked(buildable_id: StringName) -> bool:
+	if BuildingDatabase != null and BuildingDatabase.has_method("is_buildable_unlocked"):
+		return bool(BuildingDatabase.is_buildable_unlocked(buildable_id))
 	return true
 
 
-func _format_recipe_inputs(inputs: Array) -> String:
-	var parts: Array[String] = []
-	for input_data in inputs:
-		if not (input_data is Dictionary):
-			continue
-		var item_id: StringName = input_data.get(&"item_id", input_data.get(&"element_id", &""))
-		var quantity := int(input_data.get(&"qty", input_data.get(&"quantity", 0)))
-		if item_id.is_empty() or quantity <= 0:
-			continue
-		parts.append("%s x%d" % [_format_item_name(item_id), quantity])
-	return ", ".join(parts)
+func _get_buildable_category_label(category_id: StringName) -> String:
+	if BuildingDatabase != null and BuildingDatabase.has_method("get_category_label"):
+		return str(BuildingDatabase.get_category_label(category_id))
+	return String(category_id).capitalize()
 
 
-func _create_recipe_entry_card(entry: Dictionary) -> Control:
-	var panel := PanelContainer.new()
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.13, 0.14, 0.16, 0.96)
-	style.border_color = Color(0.29, 0.31, 0.36, 1.0)
-	style.border_width_left = 1
-	style.border_width_top = 1
-	style.border_width_right = 1
-	style.border_width_bottom = 1
-	style.corner_radius_top_left = 8
-	style.corner_radius_top_right = 8
-	style.corner_radius_bottom_left = 8
-	style.corner_radius_bottom_right = 8
-	panel.add_theme_stylebox_override("panel", style)
-
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 10)
-	margin.add_theme_constant_override("margin_top", 8)
-	margin.add_theme_constant_override("margin_right", 10)
-	margin.add_theme_constant_override("margin_bottom", 8)
-	panel.add_child(margin)
-
-	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 6)
-	margin.add_child(content)
-
-	var is_unlocked := bool(entry.get(&"is_unlocked", true))
-	var title := Label.new()
-	title.text = str(entry.get(&"display_name", "Unknown")) if is_unlocked else str(entry.get(&"locked_name", "???"))
-	title.add_theme_font_size_override("font_size", 15)
-	content.add_child(title)
-
-	if is_unlocked:
-		var recipe_line := Label.new()
-		recipe_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		recipe_line.text = "%s -> %s x%d" % [
-			_format_recipe_inputs(entry.get(&"inputs", [])),
-			_format_item_name(entry.get(&"output_id", &"")),
-			int(entry.get(&"output_qty", 1)),
-		]
-		content.add_child(recipe_line)
-	else:
-		var locked_label := Label.new()
-		locked_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		locked_label.text = str(entry.get(&"locked_hint", "Discover more to identify this recipe."))
-		content.add_child(locked_label)
-
-	var station := str(entry.get(&"station", ""))
-	if not station.is_empty():
-		var station_label := Label.new()
-		station_label.text = "Station: %s" % station
-		content.add_child(station_label)
-
-	var summary := str(entry.get(&"summary", ""))
-	if is_unlocked and not summary.is_empty():
-		var summary_label := Label.new()
-		summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		summary_label.text = summary
-		content.add_child(summary_label)
-
-	var footer := HBoxContainer.new()
-	footer.alignment = BoxContainer.ALIGNMENT_END
-	footer.add_theme_constant_override("separation", 10)
-	content.add_child(footer)
-
-	var status_label := Label.new()
-	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	status_label.text = "Status: %s" % (str(entry.get(&"status_text", "")) if is_unlocked else "Discovery required")
-	footer.add_child(status_label)
-
-	var action_button := Button.new()
-	action_button.custom_minimum_size = Vector2(116, 28)
-	footer.add_child(action_button)
-
-	var can_execute_from_menu := bool(entry.get(&"can_execute_from_menu", false))
-	var recipe_id := StringName(entry.get(&"recipe_id", &""))
-	var station_id := StringName(entry.get(&"station_id", &""))
-
-	if is_unlocked and can_execute_from_menu and not recipe_id.is_empty():
-		action_button.text = "Craft"
-		action_button.disabled = not CraftingManager.can_craft(recipe_id)
-		action_button.pressed.connect(_on_recipe_action_pressed.bind(recipe_id))
-	else:
-		action_button.text = "Use %s" % _get_station_label(station_id) if is_unlocked and not station_id.is_empty() else "Locked"
-		action_button.disabled = true
-
-	return panel
+func _get_buildable_description(buildable_id: StringName) -> String:
+	return str(_get_buildable_entry(buildable_id).get(&"description", ""))
 
 
-func _on_recipe_action_pressed(recipe_id: StringName) -> void:
-	if recipe_id.is_empty():
-		return
-	if not CraftingManager.craft(recipe_id):
-		_refresh_build_menu()
-		return
-	_refresh_build_menu()
+func _get_buildable_gate_hint(buildable_id: StringName) -> String:
+	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_gate_hint"):
+		return str(BuildingDatabase.get_buildable_gate_hint(buildable_id))
+	return ""
 
 
-func _format_item_name(item_id: StringName) -> String:
+func _get_buildable_locked_name(buildable_id: StringName) -> String:
+	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_locked_name"):
+		return str(BuildingDatabase.get_buildable_locked_name(buildable_id))
+	return "???"
+
+
+func _format_resource_name(item_id: StringName) -> String:
 	var element_data := ElementDatabase.get_element(item_id)
 	if not element_data.is_empty():
 		return str(element_data.get(&"display_name", item_id))
 	var words := String(item_id).split("_", false)
-	for i in range(words.size()):
-		words[i] = words[i].capitalize()
+	for index in range(words.size()):
+		words[index] = words[index].capitalize()
 	return " ".join(words)
-
-
-func _get_station_label(station_id: StringName) -> String:
-	if station_id.is_empty():
-		return ""
-	match station_id:
-		&"chem_bench":
-			return "Chem Bench"
-		&"furnace":
-			return "Furnace"
-		_:
-			return _format_item_name(station_id)
-
-
-func _get_database_recipe_display_name(recipe_id: StringName, output_id: StringName) -> String:
-	match recipe_id:
-		&"rust_bolt":
-			return "Rust Bolt"
-		&"sulfuric_bolt":
-			return "Sulfuric Bolt"
-		&"distillation_kit":
-			return "Distillation Kit"
-		_:
-			return _format_item_name(output_id)
-
-
-func _get_database_recipe_summary(recipe_id: StringName) -> String:
-	match recipe_id:
-		&"rust_bolt":
-			return "A low-tier chemistry lead. The pair matters, but the bench conditions decide what you actually get."
-		&"sulfuric_bolt":
-			return "A volatile chemistry lead. Expect multiple outcomes depending on ratio, heat, and whether the reaction stays under control."
-		&"corrosive_slurry":
-			return "A buffered sulfur slurry. Stable enough to bottle only when the catalyst and bench conditions are right."
-		&"distillation_kit":
-			return "Workbench extraction kit required for safe sulfur pickup."
-		_:
-			return ""
-
-
-func _is_recipe_unlocked(recipe: Dictionary) -> bool:
-	if DiscoveryLog != null and DiscoveryLog.has_method("is_recipe_unlocked"):
-		return bool(DiscoveryLog.is_recipe_unlocked(recipe))
-	return true
-
-
-func _get_recipe_gate_hint(recipe: Dictionary) -> String:
-	if DiscoveryLog != null and DiscoveryLog.has_method("get_recipe_gate_hint"):
-		return str(DiscoveryLog.get_recipe_gate_hint(recipe))
-	return ""
-
-
-func _get_locked_name(recipe: Dictionary) -> String:
-	if DiscoveryLog != null and DiscoveryLog.has_method("get_recipe_locked_name"):
-		return str(DiscoveryLog.get_recipe_locked_name(recipe))
-	return "???"
 
 
 func _is_pointer_over_build_menu() -> bool:
@@ -1200,4 +904,22 @@ func _build_default_ghost_texture() -> Texture2D:
 			var is_border := x == 0 or y == 0 or x == DEFAULT_GHOST_SIZE.x - 1 or y == DEFAULT_GHOST_SIZE.y - 1
 			if is_border:
 				image.set_pixel(x, y, Color(0.08, 0.08, 0.08, 1.0))
+	return ImageTexture.create_from_image(image)
+
+
+func _build_hint_text() -> String:
+	if not _dynamic_build_hint.is_empty():
+		return _dynamic_build_hint
+	if selected_buildable_id == &"shelter_roof":
+		return "B or Esc closes. Tab cycles buildables. Shelter Roof covers a 3x3 area and needs 2 adjacent walls or doors."
+	return "B or Esc closes. Tab cycles buildables. Recipes live in the pack UI and field journal, not in the build menu."
+
+
+func _build_preview_tile_texture() -> Texture2D:
+	var image := Image.create(DEFAULT_GHOST_SIZE.x, DEFAULT_GHOST_SIZE.y, false, Image.FORMAT_RGBA8)
+	image.fill(Color(1.0, 1.0, 1.0, 0.0))
+	for y in range(DEFAULT_GHOST_SIZE.y):
+		for x in range(DEFAULT_GHOST_SIZE.x):
+			var is_border := x <= 1 or y <= 1 or x >= DEFAULT_GHOST_SIZE.x - 2 or y >= DEFAULT_GHOST_SIZE.y - 2
+			image.set_pixel(x, y, Color(1.0, 1.0, 1.0, 1.0 if is_border else 0.72))
 	return ImageTexture.create_from_image(image)

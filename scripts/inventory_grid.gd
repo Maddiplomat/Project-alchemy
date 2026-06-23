@@ -571,13 +571,19 @@ func _update_tooltip_hint(item_data: Dictionary, element_data: Dictionary, item_
 	elif item_id == &"steel_pickaxe":
 		tooltip_hint = "Best mining tool. One stone or iron every click."
 	elif item_id == SULFUR_ITEM_ID:
-		tooltip_hint = "Carrier risk: low HP or burning can ignite it."
+		tooltip_hint = "Carrier risk: low HP, burning, or nearby heat can ignite carried sulfur. Move it into a Volatile Locker when you can."
 	elif item_id == &"lithium":
-		tooltip_hint = "Carrier risk: water exposure drains charge and can trigger an explosion."
+		tooltip_hint = "Carrier risk: rain or water drains 15% charge per second. Electrical storms recharge 1% per second. Keep it dry or store it in a Dry Box."
 	elif not element_data.is_empty():
 		var primary_use := str(element_data.get(&"primary_use", "")).strip_edges()
 		if not primary_use.is_empty():
 			tooltip_hint = primary_use
+
+	if item_id == SULFUR_ITEM_ID and WeatherSystem != null and WeatherSystem.has_method("get_current_state"):
+		if int(WeatherSystem.get_current_state()) == WeatherSystem.WeatherState.ACID_MIST:
+			if not tooltip_hint.is_empty():
+				tooltip_hint += "\n\n"
+			tooltip_hint += "[NOTICE] Acid Mist is active: exposed sulfur nodes in the world are degrading."
 			
 	if item_id == _carrier_risk_item_id and CarrierRiskSystem.has_method("get_active_risk_reason"):
 		var active_risk_reason = CarrierRiskSystem.get_active_risk_reason(item_id)

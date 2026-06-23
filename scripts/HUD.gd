@@ -35,6 +35,8 @@ const CARRY_VIGNETTE_START_RATIO := 0.9
 const CARRY_VIGNETTE_END_RATIO := 1.0
 const CARRIER_VIGNETTE_PULSE_SPEED := 5.5
 const CARRIER_VIGNETTE_URGENT_SPEED := 9.0
+const OBJECTIVES_PANEL_DEFAULT_TOP := 44.0
+const OBJECTIVES_PANEL_DEFAULT_BOTTOM := 166.0
 
 @export var debug_seed_journal_entries := 0
 @export var debug_open_journal_on_ready := false
@@ -60,6 +62,13 @@ var _is_toast_playing := false
 var _toast_panel: PanelContainer = null
 var _toast_label: Label = null
 var _toast_tween: Tween = null
+var _weather_strip: Panel = null
+var _weather_strip_style: StyleBoxFlat = null
+var _weather_status_label: Label = null
+var _weather_detail_label: Label = null
+var _weather_warning_label: Label = null
+var _weather_day_label: Label = null
+var _weather_player: Node2D = null
 
 func _ready() -> void:
 	GameManager.player_health_changed.connect(_update_health)
@@ -91,8 +100,14 @@ func _ready() -> void:
 	_setup_carrier_warning_audio()
 	_setup_discovery_journal()
 	_setup_night_defense_warning()
+	_setup_weather_strip()
 	if has_node("/root/BaseDefenseSystem"):
 		BaseDefenseSystem.night_threat_detected.connect(_on_night_threat_detected)
+	if WeatherSystem != null:
+		if WeatherSystem.has_signal("weather_warning_started"):
+			WeatherSystem.weather_warning_started.connect(_on_weather_warning_started)
+		if WeatherSystem.has_signal("weather_warning_ended"):
+			WeatherSystem.weather_warning_ended.connect(_on_weather_warning_ended)
 
 	if debug_seed_journal_entries > 0:
 		DiscoveryLog.seed_debug_entries(debug_seed_journal_entries, true)
@@ -101,15 +116,16 @@ func _ready() -> void:
 		call_deferred("_open_debug_journal")
 
 	_setup_toast_notification()
+	GameManager.environmental_warning_changed.connect(_on_environmental_warning_changed)
 
 
 func _process(delta: float) -> void:
-	if _active_carrier_risk_seconds <= 0:
-		return
-	_carrier_vignette_phase += delta * (
-		CARRIER_VIGNETTE_URGENT_SPEED if _active_carrier_risk_seconds <= 1 else CARRIER_VIGNETTE_PULSE_SPEED
-	)
-	_update_carry_vignette()
+	if _active_carrier_risk_seconds > 0:
+		_carrier_vignette_phase += delta * (
+			CARRIER_VIGNETTE_URGENT_SPEED if _active_carrier_risk_seconds <= 1 else CARRIER_VIGNETTE_PULSE_SPEED
+		)
+		_update_carry_vignette()
+	_update_weather_strip()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -186,10 +202,10 @@ func _on_time_of_day_changed(_time_of_day: float) -> void:
 
 
 func _refresh_day_time() -> void:
-	var total_minutes: int = int(round(GameManager.time_of_day * 24.0 * 60.0)) % (24 * 60)
-	var hour: int = int(floor(float(total_minutes) / 60.0))
-	var minute: int = total_minutes % 60
-	day_time_label.text = "Day %d  %02d:%02d" % [GameManager.current_day, hour, minute]
+	var day_time_text := _get_day_time_text()
+	day_time_label.text = day_time_text
+	if _weather_day_label != null:
+		_weather_day_label.text = day_time_text
 
 
 func _on_objectives_changed(_objective_id: StringName) -> void:
@@ -334,6 +350,88 @@ func _setup_night_defense_warning() -> void:
 	_night_defense_strip.add_child(_night_defense_label)
 
 
+func _setup_weather_strip() -> void:
+	_weather_strip = Panel.new()
+	_weather_strip.name = "WeatherStrip"
+	_weather_strip.anchor_left = 0.5
+	_weather_strip.anchor_right = 0.5
+	_weather_strip.offset_left = -240.0
+	_weather_strip.offset_top = 16.0
+	_weather_strip.offset_right = 240.0
+	_weather_strip.offset_bottom = 132.0
+	_weather_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_weather_strip)
+
+	_weather_strip_style = StyleBoxFlat.new()
+	_weather_strip_style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+	_weather_strip_style.border_color = Color(0.0, 0.0, 0.0, 0.0)
+	_weather_strip_style.border_width_left = 0
+	_weather_strip_style.border_width_top = 0
+	_weather_strip_style.border_width_right = 0
+	_weather_strip_style.border_width_bottom = 0
+	_weather_strip_style.corner_radius_top_left = 0
+	_weather_strip_style.corner_radius_top_right = 0
+	_weather_strip_style.corner_radius_bottom_left = 0
+	_weather_strip_style.corner_radius_bottom_right = 0
+	_weather_strip.add_theme_stylebox_override("panel", _weather_strip_style)
+
+	var content := VBoxContainer.new()
+	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	content.offset_left = 12.0
+	content.offset_top = 10.0
+	content.offset_right = -12.0
+	content.offset_bottom = -10.0
+	content.add_theme_constant_override("separation", 3)
+	_weather_strip.add_child(content)
+
+	var header_row := HBoxContainer.new()
+	header_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(header_row)
+
+	var title_label := Label.new()
+	title_label.text = "Weather"
+	title_label.add_theme_font_size_override("font_size", 15)
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header_row.add_child(title_label)
+
+	var header_spacer := Control.new()
+	header_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header_row.add_child(header_spacer)
+
+	_weather_day_label = Label.new()
+	_weather_day_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_weather_day_label.text = _get_day_time_text()
+	header_row.add_child(_weather_day_label)
+
+	_weather_status_label = Label.new()
+	_weather_status_label.text = "Clear Skies"
+	_weather_status_label.add_theme_font_size_override("font_size", 19)
+	_weather_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(_weather_status_label)
+
+	_weather_detail_label = Label.new()
+	_weather_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_weather_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_weather_detail_label.text = "Danger: Low   Time left: about 3m\nShelter: Exposed"
+	content.add_child(_weather_detail_label)
+
+	_weather_warning_label = Label.new()
+	_weather_warning_label.visible = false
+	_weather_warning_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_weather_warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_weather_warning_label.modulate = Color(1.0, 0.87, 0.48, 1.0)
+	content.add_child(_weather_warning_label)
+
+	if day_time_label != null:
+		day_time_label.visible = false
+
+	if objectives_panel != null:
+		objectives_panel.offset_top = OBJECTIVES_PANEL_DEFAULT_TOP
+		objectives_panel.offset_bottom = OBJECTIVES_PANEL_DEFAULT_BOTTOM
+
+	_update_weather_strip()
+
+
 func _on_night_threat_detected(_world_position: Vector2, stack_count: int) -> void:
 	if _night_defense_strip == null or _night_defense_label == null:
 		return
@@ -350,6 +448,18 @@ func _on_night_threat_detected(_world_position: Vector2, stack_count: int) -> vo
 		if _night_defense_strip != null:
 			_night_defense_strip.visible = false
 	)
+
+
+func _on_weather_warning_started(target_state: int, seconds_remaining: float) -> void:
+	_queue_toast(
+		"%s incoming in %s. Shelter or store sensitive materials now."
+			% [_get_weather_state_name(target_state), _format_weather_eta(seconds_remaining)]
+	)
+	_update_weather_strip()
+
+
+func _on_weather_warning_ended(_target_state: int) -> void:
+	_update_weather_strip()
 
 
 func _on_death_overlay_fade_finished() -> void:
@@ -515,6 +625,130 @@ func _get_risk_item_name(item_id: StringName) -> String:
 	return String(item_id).replace("_", " ").capitalize()
 
 
+func _update_weather_strip() -> void:
+	if _weather_strip == null or _weather_status_label == null or _weather_detail_label == null:
+		return
+	if WeatherSystem == null or not WeatherSystem.has_method("get_current_state"):
+		_weather_strip.visible = false
+		return
+
+	_weather_strip.visible = true
+	var current_state := int(WeatherSystem.get_current_state())
+	var sheltered := _is_player_sheltered()
+	_weather_status_label.text = _get_weather_state_name(current_state)
+	_weather_detail_label.text = "Danger: %s   Time left: %s\nShelter: %s" % [
+		_get_weather_danger_label(current_state),
+		_format_weather_eta(float(WeatherSystem.get_state_time_remaining())),
+		"Covered" if sheltered else "Exposed",
+	]
+
+	var warning_active := WeatherSystem.has_method("is_transition_warning_active") \
+		and bool(WeatherSystem.is_transition_warning_active())
+	if warning_active:
+		var target_state := int(WeatherSystem.get_transition_warning_state())
+		var warning_eta := float(WeatherSystem.get_transition_warning_seconds_remaining())
+		_weather_warning_label.visible = true
+		_weather_warning_label.text = "Incoming: %s in %s" % [
+			_get_weather_state_name(target_state),
+			_format_weather_eta(warning_eta),
+		]
+	else:
+		_weather_warning_label.visible = false
+		_weather_warning_label.text = ""
+
+	_apply_weather_strip_style(current_state, sheltered)
+
+
+func _apply_weather_strip_style(current_state: int, sheltered: bool) -> void:
+	if _weather_strip_style == null or _weather_status_label == null or _weather_detail_label == null:
+		return
+	match current_state:
+		WeatherSystem.WeatherState.RAIN:
+			_weather_status_label.modulate = Color(0.82, 0.92, 1.0, 1.0)
+			_weather_detail_label.modulate = Color(0.82, 0.92, 1.0, 1.0)
+		WeatherSystem.WeatherState.ACID_MIST:
+			_weather_status_label.modulate = Color(0.82, 1.0, 0.76, 1.0)
+			_weather_detail_label.modulate = Color(0.82, 1.0, 0.76, 1.0)
+		WeatherSystem.WeatherState.ELECTRICAL_STORM:
+			_weather_status_label.modulate = Color(1.0, 0.94, 0.70, 1.0)
+			_weather_detail_label.modulate = Color(1.0, 0.94, 0.70, 1.0)
+		_:
+			_weather_status_label.modulate = Color(1.0, 1.0, 1.0, 1.0)
+			_weather_detail_label.modulate = Color(1.0, 1.0, 1.0, 1.0)
+
+	if _weather_day_label != null:
+		_weather_day_label.modulate = Color(1.0, 1.0, 1.0, 0.95)
+	if sheltered:
+		_weather_detail_label.modulate = _weather_detail_label.modulate.lightened(0.08)
+
+
+func _get_weather_state_name(state: int) -> String:
+	match state:
+		WeatherSystem.WeatherState.RAIN:
+			return "Rain"
+		WeatherSystem.WeatherState.ACID_MIST:
+			return "Acid Mist"
+		WeatherSystem.WeatherState.ELECTRICAL_STORM:
+			return "Electrical Storm"
+		_:
+			return "Clear Skies"
+
+
+func _get_weather_danger_label(state: int) -> String:
+	match state:
+		WeatherSystem.WeatherState.RAIN:
+			return "Medium"
+		WeatherSystem.WeatherState.ACID_MIST:
+			return "High"
+		WeatherSystem.WeatherState.ELECTRICAL_STORM:
+			return "Severe"
+		_:
+			return "Low"
+
+
+func _format_weather_eta(seconds: float) -> String:
+	var clamped_seconds := maxi(int(round(maxf(seconds, 0.0))), 0)
+	if clamped_seconds <= 20:
+		return "under 20s"
+	if clamped_seconds < 60:
+		return "about %ds" % clamped_seconds
+	if clamped_seconds < 90:
+		return "about 1m"
+	if clamped_seconds < 150:
+		return "about 2m"
+	return "about %dm" % int(round(float(clamped_seconds) / 60.0))
+
+
+func _get_day_time_text() -> String:
+	var total_minutes: int = int(round(GameManager.time_of_day * 24.0 * 60.0)) % (24 * 60)
+	var hour: int = int(floor(float(total_minutes) / 60.0))
+	var minute: int = total_minutes % 60
+	return "Day %d  %02d:%02d" % [GameManager.current_day, hour, minute]
+
+
+func _get_weather_player() -> Node2D:
+	if _weather_player != null and is_instance_valid(_weather_player):
+		return _weather_player
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return null
+	_weather_player = current_scene.find_child("Player", true, false) as Node2D
+	return _weather_player
+
+
+func _is_player_sheltered() -> bool:
+	var player := _get_weather_player()
+	if player == null:
+		return false
+	if WeatherSystem != null and WeatherSystem.has_method("get_shelter_at"):
+		if bool(WeatherSystem.get_shelter_at(player.global_position)):
+			return true
+	var current_scene := get_tree().current_scene
+	return current_scene != null \
+		and current_scene.has_method("is_rain_blocked_at_world_position") \
+		and bool(current_scene.call("is_rain_blocked_at_world_position", player.global_position))
+
+
 func _update_carry_vignette() -> void:
 	var risk_alpha := 0.0
 	if _active_carrier_risk_seconds > 0:
@@ -620,6 +854,20 @@ func _on_element_discovered_toast(element_id: StringName) -> void:
 		var recipe = RecipeDatabase.get_recipe(recipe_id)
 		if recipe.get("requires_discovery") == element_id:
 			_queue_toast("New recipe available: %s" % recipe.get("name", recipe_id))
+
+
+func _on_environmental_warning_changed(warning_id: StringName, active: bool) -> void:
+	if not active:
+		return
+	match warning_id:
+		&"rain":
+			_queue_toast("Rain started — carried lithium charge drains unless sheltered or stored dry.")
+		&"electrical_storm":
+			_queue_toast("Electrical storm — carried lithium slowly recharges while the storm holds.")
+		&"acid_mist":
+			_queue_toast("Acid Mist — exposed sulfur nodes are degrading in the open.")
+		_:
+			pass
 
 func _queue_toast(message: String) -> void:
 	_toast_queue.append(message)

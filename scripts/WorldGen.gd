@@ -61,10 +61,19 @@ var _tree_spawn_sequence := 0
 
 
 func _ready() -> void:
+	_ensure_active_game_session()
 	_prepare_element_spawn_system()
 	if generate_on_ready:
 		generate_world(_get_world_seed())
 	_wire_camera_bounds()
+
+
+func _ensure_active_game_session() -> void:
+	if GameManager == null:
+		return
+	if GameManager.game_state == GameManager.GameState.BOOT \
+		or GameManager.game_state == GameManager.GameState.MAIN_MENU:
+		GameManager.start_new_game()
 
 
 func generate_world(world_seed: int) -> void:

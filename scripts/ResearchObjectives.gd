@@ -6,6 +6,11 @@ signal objective_activated(objective_id: StringName)
 
 const STARTER_SCAN_TARGETS: Array[StringName] = [&"wood", &"stone", &"iron"]
 const FIRST_SMELT_OUTPUTS: Array[StringName] = [&"wrought_iron", &"steel", &"cast_iron"]
+const SULFUR_FLATS_WEATHER_ENTRY_ID := &"sulfur_flats_weather_unlocked"
+const CHEM_BENCH_ACCESS_ENTRY_ID := &"chem_bench_access"
+const SULFUR_STORAGE_ENTRY_ID := &"sulfur_storage"
+const DRY_BOX_ACCESS_ENTRY_ID := &"dry_box_access"
+const BASE_POWER_ONLINE_ENTRY_ID := &"base_power_online"
 
 var objectives: Dictionary[StringName, Dictionary] = {}
 
@@ -48,6 +53,8 @@ func _connect_completion_hooks() -> void:
 		InventoryManager.inventory_changed.connect(_on_inventory_changed)
 	if BuildSystem != null and BuildSystem.has_signal("buildable_placed") and not BuildSystem.buildable_placed.is_connected(_on_buildable_placed):
 		BuildSystem.buildable_placed.connect(_on_buildable_placed)
+	if GameManager != null and GameManager.has_signal("scanner_tier_changed") and not GameManager.scanner_tier_changed.is_connected(_on_scanner_tier_changed):
+		GameManager.scanner_tier_changed.connect(_on_scanner_tier_changed)
 	if not get_tree().node_added.is_connected(_on_tree_node_added):
 		get_tree().node_added.connect(_on_tree_node_added)
 
@@ -103,8 +110,10 @@ func _seed_objectives() -> void:
 		&"condition_type": "discover",
 		&"condition_target": &"steel",
 		&"condition_count": 1,
-		&"reward_type": "unlock_upgrade",
-		&"reward_target": &"chem_bench",
+		&"reward_type": "unlock_journal",
+		&"reward_target": CHEM_BENCH_ACCESS_ENTRY_ID,
+		&"reward_entry_title": "Chem Bench Plans",
+		&"reward_entry_notes": "Steelwork unlocks the chem bench build and opens your first reactive station.",
 		&"completed": false,
 		&"active": false,
 	})
@@ -133,11 +142,89 @@ func _seed_objectives() -> void:
 		&"active": false,
 	})
 	_add_objective({
+		&"id": &"reach_sulfur_flats",
+		&"title": "Reach the Sulfur Flats",
+		&"hint": "Push into the sulfur flats and log the weather shift there.",
+		&"condition_type": "discover",
+		&"condition_target": SULFUR_FLATS_WEATHER_ENTRY_ID,
+		&"condition_count": 1,
+		&"reward_type": "",
+		&"reward_target": &"",
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
 		&"id": &"sulfur_run",
 		&"title": "Sulfur Run",
-		&"hint": "Return to base carrying sulfur.",
+		&"hint": "Bring sulfur back alive and do not leave it riding in your pack.",
 		&"condition_type": "collect",
 		&"condition_target": &"sulfur",
+		&"condition_count": 1,
+		&"reward_type": "unlock_journal",
+		&"reward_target": SULFUR_STORAGE_ENTRY_ID,
+		&"reward_entry_title": "Volatile Storage",
+		&"reward_entry_notes": "Sulfur handling now warrants a dedicated Volatile Locker instead of open carry.",
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
+		&"id": &"build_volatile_locker",
+		&"title": "Build a Volatile Locker",
+		&"hint": "Place a Volatile Locker so sulfur enters base storage as its own system.",
+		&"condition_type": "build",
+		&"condition_target": &"volatile_locker",
+		&"condition_count": 1,
+		&"reward_type": "",
+		&"reward_target": &"",
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
+		&"id": &"recover_lithium",
+		&"title": "Recover Lithium",
+		&"hint": "Bring back lithium and treat weather exposure as part of the resource.",
+		&"condition_type": "collect",
+		&"condition_target": &"lithium",
+		&"condition_count": 1,
+		&"reward_type": "unlock_journal",
+		&"reward_target": DRY_BOX_ACCESS_ENTRY_ID,
+		&"reward_entry_title": "Dry Storage Plans",
+		&"reward_entry_notes": "Lithium handling unlocks the Dry Box for weather-safe storage and staging.",
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
+		&"id": &"build_dry_box",
+		&"title": "Build a Dry Box",
+		&"hint": "Place a Dry Box before lithium becomes routine cargo.",
+		&"condition_type": "build",
+		&"condition_target": &"dry_box",
+		&"condition_count": 1,
+		&"reward_type": "",
+		&"reward_target": &"",
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
+		&"id": &"charge_base",
+		&"title": "Charge the Base Grid",
+		&"hint": "Use lithium and iron at the Battery Station, then slot an energy cell into the grid.",
+		&"condition_type": "upgrade",
+		&"condition_target": &"advanced_scanner",
+		&"condition_count": 1,
+		&"reward_type": "unlock_journal",
+		&"reward_target": BASE_POWER_ONLINE_ENTRY_ID,
+		&"reward_entry_title": "Base Grid Online",
+		&"reward_entry_notes": "Charged grid power unlocks perimeter lighting and trap placement from one shared source.",
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
+		&"id": &"power_defenses",
+		&"title": "Set a Powered Perimeter",
+		&"hint": "Place a Powered Light or Electric Trap to bring base defense online through the battery grid.",
+		&"condition_type": "build",
+		&"condition_target": &"powered_defense",
 		&"condition_count": 1,
 		&"reward_type": "",
 		&"reward_target": &"",
@@ -209,8 +296,10 @@ func _apply_reward(objective: Dictionary) -> void:
 				RecipeDatabase.unlock_recipe(reward_target)
 		"unlock_journal":
 			if DiscoveryLog != null and DiscoveryLog.has_method("log_progression_discovery"):
-				var title := String(objective.get(&"title", "Objective Reward"))
-				var notes := "Research objective reward unlocked: %s" % String(reward_target).replace("_", " ").capitalize()
+				var title := str(objective.get(&"reward_entry_title", objective.get(&"title", "Objective Reward")))
+				var notes := str(objective.get(&"reward_entry_notes", ""))
+				if notes.is_empty():
+					notes = "Research objective reward unlocked: %s" % String(reward_target).replace("_", " ").capitalize()
 				DiscoveryLog.log_progression_discovery(reward_target, title, notes)
 		"unlock_upgrade":
 			pass
@@ -243,8 +332,28 @@ func _refresh_active_objective() -> void:
 		&"distillation_kit":
 			if InventoryManager != null and InventoryManager.get_stack(&"distillation_kit").quantity >= 1:
 				_complete_objective(objective_id)
+		&"reach_sulfur_flats":
+			if DiscoveryLog != null and DiscoveryLog.has_method("has_discovery") and DiscoveryLog.has_discovery(SULFUR_FLATS_WEATHER_ENTRY_ID):
+				_complete_objective(objective_id)
 		&"sulfur_run":
 			if InventoryManager != null and InventoryManager.get_stack(&"sulfur").quantity >= 1:
+				_complete_objective(objective_id)
+		&"build_volatile_locker":
+			if _has_placed_buildable(&"volatile_locker"):
+				_complete_objective(objective_id)
+		&"recover_lithium":
+			if InventoryManager != null and InventoryManager.get_stack(&"lithium").quantity >= 1:
+				_complete_objective(objective_id)
+			elif ElementDatabase != null and ElementDatabase.is_element_discovered(&"lithium"):
+				_complete_objective(objective_id)
+		&"build_dry_box":
+			if _has_placed_buildable(&"dry_box"):
+				_complete_objective(objective_id)
+		&"charge_base":
+			if GameManager != null and GameManager.scanner_tier == GameManager.ScannerTier.ADVANCED:
+				_complete_objective(objective_id)
+		&"power_defenses":
+			if _has_placed_any_buildable([&"powered_light_post", &"electric_trap"]):
 				_complete_objective(objective_id)
 
 
@@ -313,12 +422,32 @@ func _on_inventory_changed(_slot_index: int) -> void:
 
 
 func _on_buildable_placed(buildable_id: StringName) -> void:
-	if not _is_active_objective(&"build_chem_bench"):
+	match buildable_id:
+		&"chem_bench":
+			if _is_active_objective(&"build_chem_bench"):
+				_progress[&"build_chem_bench"] = 1
+				_complete_objective(&"build_chem_bench")
+		&"volatile_locker":
+			if _is_active_objective(&"build_volatile_locker"):
+				_progress[&"build_volatile_locker"] = 1
+				_complete_objective(&"build_volatile_locker")
+		&"dry_box":
+			if _is_active_objective(&"build_dry_box"):
+				_progress[&"build_dry_box"] = 1
+				_complete_objective(&"build_dry_box")
+		&"powered_light_post", &"electric_trap":
+			if _is_active_objective(&"power_defenses"):
+				_progress[&"power_defenses"] = 1
+				_complete_objective(&"power_defenses")
+
+
+func _on_scanner_tier_changed(_previous_tier: int, new_tier: int) -> void:
+	if not _is_active_objective(&"charge_base"):
 		return
-	if buildable_id != &"chem_bench":
+	if new_tier != GameManager.ScannerTier.ADVANCED:
 		return
-	_progress[&"build_chem_bench"] = 1
-	_complete_objective(&"build_chem_bench")
+	_progress[&"charge_base"] = 1
+	_complete_objective(&"charge_base")
 
 
 func _is_active_objective(objective_id: StringName) -> bool:
@@ -340,5 +469,12 @@ func _has_placed_buildable(buildable_id: StringName) -> bool:
 			continue
 		var object_type := StringName((node as Node).get_meta(&"object_type", &""))
 		if object_type == buildable_id:
+			return true
+	return false
+
+
+func _has_placed_any_buildable(buildable_ids: Array[StringName]) -> bool:
+	for buildable_id: StringName in buildable_ids:
+		if _has_placed_buildable(buildable_id):
 			return true
 	return false

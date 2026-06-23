@@ -12,7 +12,7 @@ signal held_item_changed(item_id: StringName)
 signal capacity_changed(current_weight: float, max_weight: float)
 signal volatile_risk_changed(risk_item_ids: Array[StringName])
 
-const MAX_SLOTS := 5
+const MAX_SLOTS := 5 # Intentional current vertical-slice field loadout target.
 const DEFAULT_SLOT_COUNT := MAX_SLOTS
 const DEFAULT_ITEM_WEIGHT := 1.0
 const DEFAULT_ITEM_PURITY := 1.0
