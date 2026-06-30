@@ -7,6 +7,10 @@ const DISTILLATION_KIT_ITEM_ID := &"distillation_kit"
 const DISTILLATION_KIT_DURABILITY_LOSS := 0.05
 const SULFUR_ACID_MIST_DEGRADE_INTERVAL_SECONDS := 1.0
 const SULFUR_ACID_MIST_PURITY_LOSS_PER_TICK := 0.08
+const RAIN_DEGRADE_INTERVAL_SECONDS := 6.0
+const RAIN_PURITY_LOSS_PER_TICK := 0.10
+const RAIN_LITHIUM_CHARGE_LOSS_PER_TICK := 0.25
+const RAIN_STACK_LOSS_PURITY_THRESHOLD := 0.20
 
 @export var element_id: StringName = &""
 @export var pickup_quantity := 1
@@ -22,6 +26,7 @@ var _player_in_range: CharacterBody2D = null
 var _pickup_textures := {}
 var _glow_textures := {}
 var _acid_mist_degrade_timer: Timer = null
+var _rain_degrade_timer: Timer = null
 
 
 func _ready() -> void:
@@ -89,19 +94,26 @@ func _setup_weather_reactivity() -> void:
 	_acid_mist_degrade_timer.wait_time = SULFUR_ACID_MIST_DEGRADE_INTERVAL_SECONDS
 	_acid_mist_degrade_timer.timeout.connect(_on_acid_mist_degrade_timeout)
 	add_child(_acid_mist_degrade_timer)
+	_rain_degrade_timer = Timer.new()
+	_rain_degrade_timer.one_shot = true
+	_rain_degrade_timer.wait_time = RAIN_DEGRADE_INTERVAL_SECONDS
+	_rain_degrade_timer.timeout.connect(_on_rain_degrade_timeout)
+	add_child(_rain_degrade_timer)
 	if WeatherSystem != null and WeatherSystem.has_method("get_current_state"):
 		_on_weather_changed(int(WeatherSystem.get_current_state()))
 
 
 func _on_weather_changed(new_state: int) -> void:
-	if get_element_id() != &"sulfur":
-		return
-	if new_state == WeatherSystem.WeatherState.ACID_MIST:
+	if get_element_id() == &"sulfur" and new_state == WeatherSystem.WeatherState.ACID_MIST:
 		if _acid_mist_degrade_timer != null and _acid_mist_degrade_timer.is_stopped():
 			_acid_mist_degrade_timer.start()
-		return
-	if _acid_mist_degrade_timer != null:
+	elif _acid_mist_degrade_timer != null:
 		_acid_mist_degrade_timer.stop()
+	if _is_rain_vulnerable() and new_state == WeatherSystem.WeatherState.RAIN:
+		if _rain_degrade_timer != null and _rain_degrade_timer.is_stopped():
+			_rain_degrade_timer.start()
+	elif _rain_degrade_timer != null:
+		_rain_degrade_timer.stop()
 
 
 func _on_acid_mist_degrade_timeout() -> void:
@@ -124,6 +136,43 @@ func _on_acid_mist_degrade_timeout() -> void:
 		return
 
 	_acid_mist_degrade_timer.start()
+
+
+func _on_rain_degrade_timeout() -> void:
+	if not _is_rain_vulnerable():
+		return
+	if WeatherSystem == null or not WeatherSystem.has_method("get_current_state"):
+		return
+	if int(WeatherSystem.get_current_state()) != WeatherSystem.WeatherState.RAIN:
+		return
+	if _is_sheltered_from_rain():
+		_rain_degrade_timer.start()
+		return
+
+	var item_data := _ensure_pickup_payload()
+	var item_id := get_element_id()
+	var current_purity := clampf(float(item_data.get(&"purity", InventoryManager.DEFAULT_ITEM_PURITY)), 0.0, 1.0)
+	var next_purity := clampf(current_purity - RAIN_PURITY_LOSS_PER_TICK, 0.0, 1.0)
+	item_data[&"purity"] = next_purity
+	if item_id == &"lithium":
+		var current_charge := clampf(float(item_data.get(&"charge", InventoryManager.DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
+		item_data[&"charge"] = clampf(current_charge - RAIN_LITHIUM_CHARGE_LOSS_PER_TICK, 0.0, 1.0)
+	set_meta(&"item_data", item_data)
+	_apply_weather_degradation_visuals(next_purity)
+
+	var lithium_depleted := item_id == &"lithium" and float(item_data.get(&"charge", 0.0)) <= 0.0
+	if next_purity <= RAIN_STACK_LOSS_PURITY_THRESHOLD or lithium_depleted:
+		pickup_quantity -= 1
+		if pickup_quantity <= 0:
+			queue_free()
+			return
+		item_data[&"purity"] = maxf(next_purity, 0.45)
+		if item_id == &"lithium":
+			item_data[&"charge"] = maxf(float(item_data.get(&"charge", 0.0)), 0.25)
+		set_meta(&"item_data", item_data)
+		_apply_weather_degradation_visuals(float(item_data.get(&"purity", next_purity)))
+
+	_rain_degrade_timer.start()
 
 
 func _ensure_pickup_payload() -> Dictionary:
@@ -155,6 +204,24 @@ func _apply_weather_degradation_visuals(purity: float) -> void:
 		glow_sprite.modulate.a = purity_alpha * 0.7
 	if sulfur_particles != null:
 		sulfur_particles.amount_ratio = maxf(0.25, purity)
+
+
+func _is_rain_vulnerable() -> bool:
+	if _is_resource_spawn_pickup():
+		return false
+	return get_element_id() in [&"wood", &"charcoal", &"iron", &"sulfur", &"lithium", &"energy_cell"]
+
+
+func _is_resource_spawn_pickup() -> bool:
+	if StringName(get_meta(&"pickup_origin", &"")) == &"resource_spawn":
+		return true
+	return has_meta(&"tile_coords")
+
+
+func _is_sheltered_from_rain() -> bool:
+	return WeatherSystem != null \
+		and WeatherSystem.has_method("get_shelter_at") \
+		and bool(WeatherSystem.get_shelter_at(global_position))
 
 
 func _get_pickup_item_data() -> Dictionary:

@@ -15,6 +15,7 @@ const DEFAULT_TEMPERATURE_C := 90.0
 const MIN_TEMPERATURE_C := 20.0
 const MAX_TEMPERATURE_C := 260.0
 const POWER_CELL_DURATION_SECONDS := 480.0
+const RAIN_CONTAMINATION_REASON := &"rain_contamination"
 
 signal player_entered_range
 signal player_exited_range
@@ -41,6 +42,7 @@ var _ratio_target_slot: StringName = RATIO_TARGET_INPUT_B
 var _ratio_percent := DEFAULT_RATIO_PERCENT
 var _temperature_c := DEFAULT_TEMPERATURE_C
 var _power_cell_charge_remaining := 0.0
+var _rain_failure_taught := false
 
 
 func _ready() -> void:
@@ -57,6 +59,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_drain_power_bonus(_delta)
+	_update_rain_visual_state()
 	if _interact_locked_until_release:
 		if not Input.is_action_pressed("interact"):
 			_interact_locked_until_release = false
@@ -204,7 +207,11 @@ func set_temperature(value: float) -> void:
 
 
 func evaluate_current_reaction() -> Dictionary:
-	return ChemistryEngine.evaluate_chem_bench_reaction(_build_reaction_state())
+	var result := ChemistryEngine.evaluate_chem_bench_reaction(_build_reaction_state())
+	if has_rain_condition_risk():
+		var notes := str(result.get(&"notes", result.get("notes", "")))
+		result[&"notes"] = "%s Rainwater is contaminating the bench." % notes if not notes.is_empty() else "Rainwater is contaminating the bench."
+	return result
 
 
 func can_accept_reactant(item_id: StringName) -> bool:
@@ -221,6 +228,8 @@ func trigger_stabilization_failure(reason: StringName) -> void:
 		current_scene = get_tree().root
 
 	match reason:
+		RAIN_CONTAMINATION_REASON:
+			pass
 		&"heat_runaway":
 			var explosion := CHEMICAL_EXPLOSION_SCENE.instantiate() as Node2D
 			current_scene.add_child(explosion)
@@ -257,6 +266,38 @@ func has_power_cell_installed() -> bool:
 
 func has_power_bonus() -> bool:
 	return _is_switchboard_boost_enabled() and _is_base_grid_powered()
+
+
+func has_rain_condition_risk() -> bool:
+	return get_rain_condition_risk() > 0.0
+
+
+func get_rain_condition_risk() -> float:
+	if BaseThreatDirector == null or not BaseThreatDirector.has_method("get_chemistry_rain_risk"):
+		return 0.0
+	return float(BaseThreatDirector.get_chemistry_rain_risk(global_position))
+
+
+func get_rain_slowdown_multiplier() -> float:
+	if BaseThreatDirector == null or not BaseThreatDirector.has_method("get_chemistry_slowdown_multiplier"):
+		return 1.0
+	return float(BaseThreatDirector.get_chemistry_slowdown_multiplier(global_position))
+
+
+func should_rain_contaminate_reaction(result: Dictionary) -> bool:
+	if result.is_empty() or StringName(str(result.get("output_id", ""))).is_empty():
+		return false
+	var risk := get_rain_condition_risk()
+	if risk <= 0.0:
+		return false
+	if _has_reactive_inputs() and not _rain_failure_taught:
+		_rain_failure_taught = true
+		return true
+	return randf() < risk
+
+
+func get_rain_failure_reason() -> StringName:
+	return RAIN_CONTAMINATION_REASON
 
 
 func get_power_state() -> Dictionary:
@@ -324,6 +365,31 @@ func _is_base_grid_powered() -> bool:
 	if BaseGrid == null or not BaseGrid.has_method("is_powered"):
 		return false
 	return bool(BaseGrid.is_powered())
+
+
+func _has_reactive_inputs() -> bool:
+	for slot_id: StringName in [SLOT_INPUT_A, SLOT_INPUT_B, SLOT_CATALYST]:
+		var slot_state: Dictionary = _slot_state.get(slot_id, {})
+		var item_id := StringName(slot_state.get(&"item_id", &""))
+		if item_id.is_empty():
+			continue
+		var element_data := ElementDatabase.get_element(item_id)
+		var properties: Dictionary = element_data.get(&"properties", {})
+		if String(element_data.get(&"category", "")).to_lower() == "volatile":
+			return true
+		if float(properties.get(&"reactivity", 0.0)) >= 0.8:
+			return true
+	return false
+
+
+func _update_rain_visual_state() -> void:
+	if sprite == null:
+		return
+	var risk := get_rain_condition_risk()
+	if risk <= 0.0:
+		sprite.modulate = Color.WHITE
+	else:
+		sprite.modulate = Color(0.72, 0.82, 0.92, 1.0)
 
 
 func _start_interaction() -> void:

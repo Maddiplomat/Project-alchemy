@@ -21,6 +21,8 @@ const DETECTION_RADIUS := 240.0
 const REBURROW_RADIUS := 200.0
 const MAX_PURSUIT_RADIUS := 320.0
 const ATTACK_RANGE := 96.0
+const PLAYER_EMERGE_OFFSET := 24.0
+const MIN_ATTACK_SEPARATION := 18.0
 const EMERGE_WARNING_SECONDS := 2.0
 const ATTACK_COOLDOWN_SECONDS := 1.35
 const HEALTH_BAR_HIDE_DELAY := 2.0
@@ -67,6 +69,7 @@ func _ready() -> void:
 	navigation_agent.target_desired_distance = 6.0
 	_setup_health_bar()
 	_sync_scan_proxy()
+	_sync_player_collision_exception()
 
 	if GameManager.has_signal("day_started"):
 		GameManager.day_started.connect(_on_day_started)
@@ -162,6 +165,14 @@ func _update_patrol_state(delta: float) -> void:
 	if effective_detection_radius <= 0.0:
 		_report_lit_zone_presence()
 		return
+	var attraction_target := _get_base_attraction_target()
+	if attraction_target != Vector2(INF, INF):
+		_patrol_target = attraction_target
+		if global_position.distance_to(attraction_target) <= 18.0:
+			_report_base_breach()
+		_face_target(_patrol_target)
+		velocity = global_position.direction_to(_patrol_target) * _patrol_speed
+		return
 	if _player_target != null and global_position.distance_to(_player_target.global_position) <= effective_detection_radius:
 		_report_lit_zone_presence()
 		_begin_burrow(_get_player_tile_center())
@@ -187,7 +198,7 @@ func _update_burrow_state() -> void:
 	if _returning_to_spawn:
 		_burrow_target_position = spawn_position
 	elif _player_target != null and _player_target.global_position.distance_to(spawn_position) <= MAX_PURSUIT_RADIUS:
-		_burrow_target_position = _get_player_tile_center()
+		_burrow_target_position = _get_player_emerge_position()
 	else:
 		_burrow_target_position = spawn_position
 		_returning_to_spawn = true
@@ -233,6 +244,12 @@ func _update_attack_state() -> void:
 		return
 
 	_face_target(_player_target.global_position)
+	if distance_to_player < MIN_ATTACK_SEPARATION:
+		var separation_direction := _player_target.global_position.direction_to(global_position)
+		if separation_direction == Vector2.ZERO:
+			separation_direction = Vector2.UP
+		velocity = separation_direction * (_patrol_speed * 0.75)
+		return
 	if distance_to_player > ATTACK_RANGE:
 		velocity = global_position.direction_to(_player_target.global_position) * (_patrol_speed + 12.0)
 		return
@@ -346,6 +363,7 @@ func _refresh_player_target() -> void:
 	if _player_target != null and is_instance_valid(_player_target):
 		return
 	_player_target = _find_player()
+	_sync_player_collision_exception()
 
 
 func _find_player() -> CharacterBody2D:
@@ -353,6 +371,13 @@ func _find_player() -> CharacterBody2D:
 	if player is CharacterBody2D:
 		return player as CharacterBody2D
 	return null
+
+
+func _sync_player_collision_exception() -> void:
+	if _player_target == null or not is_instance_valid(_player_target):
+		return
+	add_collision_exception_with(_player_target)
+	_player_target.add_collision_exception_with(self)
 
 
 func _get_effective_detection_radius() -> float:
@@ -367,6 +392,22 @@ func _report_lit_zone_presence() -> void:
 	if not BaseDefenseSystem.is_position_in_powered_light(global_position):
 		return
 	BaseDefenseSystem.report_night_threat(get_instance_id(), global_position)
+	_report_base_breach()
+
+
+func _get_base_attraction_target() -> Vector2:
+	if not _night_active or not has_node("/root/BaseThreatDirector"):
+		return Vector2(INF, INF)
+	if not BaseThreatDirector.has_method("get_enemy_attraction_target"):
+		return Vector2(INF, INF)
+	return BaseThreatDirector.get_enemy_attraction_target(global_position)
+
+
+func _report_base_breach() -> void:
+	if not _night_active or not has_node("/root/BaseThreatDirector"):
+		return
+	if BaseThreatDirector.has_method("report_enemy_base_breach"):
+		BaseThreatDirector.report_enemy_base_breach(self)
 
 
 func _get_player_tile_center() -> Vector2:
@@ -378,6 +419,18 @@ func _get_player_tile_center() -> Vector2:
 	var local_position := ground.to_local(_player_target.global_position)
 	var coords := ground.local_to_map(local_position)
 	return ground.to_global(ground.map_to_local(coords))
+
+
+func _get_player_emerge_position() -> Vector2:
+	var player_center := _get_player_tile_center()
+	if _player_target == null:
+		return player_center
+	var approach_direction := global_position - player_center
+	if approach_direction.length_squared() <= 0.001:
+		approach_direction = spawn_position - player_center
+	if approach_direction.length_squared() <= 0.001:
+		approach_direction = Vector2.DOWN
+	return player_center + approach_direction.normalized() * PLAYER_EMERGE_OFFSET
 
 
 func _get_navigation_step(destination: Vector2) -> Vector2:

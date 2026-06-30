@@ -41,6 +41,7 @@ WorldSaveData="*res://scripts/WorldSaveData.gd"
 BaseGrid="*res://scripts/BaseGrid.gd"
 BaseDefenseSystem="*res://scripts/BaseDefenseSystem.gd"
 PowerSwitchboard="*res://scripts/PowerSwitchboard.gd"
+BaseThreatDirector="*res://scripts/BaseThreatDirector.gd"
 
 [display]
 

@@ -12,6 +12,8 @@ const SUPPORT_RADIUS := 42.0
 const SHELTERED_SUPPORT_RADIUS := 58.0
 const LIGHT_ENERGY_LIT := 0.7
 const LIGHT_ENERGY_UNLIT := 0.0
+const LIGHT_ENERGY_RAIN_EXPOSED := 0.24
+const RAIN_EXPOSED_BURN_MULTIPLIER := 8.0
 const LIGHT_TEXTURE_SCALE := 0.44
 const CAMPFIRE_WOOD := Color(0.36, 0.22, 0.10, 1.0)
 const CAMPFIRE_WOOD_DARK := Color(0.22, 0.14, 0.07, 1.0)
@@ -40,6 +42,7 @@ var _pending_output_charcoal := 0
 var _charcoal_status_text := ""
 var _charcoal_status_seconds := 0.0
 var _is_sheltered := false
+var _was_rain_exposed := false
 
 
 func _ready() -> void:
@@ -59,6 +62,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_sync_player_range_state()
+	_update_shelter_state()
 	_update_burn(delta)
 	_update_charcoal_processing(delta)
 	_update_charcoal_status(delta)
@@ -69,8 +73,8 @@ func _process(delta: float) -> void:
 	_handle_charcoal_collect_input()
 	_handle_pickup_input()
 	_handle_healing(delta)
-	_update_shelter_state()
 	_update_warmth_state()
+	_update_rain_fire_visual_state()
 
 
 func to_world_save_entry() -> Dictionary:
@@ -97,10 +101,13 @@ func restore_from_pickup(data: Dictionary) -> void:
 func _update_burn(delta: float) -> void:
 	if not is_lit:
 		return
-	burn_time_remaining = maxf(0.0, burn_time_remaining - delta)
+	var burn_multiplier := RAIN_EXPOSED_BURN_MULTIPLIER if _is_rain_exposed() else 1.0
+	burn_time_remaining = maxf(0.0, burn_time_remaining - delta * burn_multiplier)
 	if burn_time_remaining <= 0.0:
 		is_lit = false
 		_apply_lit_state()
+		if _was_rain_exposed:
+			_set_charcoal_status("Rain put the campfire out")
 
 
 func _update_charcoal_processing(delta: float) -> void:
@@ -257,12 +264,39 @@ func _update_warmth_state() -> void:
 
 func _apply_lit_state() -> void:
 	if point_light != null:
-		point_light.energy = LIGHT_ENERGY_LIT if is_lit else LIGHT_ENERGY_UNLIT
+		point_light.energy = _get_current_light_energy()
 	if flame_particles != null:
 		flame_particles.emitting = is_lit
 	if sprite != null:
-		sprite.modulate = Color.WHITE if is_lit else Color(0.68, 0.62, 0.56, 1.0)
+		sprite.modulate = _get_current_sprite_modulate()
 	_show_prompt(_player_in_range)
+
+
+func _update_rain_fire_visual_state() -> void:
+	var rain_exposed := _is_rain_exposed()
+	if _was_rain_exposed == rain_exposed:
+		return
+	_was_rain_exposed = rain_exposed
+	if rain_exposed and is_lit:
+		_set_charcoal_status("Rain is choking the flame")
+	if point_light != null:
+		point_light.energy = _get_current_light_energy()
+	if flame_particles != null:
+		flame_particles.amount_ratio = 0.35 if rain_exposed else 1.0
+	if sprite != null:
+		sprite.modulate = _get_current_sprite_modulate()
+
+
+func _get_current_light_energy() -> float:
+	if not is_lit:
+		return LIGHT_ENERGY_UNLIT
+	return LIGHT_ENERGY_RAIN_EXPOSED if _is_rain_exposed() else LIGHT_ENERGY_LIT
+
+
+func _get_current_sprite_modulate() -> Color:
+	if not is_lit:
+		return Color(0.68, 0.62, 0.56, 1.0)
+	return Color(0.72, 0.78, 0.84, 1.0) if _is_rain_exposed() else Color.WHITE
 
 
 func _build_visual_identity() -> void:
@@ -474,6 +508,14 @@ func _get_rain_system() -> Node:
 	if current_scene == null:
 		return null
 	return current_scene.find_child("IronHillsZone", true, false)
+
+
+func _is_rain_exposed() -> bool:
+	return is_lit \
+		and WeatherSystem != null \
+		and WeatherSystem.has_method("get_current_state") \
+		and int(WeatherSystem.get_current_state()) == WeatherSystem.WeatherState.RAIN \
+		and not _is_sheltered
 
 
 func _sync_player_range_state() -> void:

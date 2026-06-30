@@ -32,6 +32,7 @@ func spawn_element_at(element_id: StringName, coords: Vector2i, ground_layer: Ti
 	var pickup := _create_pickup(element_id, 1)
 	pickup.name = "%s_%d_%d" % [element_id, coords.x, coords.y]
 	pickup.set_meta(&"tile_coords", coords)
+	pickup.set_meta(&"pickup_origin", &"resource_spawn")
 	add_child(pickup)
 	pickup.global_position = ground_layer.to_global(ground_layer.map_to_local(coords))
 	return pickup
@@ -43,6 +44,7 @@ func spawn_world_pickup(element_id: StringName, world_position: Vector2, quantit
 
 	var pickup := _create_pickup(element_id, quantity)
 	pickup.name = "%s_drop_%d" % [element_id, Time.get_ticks_usec()]
+	pickup.set_meta(&"pickup_origin", &"world_drop")
 	add_child(pickup)
 	pickup.global_position = world_position
 	return pickup
@@ -55,6 +57,7 @@ func spawn_inventory_pickup(item_data: Dictionary, world_position: Vector2, quan
 	var pickup := _create_inventory_pickup(item_data, quantity)
 	var item_id := StringName(str(item_data.get("id", "item")))
 	pickup.name = "%s_drop_%d" % [item_id, Time.get_ticks_usec()]
+	pickup.set_meta(&"pickup_origin", &"inventory_drop")
 	add_child(pickup)
 	pickup.global_position = world_position
 	return pickup

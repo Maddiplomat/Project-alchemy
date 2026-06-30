@@ -722,7 +722,8 @@ func _on_weather_tick(state: int, delta: float) -> void:
 		return
 
 	if state == WeatherSystem.WeatherState.RAIN:
-		_adjust_item_purity(LITHIUM_ITEM_ID, -LITHIUM_RAIN_PURITY_LOSS_PER_SECOND * delta)
+		if _is_player_exposed_to_rain():
+			_adjust_item_purity(LITHIUM_ITEM_ID, -LITHIUM_RAIN_PURITY_LOSS_PER_SECOND * delta)
 	elif state == WeatherSystem.WeatherState.ELECTRICAL_STORM:
 		charge_lithium(LITHIUM_STORM_CHARGE_GAIN_PER_SECOND * delta)
 
@@ -768,6 +769,20 @@ func _adjust_item_purity(item_id: StringName, amount: float) -> float:
 	inventory_changed.emit(slot_index)
 	purity_changed.emit(slot_index, next_purity)
 	return next_purity
+
+
+func _is_player_exposed_to_rain() -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return true
+	var player := current_scene.find_child("Player", true, false) as Node2D
+	if player == null:
+		return true
+	if BaseThreatDirector != null and BaseThreatDirector.has_method("is_rain_exposed_at"):
+		return bool(BaseThreatDirector.is_rain_exposed_at(player.global_position))
+	if WeatherSystem != null and WeatherSystem.has_method("get_shelter_at"):
+		return not bool(WeatherSystem.get_shelter_at(player.global_position))
+	return true
 
 
 func _cleanup_heat_sources() -> void:

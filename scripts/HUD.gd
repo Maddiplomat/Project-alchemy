@@ -103,6 +103,8 @@ func _ready() -> void:
 	_setup_weather_strip()
 	if has_node("/root/BaseDefenseSystem"):
 		BaseDefenseSystem.night_threat_detected.connect(_on_night_threat_detected)
+	if has_node("/root/BaseThreatDirector"):
+		BaseThreatDirector.threat_lesson_triggered.connect(_on_base_threat_lesson_triggered)
 	if WeatherSystem != null:
 		if WeatherSystem.has_signal("weather_warning_started"):
 			WeatherSystem.weather_warning_started.connect(_on_weather_warning_started)
@@ -868,6 +870,10 @@ func _on_environmental_warning_changed(warning_id: StringName, active: bool) -> 
 			_queue_toast("Acid Mist — exposed sulfur nodes are degrading in the open.")
 		_:
 			pass
+
+
+func _on_base_threat_lesson_triggered(_lesson_id: StringName, message: String) -> void:
+	_queue_toast(message)
 
 func _queue_toast(message: String) -> void:
 	_toast_queue.append(message)

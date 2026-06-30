@@ -25,6 +25,7 @@ const POWERED_STABILIZATION_DURATION_MULTIPLIER := 1.30
 const POWERED_STABILIZATION_VENT_COOLDOWN_MULTIPLIER := 0.80
 const POWERED_STABILIZATION_SAFE_MIN := 40.0
 const POWERED_STABILIZATION_SAFE_MAX := 60.0
+const RAIN_CONTAMINATION_REASON := &"rain_contamination"
 
 @onready var root: Control = $Root
 @onready var backdrop: ColorRect = $Root/Backdrop
@@ -236,6 +237,8 @@ func _build_action_hint(result: Dictionary) -> String:
 		return "Warning: %s" % _format_failure_label(failure_reason)
 	if bool(result.get("requires_stabilization", false)):
 		return "Buffered but unstable. React, then hold the stabilization window."
+	if _chem_bench_has_rain_risk():
+		return "Rain or wet handling can contaminate this run. Roof the bench or dry off first."
 	var output_id := StringName(str(result.get("output_id", "")))
 	if not output_id.is_empty():
 		return "Window found. Execute now to lock in the reaction."
@@ -284,6 +287,13 @@ func _on_react_button_pressed() -> void:
 	var failure_reason := StringName(str(result.get("failure_reason", "")))
 	if output_id.is_empty() and failure_reason.is_empty():
 		react_button.text = "No Reaction"
+		return
+
+	if _chem_bench != null \
+		and _chem_bench.has_method("should_rain_contaminate_reaction") \
+		and bool(_chem_bench.should_rain_contaminate_reaction(result)):
+		result[&"failure_reason"] = _chem_bench.get_rain_failure_reason() if _chem_bench.has_method("get_rain_failure_reason") else RAIN_CONTAMINATION_REASON
+		_apply_failure_result(result, StringName(result[&"failure_reason"]))
 		return
 
 	if bool(result.get("requires_stabilization", false)):
@@ -499,6 +509,8 @@ func _build_output_item(output_id: StringName) -> Dictionary:
 
 func _format_failure_label(reason: StringName) -> String:
 	match reason:
+		RAIN_CONTAMINATION_REASON:
+			return "Failure: rain contamination"
 		&"heat_runaway":
 			return "Failure: heat runaway"
 		&"pressure_spike":
@@ -568,14 +580,26 @@ func _on_power_button_pressed() -> void:
 
 
 func _get_stabilization_config() -> Dictionary:
-	if not is_instance_valid(_chem_bench) or not _chem_bench.has_method("has_power_bonus") or not _chem_bench.has_power_bonus():
+	if not is_instance_valid(_chem_bench):
 		return {}
-	return {
-		&"reaction_duration_seconds": 10.0 * POWERED_STABILIZATION_DURATION_MULTIPLIER,
-		&"pressure_safe_min": POWERED_STABILIZATION_SAFE_MIN,
-		&"pressure_safe_max": POWERED_STABILIZATION_SAFE_MAX,
-		&"vent_cooldown_seconds": 2.0 * POWERED_STABILIZATION_VENT_COOLDOWN_MULTIPLIER,
-	}
+	var config := {}
+	var duration_multiplier := 1.0
+	if _chem_bench.has_method("has_power_bonus") and _chem_bench.has_power_bonus():
+		duration_multiplier *= POWERED_STABILIZATION_DURATION_MULTIPLIER
+		config[&"pressure_safe_min"] = POWERED_STABILIZATION_SAFE_MIN
+		config[&"pressure_safe_max"] = POWERED_STABILIZATION_SAFE_MAX
+		config[&"vent_cooldown_seconds"] = 2.0 * POWERED_STABILIZATION_VENT_COOLDOWN_MULTIPLIER
+	if _chem_bench.has_method("get_rain_slowdown_multiplier"):
+		duration_multiplier *= float(_chem_bench.get_rain_slowdown_multiplier())
+	if not is_equal_approx(duration_multiplier, 1.0):
+		config[&"reaction_duration_seconds"] = 10.0 * duration_multiplier
+	return config
+
+
+func _chem_bench_has_rain_risk() -> bool:
+	return _chem_bench != null \
+		and _chem_bench.has_method("has_rain_condition_risk") \
+		and bool(_chem_bench.has_rain_condition_risk())
 
 
 func _on_close_button_pressed() -> void:

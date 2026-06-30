@@ -5,7 +5,7 @@ const ACID_PUDDLE_SCENE := preload("res://scenes/AcidPuddle.tscn")
 const MAX_TRAVEL_DISTANCE := 96.0
 const ARC_HEIGHT := 20.0
 const IMPACT_RADIUS := 10.0
-const DAMAGE := 8
+const DAMAGE := 16
 
 @export var travel_speed: float = 170.0
 
@@ -133,4 +133,3 @@ func _build_visual() -> void:
 			if dist <= 1.8:
 				image.set_pixel(x, y, inner)
 	sprite.texture = ImageTexture.create_from_image(image)
-

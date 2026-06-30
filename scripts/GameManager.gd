@@ -126,15 +126,26 @@ func _process(delta: float) -> void:
 	_update_cold_level(delta)
 
 func _update_cold_level(delta: float) -> void:
-	if is_player_warmed or not _is_night:
+	var player_position: Variant = _get_player_world_position()
+	var cold_buildup_multiplier := 1.0
+	var warmth_decay_multiplier := 1.0
+	var effectively_warmed := is_player_warmed
+	if _is_night and has_node("/root/BaseThreatDirector") and player_position != null:
+		cold_buildup_multiplier = float(BaseThreatDirector.get_cold_buildup_multiplier(player_position))
+		warmth_decay_multiplier = float(BaseThreatDirector.get_warmth_decay_multiplier(player_position))
+		effectively_warmed = bool(BaseThreatDirector.should_count_as_warmed(player_position))
+
+	if not _is_night:
 		cold_level = maxf(0.0, cold_level - COLD_DECAY_RATE * delta)
+	elif effectively_warmed:
+		cold_level = maxf(0.0, cold_level - COLD_DECAY_RATE * warmth_decay_multiplier * delta)
 	else:
-		cold_level = minf(COLD_MAX, cold_level + COLD_BUILDUP_RATE * delta)
+		cold_level = minf(COLD_MAX, cold_level + COLD_BUILDUP_RATE * cold_buildup_multiplier * delta)
 		
 	if _frost_rect != null:
 		_frost_rect.modulate.a = (cold_level / COLD_MAX) * 0.95
 		
-	if cold_level >= COLD_MAX and not is_player_warmed:
+	if cold_level >= COLD_MAX and not effectively_warmed:
 		_cold_damage_timer += delta
 		if _cold_damage_timer >= COLD_DAMAGE_TICK_RATE:
 			damage_player(2)
@@ -528,3 +539,13 @@ func _distance_to_cycle_boundary(from_time: float, to_time: float) -> float:
 	if distance < 0.0:
 		distance += 1.0
 	return distance
+
+
+func _get_player_world_position() -> Variant:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return null
+	var player := current_scene.find_child("Player", true, false) as Node2D
+	if player == null:
+		return null
+	return player.global_position

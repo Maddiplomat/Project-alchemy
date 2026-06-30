@@ -1,6 +1,7 @@
 extends Node
 
 signal chest_inventory_changed(chest_id: StringName)
+signal container_item_damaged(chest_id: StringName, item_id: StringName, quantity_lost: int, reason: StringName)
 
 const DEFAULT_SLOT_COUNT := 20
 const EMPTY_ITEM := &""
@@ -206,7 +207,7 @@ func get_container_protection_summary(chest_id: StringName) -> String:
 		FILTER_VOLATILE_ELEMENTS:
 			return "Volatile locker: accepts volatile reagents and keeps them out of your pack, but it is not weather-sealed."
 		FILTER_WATER_REACTIVE_ELEMENTS:
-			return "Dry Box: accepts water-reactive materials and keeps them dry even when the box sits exposed."
+			return "Dry Box: accepts water-reactive materials. Full rain protection requires roof cover."
 		_:
 			return "Storage Chest: general-purpose storage. Rain protection only comes from roof cover."
 
@@ -221,12 +222,81 @@ func get_container_exposure_summary(chest_id: StringName, sheltered: bool) -> St
 			return "Current placement: %s." % (
 				"Sheltered, with dry seal intact"
 				if sheltered
-				else "Exposed, but contents stay dry inside the sealed box"
+				else "Exposed; move it under roof before rain"
 			)
 		_:
 			return "Current placement: %s." % (
 				"Sheltered from rain" if sheltered else "Exposed to rain"
 			)
+
+
+func get_container_items(chest_id: StringName) -> Dictionary:
+	ensure_container(chest_id)
+	var items: Dictionary = chest_inventories[chest_id][&"items"]
+	return items.duplicate(true)
+
+
+func get_container_quantity(chest_id: StringName, item_id: StringName) -> int:
+	if item_id.is_empty():
+		return 0
+	ensure_container(chest_id)
+	var items: Dictionary = chest_inventories[chest_id][&"items"]
+	if not items.has(item_id):
+		return 0
+	return int((items[item_id] as Dictionary).get(&"quantity", 0))
+
+
+func damage_container_item(chest_id: StringName, item_id: StringName, quantity: int, reason: StringName) -> int:
+	if chest_id.is_empty() or item_id.is_empty() or quantity <= 0:
+		return 0
+	ensure_container(chest_id)
+	var available := get_container_quantity(chest_id, item_id)
+	var removed := mini(quantity, available)
+	if removed <= 0:
+		return 0
+	if not _remove_item(chest_id, item_id, removed):
+		return 0
+	container_item_damaged.emit(chest_id, item_id, removed, reason)
+	_emit_changed(chest_id)
+	return removed
+
+
+func set_container_item_charge(chest_id: StringName, item_id: StringName, charge: float) -> bool:
+	if chest_id.is_empty() or item_id.is_empty():
+		return false
+	ensure_container(chest_id)
+	var items: Dictionary = chest_inventories[chest_id][&"items"]
+	if not items.has(item_id):
+		return false
+	var stored_item: Dictionary = (items[item_id] as Dictionary).duplicate(true)
+	var next_charge := clampf(charge, 0.0, 1.0)
+	var current_charge := clampf(float(stored_item.get(&"charge", 1.0)), 0.0, 1.0)
+	if is_equal_approx(current_charge, next_charge):
+		return false
+	stored_item[&"charge"] = next_charge
+	items[item_id] = stored_item
+	chest_inventories[chest_id][&"items"] = items
+	_emit_changed(chest_id)
+	return true
+
+
+func adjust_container_item_purity(chest_id: StringName, item_id: StringName, amount: float) -> float:
+	if chest_id.is_empty() or item_id.is_empty() or amount == 0.0:
+		return 0.0
+	ensure_container(chest_id)
+	var items: Dictionary = chest_inventories[chest_id][&"items"]
+	if not items.has(item_id):
+		return 0.0
+	var stored_item: Dictionary = (items[item_id] as Dictionary).duplicate(true)
+	var current_purity := clampf(float(stored_item.get(&"purity", 1.0)), 0.0, 1.0)
+	var next_purity := clampf(current_purity + amount, 0.0, 1.0)
+	if is_equal_approx(current_purity, next_purity):
+		return next_purity
+	stored_item[&"purity"] = next_purity
+	items[item_id] = stored_item
+	chest_inventories[chest_id][&"items"] = items
+	_emit_changed(chest_id)
+	return next_purity
 
 
 func can_store_item(chest_id: StringName, item_data: Dictionary) -> bool:
