@@ -93,12 +93,22 @@ func is_position_in_powered_light(world_position: Vector2) -> bool:
 func report_night_threat(enemy_id: int, world_position: Vector2) -> void:
 	if enemy_id <= 0:
 		return
+	_prune_stale_enemy_alerts()
 	var now_seconds := Time.get_ticks_msec() / 1000.0
 	var expiry := float(_enemy_alert_expiry_by_id.get(enemy_id, 0.0))
 	if now_seconds < expiry:
 		return
 	_enemy_alert_expiry_by_id[enemy_id] = now_seconds + THREAT_ALERT_COOLDOWN_SECONDS
-	night_threat_detected.emit(world_position, get_light_stack_at(world_position))
+	var stack_count := get_light_stack_at(world_position)
+	night_threat_detected.emit(world_position, stack_count)
+	if EventBus != null and EventBus.has_method("emit_night_threat_detected"):
+		EventBus.emit_night_threat_detected(world_position, stack_count)
+
+
+func unregister_enemy(enemy_id: int) -> void:
+	if enemy_id <= 0:
+		return
+	_enemy_alert_expiry_by_id.erase(enemy_id)
 
 
 func _prune_invalid_lights() -> void:
@@ -123,3 +133,18 @@ func _prune_invalid_power_consumers() -> void:
 			stale_ids.append(instance_id)
 	for instance_id in stale_ids:
 		_active_power_consumers.erase(instance_id)
+
+
+func _prune_stale_enemy_alerts() -> void:
+	var stale_ids: Array[int] = []
+	var now_seconds := Time.get_ticks_msec() / 1000.0
+	for enemy_id_variant in _enemy_alert_expiry_by_id.keys():
+		var enemy_id := int(enemy_id_variant)
+		var enemy_object := instance_from_id(enemy_id)
+		if enemy_object == null or not is_instance_valid(enemy_object):
+			stale_ids.append(enemy_id)
+			continue
+		if now_seconds >= float(_enemy_alert_expiry_by_id.get(enemy_id, 0.0)):
+			stale_ids.append(enemy_id)
+	for enemy_id in stale_ids:
+		_enemy_alert_expiry_by_id.erase(enemy_id)

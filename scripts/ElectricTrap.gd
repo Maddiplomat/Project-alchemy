@@ -30,6 +30,8 @@ var _is_broken := false
 var _rng := RandomNumberGenerator.new()
 var _repair_prompt_label: Label = null
 var _player_in_repair_range := false
+var _base_grid: Node = null
+var _power_switchboard: Node = null
 
 
 func _ready() -> void:
@@ -43,6 +45,9 @@ func _ready() -> void:
 	_ensure_repair_prompt()
 	_sync_broken_state()
 	trigger_area.body_entered.connect(_on_trigger_body_entered)
+	_bind_power_services()
+	if not EventBus.service_registered.is_connected(_on_service_registered):
+		EventBus.service_registered.connect(_on_service_registered)
 	if BaseDefenseSystem != null and BaseDefenseSystem.has_method("register_power_consumer"):
 		BaseDefenseSystem.register_power_consumer(self, STANDBY_DRAIN_UNITS_PER_MINUTE)
 	set_process(true)
@@ -83,7 +88,7 @@ func _try_shock_body(body: Node) -> void:
 	var now_seconds := Time.get_ticks_msec() / 1000.0
 	if now_seconds < float(_shock_cooldowns_by_enemy_id.get(enemy_id, 0.0)):
 		return
-	if BaseGrid == null or not BaseGrid.has_method("consume_charge") or not BaseGrid.consume_charge(SHOCK_COST):
+	if _base_grid == null or not _base_grid.has_method("consume_charge") or not _base_grid.consume_charge(SHOCK_COST):
 		return
 
 	_shock_cooldowns_by_enemy_id[enemy_id] = now_seconds + SHOCK_COOLDOWN_SECONDS
@@ -98,19 +103,29 @@ func _try_shock_body(body: Node) -> void:
 func _is_armed() -> bool:
 	if _is_broken:
 		return false
-	if PowerSwitchboard != null and PowerSwitchboard.has_method("is_consumer_enabled"):
-		if not PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_TRAP_NETWORK):
+	if _power_switchboard != null and _power_switchboard.has_method("is_consumer_enabled"):
+		if not _power_switchboard.is_consumer_enabled(&"trap_network"):
 			return false
-	return BaseGrid != null and BaseGrid.has_method("get_charge_state") and float(BaseGrid.get_charge_state()) >= SHOCK_COST
+	return _base_grid != null and _base_grid.has_method("get_charge_state") and float(_base_grid.get_charge_state()) >= SHOCK_COST
 
 
 func get_power_drain_units_per_minute() -> float:
 	if _is_broken:
 		return 0.0
-	if PowerSwitchboard != null and PowerSwitchboard.has_method("is_consumer_enabled"):
-		if not PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_TRAP_NETWORK):
+	if _power_switchboard != null and _power_switchboard.has_method("is_consumer_enabled"):
+		if not _power_switchboard.is_consumer_enabled(&"trap_network"):
 			return 0.0
 	return STANDBY_DRAIN_UNITS_PER_MINUTE
+
+
+func _on_service_registered(service_id: StringName, _service: Node) -> void:
+	if service_id == EventBus.SERVICE_BASE_GRID or service_id == EventBus.SERVICE_POWER_SWITCHBOARD:
+		_bind_power_services()
+
+
+func _bind_power_services() -> void:
+	_base_grid = EventBus.get_base_grid()
+	_power_switchboard = EventBus.get_power_switchboard()
 
 
 func get_occupied_tile_coords() -> Array[Vector2i]:

@@ -63,7 +63,7 @@ func _schedule_next_ignition() -> void:
 func _get_player_tile() -> Vector2i:
 	if _ground_layer == null:
 		return Vector2i(-9999, -9999)
-	var player := get_tree().current_scene.find_child("Player", true, false)
+	var player := GameManager.get_player()
 	if not (player is Node2D):
 		return Vector2i(-9999, -9999)
 	return _ground_layer.local_to_map(_ground_layer.to_local((player as Node2D).global_position))

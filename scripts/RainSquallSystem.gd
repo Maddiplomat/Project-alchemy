@@ -108,8 +108,7 @@ func _get_canvas_modulate() -> CanvasModulate:
 
 
 func _get_player() -> Node2D:
-	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
-	return scene_root.find_child("Player", true, false) as Node2D
+	return GameManager.get_player()
 
 
 func _configure_rain_particles() -> void:

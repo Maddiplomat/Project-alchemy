@@ -1,0 +1,42 @@
+[gd_scene format=4]
+
+[ext_resource type="Script" path="res://scripts/BuildMenuPanel.gd" id="1"]
+
+[node name="BuildMenuPanel" type="CanvasLayer"]
+script = ExtResource("1")
+
+[node name="Panel" type="PanelContainer" parent="."]
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+offset_right = 456.0
+offset_bottom = 420.0
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="Content" type="VBoxContainer" parent="Panel/Margin"]
+offset_right = 432.0
+offset_bottom = 398.0
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Panel/Margin/Content"]
+theme_override_font_sizes/font_size = 20
+
+[node name="Hint" type="Label" parent="Panel/Margin/Content"]
+autowrap_mode = 3
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Margin/Content"]
+custom_minimum_size = Vector2(0, 320)
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="BuildablesText" type="RichTextLabel" parent="Panel/Margin/Content/Scroll"]
+offset_right = 432.0
+offset_bottom = 320.0
+bbcode_enabled = false
+fit_content = true
+scroll_active = false
+autowrap_mode = 3
+selection_enabled = false
+size_flags_horizontal = 3

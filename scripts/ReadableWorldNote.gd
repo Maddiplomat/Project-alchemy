@@ -92,7 +92,7 @@ func _close_note() -> void:
 
 
 func _is_player_body(body: Node) -> bool:
-	return body is CharacterBody2D and (body.name == "Player" or body.is_in_group(&"player"))
+	return body is CharacterBody2D and body.is_in_group(&"player")
 
 
 func _is_player_still_in_range() -> bool:

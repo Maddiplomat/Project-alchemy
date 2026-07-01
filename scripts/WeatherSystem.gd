@@ -20,9 +20,8 @@ const RAIN_DURATION_RANGE := Vector2(90.0, 240.0)
 const ACID_MIST_DURATION_RANGE := Vector2(90.0, 180.0)
 const ELECTRICAL_STORM_DURATION_RANGE := Vector2(90.0, 150.0)
 const WARNING_LEAD_TIME_RANGE := Vector2(10.0, 20.0)
-const RAIN_PARTICLE_RATE := 90.0
-const RAIN_PARTICLE_LIFETIME := 1.1
 const RAIN_FOLLOW_OFFSET := Vector2(0.0, -180.0)
+const WEATHER_VISUALS_SCENE := preload("res://scenes/WeatherVisuals.tscn")
 
 var current_state: int = WeatherState.CLEAR
 
@@ -270,7 +269,7 @@ func _check_sulfur_flats_unlock() -> void:
 	if current_scene == null or not current_scene.has_method("is_sulfur_flats_at_world_position"):
 		return
 
-	var player := current_scene.find_child("Player", true, false) as Node2D
+	var player := GameManager.get_player()
 	if player == null:
 		return
 
@@ -334,70 +333,15 @@ func _ensure_weather_visuals() -> void:
 	if _weather_visual_root != null and _rain_particles != null:
 		return
 
-	_weather_visual_root = Node2D.new()
-	_weather_visual_root.name = "WeatherVisuals"
-	_weather_visual_root.z_index = 50
+	_weather_visual_root = WEATHER_VISUALS_SCENE.instantiate() as Node2D
+	if _weather_visual_root == null:
+		return
 	current_scene.add_child(_weather_visual_root)
-
-	_rain_particles = GPUParticles2D.new()
-	_rain_particles.name = "RainParticles"
-	_rain_particles.local_coords = false
-	_rain_particles.emitting = false
-	_rain_particles.z_index = 50
-	_weather_visual_root.add_child(_rain_particles)
-	_configure_rain_particles()
+	_rain_particles = _weather_visual_root.get_node_or_null("RainParticles") as GPUParticles2D
 
 
 func _get_player() -> Node2D:
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
-		return null
-	return current_scene.find_child("Player", true, false) as Node2D
-
-
-func _configure_rain_particles() -> void:
-	if _rain_particles == null:
-		return
-	var process_material := ParticleProcessMaterial.new()
-	process_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	process_material.emission_box_extents = Vector3(460.0, 16.0, 0.0)
-	process_material.direction = Vector3(0.0, 1.0, 0.0)
-	process_material.spread = 5.0
-	process_material.initial_velocity_min = 400.0
-	process_material.initial_velocity_max = 500.0
-	process_material.gravity = Vector3(0.0, 70.0, 0.0)
-	process_material.scale_min = 0.7
-	process_material.scale_max = 1.0
-	process_material.color = Color(0.84, 0.92, 1.0, 0.86)
-	process_material.color_ramp = _build_rain_gradient()
-	_rain_particles.process_material = process_material
-	_rain_particles.texture = _build_rain_texture()
-	_rain_particles.amount = int(ceili(RAIN_PARTICLE_RATE * RAIN_PARTICLE_LIFETIME))
-	_rain_particles.lifetime = RAIN_PARTICLE_LIFETIME
-	_rain_particles.one_shot = false
-	_rain_particles.explosiveness = 0.0
-	_rain_particles.amount_ratio = 1.0
-	_rain_particles.visibility_rect = Rect2(Vector2(-520.0, -320.0), Vector2(1040.0, 680.0))
-
-
-func _build_rain_gradient() -> GradientTexture1D:
-	var gradient := Gradient.new()
-	gradient.add_point(0.0, Color(0.84, 0.92, 1.0, 0.0))
-	gradient.add_point(0.15, Color(0.78, 0.88, 1.0, 0.90))
-	gradient.add_point(1.0, Color(0.72, 0.84, 1.0, 0.0))
-	var texture := GradientTexture1D.new()
-	texture.gradient = gradient
-	return texture
-
-
-func _build_rain_texture() -> Texture2D:
-	var image := Image.create(2, 14, false, Image.FORMAT_RGBA8)
-	image.fill(Color(0.0, 0.0, 0.0, 0.0))
-	for y in range(14):
-		var alpha := 0.28 + (0.72 * (1.0 - absf((float(y) - 6.5) / 6.5)))
-		image.set_pixel(0, y, Color(0.90, 0.96, 1.0, alpha))
-		image.set_pixel(1, y, Color(0.78, 0.88, 1.0, alpha * 0.86))
-	return ImageTexture.create_from_image(image)
+	return GameManager.get_player()
 
 
 func _get_world_tile_coords(world_pos: Vector2) -> Variant:

@@ -1,6 +1,7 @@
 extends PointLight2D
 
 var _base_grid: Node = null
+var _power_switchboard: Node = null
 var _registered_with_defense := false
 
 @export var defense_radius := 96.0
@@ -12,29 +13,24 @@ var _registered_with_defense := false
 
 func _ready() -> void:
 	add_to_group(&"powered_light")
-	_base_grid = get_node_or_null("/root/BaseGrid")
+	_bind_power_services()
 	if _base_grid == null:
 		energy = 0.0
-		return
 
 	_configure_light_texture()
-	if _base_grid.has_signal("power_activated"):
-		_base_grid.power_activated.connect(_on_power_activated)
-	if _base_grid.has_signal("power_deactivated"):
-		_base_grid.power_deactivated.connect(_on_power_deactivated)
 	if GameManager != null:
 		if GameManager.has_signal("night_started"):
 			GameManager.night_started.connect(_refresh_power_state)
 		if GameManager.has_signal("day_started"):
 			GameManager.day_started.connect(_refresh_power_state)
-	if PowerSwitchboard != null and PowerSwitchboard.has_signal("switchboard_changed"):
-		PowerSwitchboard.switchboard_changed.connect(_refresh_power_state)
+	if not EventBus.service_registered.is_connected(_on_service_registered):
+		EventBus.service_registered.connect(_on_service_registered)
 	_refresh_power_state()
 
 
 func get_power_drain_units_per_minute() -> float:
-	if PowerSwitchboard != null and PowerSwitchboard.has_method("is_consumer_enabled"):
-		if not PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_PERIMETER_LIGHTS):
+	if _power_switchboard != null and _power_switchboard.has_method("is_consumer_enabled"):
+		if not _power_switchboard.is_consumer_enabled(&"perimeter_lights"):
 			return 0.0
 	return drain_units_per_minute
 
@@ -64,8 +60,8 @@ func _refresh_power_state() -> void:
 func _should_show_visual_light() -> bool:
 	if _base_grid == null or not _base_grid.has_method("is_powered") or not _base_grid.is_powered():
 		return false
-	if PowerSwitchboard != null and PowerSwitchboard.has_method("is_consumer_enabled"):
-		if not PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_PERIMETER_LIGHTS):
+	if _power_switchboard != null and _power_switchboard.has_method("is_consumer_enabled"):
+		if not _power_switchboard.is_consumer_enabled(&"perimeter_lights"):
 			return false
 	return _is_defense_light_source()
 
@@ -108,3 +104,24 @@ func _configure_light_texture() -> void:
 	gradient_texture.gradient = gradient
 	texture = gradient_texture
 	offset = Vector2(0.0, -8.0)
+
+
+func _on_service_registered(service_id: StringName, _service: Node) -> void:
+	if service_id == EventBus.SERVICE_BASE_GRID or service_id == EventBus.SERVICE_POWER_SWITCHBOARD:
+		_bind_power_services()
+		_refresh_power_state()
+
+
+func _bind_power_services() -> void:
+	var next_base_grid := EventBus.get_base_grid()
+	if next_base_grid != null and next_base_grid != _base_grid:
+		_base_grid = next_base_grid
+		if _base_grid.has_signal("power_activated") and not _base_grid.power_activated.is_connected(_on_power_activated):
+			_base_grid.power_activated.connect(_on_power_activated)
+		if _base_grid.has_signal("power_deactivated") and not _base_grid.power_deactivated.is_connected(_on_power_deactivated):
+			_base_grid.power_deactivated.connect(_on_power_deactivated)
+
+	_power_switchboard = EventBus.get_power_switchboard()
+	if _power_switchboard != null and _power_switchboard.has_signal("switchboard_changed"):
+		if not _power_switchboard.switchboard_changed.is_connected(_refresh_power_state):
+			_power_switchboard.switchboard_changed.connect(_refresh_power_state)

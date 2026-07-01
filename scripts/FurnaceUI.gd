@@ -1387,8 +1387,9 @@ func _get_forge_lock_hint(output_id: StringName) -> String:
 func _trigger_explosion(notes: String, inputs_log: Array, temp: float) -> void:
 	print("[FurnaceUI] EXPLOSION triggered at %d°C" % int(temp))
 
-	if has_node("/root/CameraShake"):
-		get_node("/root/CameraShake").shake(
+	var camera_shake := EventBus.get_camera_shake()
+	if camera_shake != null and camera_shake.has_method("shake"):
+		camera_shake.shake(
 			FURNACE_EXPLOSION_SHAKE_STRENGTH,
 			FURNACE_EXPLOSION_SHAKE_DURATION
 		)
@@ -1542,8 +1543,8 @@ func _log_to_discovery(result: Dictionary, inputs: Array, temp: float) -> void:
 		push_error("DiscoveryLog autoload node not found under /root")
 
 	var event_bus = get_node_or_null("/root/EventBus")
-	if not output_id.is_empty() and event_bus != null and event_bus.has_signal("discovery_made"):
-		event_bus.emit_signal("discovery_made", output_id)
+	if not output_id.is_empty() and event_bus != null and event_bus.has_method("emit_discovery_made"):
+		event_bus.emit_discovery_made(output_id)
 
 
 ## Show tier-specific action hint feedback.

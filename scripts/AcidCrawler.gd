@@ -128,6 +128,7 @@ func die() -> void:
 		return
 
 	current_state = State.DEAD
+	_unregister_from_base_defense()
 	velocity = Vector2.ZERO
 	_set_surface_visible(true)
 	_sync_scan_proxy()
@@ -142,6 +143,10 @@ func die() -> void:
 
 	await get_tree().create_timer(1.5).timeout
 	queue_free()
+
+
+func _exit_tree() -> void:
+	_unregister_from_base_defense()
 
 
 func _step_state(delta: float) -> void:
@@ -279,8 +284,9 @@ func _start_emerge_warning() -> void:
 	_set_surface_visible(false)
 	_sync_scan_proxy()
 	_spawn_emerge_warning_fx(_burrow_target_position)
-	if CameraShake != null and CameraShake.has_method("shake"):
-		CameraShake.shake(0.25, 0.4)
+	var camera_shake := EventBus.get_camera_shake()
+	if camera_shake != null and camera_shake.has_method("shake"):
+		camera_shake.shake(0.25, 0.4)
 
 
 func _finish_emerge() -> void:
@@ -367,7 +373,7 @@ func _refresh_player_target() -> void:
 
 
 func _find_player() -> CharacterBody2D:
-	var player := get_tree().current_scene.find_child("Player", true, false)
+	var player := GameManager.get_player()
 	if player is CharacterBody2D:
 		return player as CharacterBody2D
 	return null
@@ -408,6 +414,11 @@ func _report_base_breach() -> void:
 		return
 	if BaseThreatDirector.has_method("report_enemy_base_breach"):
 		BaseThreatDirector.report_enemy_base_breach(self)
+
+
+func _unregister_from_base_defense() -> void:
+	if BaseDefenseSystem != null and BaseDefenseSystem.has_method("unregister_enemy"):
+		BaseDefenseSystem.unregister_enemy(get_instance_id())
 
 
 func _get_player_tile_center() -> Vector2:

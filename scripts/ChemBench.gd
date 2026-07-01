@@ -43,6 +43,8 @@ var _ratio_percent := DEFAULT_RATIO_PERCENT
 var _temperature_c := DEFAULT_TEMPERATURE_C
 var _power_cell_charge_remaining := 0.0
 var _rain_failure_taught := false
+var _base_grid: Node = null
+var _power_switchboard: Node = null
 
 
 func _ready() -> void:
@@ -52,8 +54,9 @@ func _ready() -> void:
 	call_deferred("_ensure_ui")
 	interaction_area.body_entered.connect(_on_body_entered)
 	interaction_area.body_exited.connect(_on_body_exited)
-	if PowerSwitchboard != null and PowerSwitchboard.has_signal("switchboard_changed"):
-		PowerSwitchboard.switchboard_changed.connect(_emit_state_changed)
+	_bind_power_services()
+	if not EventBus.service_registered.is_connected(_on_service_registered):
+		EventBus.service_registered.connect(_on_service_registered)
 	_hide_prompt()
 
 
@@ -356,15 +359,28 @@ func _drain_power_bonus(delta: float) -> void:
 
 
 func _is_switchboard_boost_enabled() -> bool:
-	if PowerSwitchboard == null or not PowerSwitchboard.has_method("allows_chem_bench_boost"):
+	if _power_switchboard == null or not _power_switchboard.has_method("allows_chem_bench_boost"):
 		return true
-	return bool(PowerSwitchboard.allows_chem_bench_boost())
+	return bool(_power_switchboard.allows_chem_bench_boost())
 
 
 func _is_base_grid_powered() -> bool:
-	if BaseGrid == null or not BaseGrid.has_method("is_powered"):
+	if _base_grid == null or not _base_grid.has_method("is_powered"):
 		return false
-	return bool(BaseGrid.is_powered())
+	return bool(_base_grid.is_powered())
+
+
+func _on_service_registered(service_id: StringName, _service: Node) -> void:
+	if service_id == EventBus.SERVICE_BASE_GRID or service_id == EventBus.SERVICE_POWER_SWITCHBOARD:
+		_bind_power_services()
+
+
+func _bind_power_services() -> void:
+	_base_grid = EventBus.get_base_grid()
+	_power_switchboard = EventBus.get_power_switchboard()
+	if _power_switchboard != null and _power_switchboard.has_signal("switchboard_changed"):
+		if not _power_switchboard.switchboard_changed.is_connected(_emit_state_changed):
+			_power_switchboard.switchboard_changed.connect(_emit_state_changed)
 
 
 func _has_reactive_inputs() -> bool:
@@ -397,7 +413,7 @@ func _start_interaction() -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-	if body.name == "Player" and body is CharacterBody2D:
+	if body.is_in_group(&"player") and body is CharacterBody2D:
 		_player = body
 		_player_in_range = true
 		if not _is_interacting:
@@ -406,7 +422,7 @@ func _on_body_entered(body: Node) -> void:
 
 
 func _on_body_exited(body: Node) -> void:
-	if body.name == "Player":
+	if body.is_in_group(&"player"):
 		if body == _player:
 			_player = null
 		_player_in_range = false

@@ -136,7 +136,7 @@ func _is_lithium_exposed() -> bool:
 		return false
 
 	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
-	var player := scene_root.find_child("Player", true, false) as Node2D
+	var player := GameManager.get_player()
 	if player == null:
 		return false
 
@@ -160,9 +160,9 @@ func get_active_risk_reason(element_id: StringName) -> String:
 	if element_id == LITHIUM_ITEM_ID:
 		if is_sheltered():
 			return ""
+		var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
+		var player := GameManager.get_player()
 		if GameManager.active_environmental_warnings.has(&"rain"):
-			var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
-			var player := scene_root.find_child("Player", true, false) as Node2D
 			var weather_system := get_node_or_null("/root/WeatherSystem")
 			if player != null and weather_system != null and weather_system.has_method("get_shelter_at"):
 				if bool(weather_system.call("get_shelter_at", player.global_position)):
@@ -172,9 +172,7 @@ func get_active_risk_reason(element_id: StringName) -> String:
 					return "Lithium charge is draining in rain. Get under shelter or store it dry."
 			else:
 				return "Lithium charge is draining in rain. Get under shelter or store it dry."
-				
-		var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
-		var player := scene_root.find_child("Player", true, false) as Node2D
+
 		if player != null and scene_root != null and scene_root.has_method("is_water_at_world_position"):
 			if bool(scene_root.call("is_water_at_world_position", player.global_position)):
 				return "Lithium charge is draining because you are standing in water."
@@ -282,7 +280,7 @@ func _trigger_ignition(element_id: StringName) -> void:
 		InventoryManager.remove_item(element_id, quantity)
 
 	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
-	var player := scene_root.find_child("Player", true, false)
+	var player := GameManager.get_player()
 	if player is Node2D:
 		var explosion: Node2D = CHEMICAL_EXPLOSION_SCENE.instantiate()
 		scene_root.add_child(explosion)
@@ -298,7 +296,7 @@ func _trigger_lithium_explosion() -> void:
 		InventoryManager.remove_item(LITHIUM_ITEM_ID, quantity)
 
 	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
-	var player := scene_root.find_child("Player", true, false)
+	var player := GameManager.get_player()
 	if player is Node2D:
 		var explosion: Node2D = CHEMICAL_EXPLOSION_SCENE.instantiate()
 		explosion.set("damage_radius_pixels", LITHIUM_EXPLOSION_RADIUS_PIXELS)

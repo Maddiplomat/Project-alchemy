@@ -134,7 +134,7 @@ func _on_ui_closed() -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-	if body.name == "Player" and body is CharacterBody2D:
+	if body.is_in_group(&"player") and body is CharacterBody2D:
 		_player = body
 		_player_in_range = true
 		if not _is_interacting:

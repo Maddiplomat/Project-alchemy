@@ -1,6 +1,7 @@
 [
   {
     "id": "rust_bolt",
+    "name": "Rust Bolt",
     "inputs": [
       {
         "element_id": "iron",
@@ -26,6 +27,7 @@
   },
   {
     "id": "distillation_kit",
+    "name": "Distillation Kit",
     "inputs": [
       {
         "element_id": "iron",
@@ -40,6 +42,7 @@
       "item_id": "distillation_kit",
       "qty": 1
     },
+    "station": "inventory",
     "required_temp": null,
     "reaction_type": "",
     "durability": 1.0

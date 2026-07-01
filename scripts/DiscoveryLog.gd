@@ -333,6 +333,8 @@ func _append_entry(entry: Dictionary, discover_output: bool) -> void:
 
 	discovery_made.emit(entry)
 	entry_added.emit(entry)
+	if EventBus != null and EventBus.has_method("emit_discovery_entry_added"):
+		EventBus.emit_discovery_entry_added(entry)
 	_print_entry(entry)
 
 

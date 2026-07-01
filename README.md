@@ -59,7 +59,7 @@ The current field inventory is intentionally capped at five active slots.
 
 ## How To Run
 
-1. Open the project in Godot 4.6.
+1. Open the project in Godot 4.7.
 2. Import `project.godot` if the project is not already in the launcher.
 3. Press `F5` to run the project.
 4. The project boots into `MainMenu.tscn`, then into the current playable survival-crafting slice.

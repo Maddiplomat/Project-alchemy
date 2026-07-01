@@ -11,6 +11,14 @@ var charge_level: float = 0.0
 var _is_powered: bool = false
 
 
+func _ready() -> void:
+	EventBus.register_service(EventBus.SERVICE_BASE_GRID, self)
+
+
+func _exit_tree() -> void:
+	EventBus.unregister_service(EventBus.SERVICE_BASE_GRID, self)
+
+
 func _process(delta: float) -> void:
 	if charge_level <= 0.0:
 		return

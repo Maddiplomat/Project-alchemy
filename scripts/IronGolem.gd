@@ -276,7 +276,7 @@ func _perform_ground_slam() -> void:
 	var results = space_state.intersect_shape(query)
 	for res in results:
 			var col = res.collider
-			if col.name == "Player":
+			if col is Node and col.is_in_group(&"player"):
 				if col.has_node("HealthSystem"):
 					col.get_node("HealthSystem").take_damage(12, "physical_blunt", "Iron Golem ground slam")
 				elif col.has_method("take_damage"):
@@ -335,6 +335,7 @@ func take_resolved_damage(amount: int, damage_type: String = "physical_blunt", a
 
 func die() -> void:
 	set_state(State.DEAD)
+	_unregister_from_base_defense()
 	enemy_health_bar.visible = false
 	died.emit(self)
 	
@@ -356,6 +357,10 @@ func die() -> void:
 		
 	await get_tree().create_timer(1.5).timeout
 	queue_free()
+
+
+func _exit_tree() -> void:
+	_unregister_from_base_defense()
 
 
 func _set_patrol_destination(index: int) -> void:
@@ -396,7 +401,7 @@ func _connect_scanner_tools() -> void:
 
 
 func _find_player() -> CharacterBody2D:
-	var player := get_tree().current_scene.find_child("Player", true, false)
+	var player := GameManager.get_player()
 	if player is CharacterBody2D:
 		return player as CharacterBody2D
 	return null
@@ -417,6 +422,11 @@ func _report_lit_zone_presence() -> void:
 	if not BaseDefenseSystem.is_position_in_powered_light(global_position):
 		return
 	BaseDefenseSystem.report_night_threat(get_instance_id(), global_position)
+
+
+func _unregister_from_base_defense() -> void:
+	if BaseDefenseSystem != null and BaseDefenseSystem.has_method("unregister_enemy"):
+		BaseDefenseSystem.unregister_enemy(get_instance_id())
 
 
 func _trigger_alert(reason: StringName, player: CharacterBody2D) -> void:

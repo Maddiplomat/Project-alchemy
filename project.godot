@@ -23,7 +23,6 @@ ElementDatabase="*res://scripts/ElementDatabase.gd"
 RecipeDatabase="*res://scripts/RecipeDatabase.gd"
 InventoryManager="*res://scripts/InventoryManager.gd"
 CraftingManager="*res://scripts/CraftingManager.gd"
-CameraShake="*res://scripts/CameraShake.gd"
 WorldSystem="*res://scripts/WorldSystem.gd"
 ChemistryEngine="*res://scripts/ChemistryEngine.gd"
 EventBus="*res://scripts/EventBus.gd"
@@ -35,12 +34,8 @@ CarrierRiskSystem="*res://scripts/CarrierRiskSystem.gd"
 BuildingDatabase="*res://scripts/BuildingDatabase.gd"
 BuildSystem="*res://scripts/BuildSystem.gd"
 ResearchObjectives="*res://scripts/ResearchObjectives.gd"
-MapMarkers="*res://scripts/MapMarkers.gd"
 StorageManager="*res://scripts/StorageManager.gd"
-WorldSaveData="*res://scripts/WorldSaveData.gd"
-BaseGrid="*res://scripts/BaseGrid.gd"
 BaseDefenseSystem="*res://scripts/BaseDefenseSystem.gd"
-PowerSwitchboard="*res://scripts/PowerSwitchboard.gd"
 BaseThreatDirector="*res://scripts/BaseThreatDirector.gd"
 
 [display]
@@ -119,26 +114,6 @@ slot_4={
 slot_5={
 "deadzone": 0.5,
 "events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":53,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
-])
-}
-slot_6={
-"deadzone": 0.5,
-"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":54,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
-])
-}
-slot_7={
-"deadzone": 0.5,
-"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":55,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
-])
-}
-slot_8={
-"deadzone": 0.5,
-"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":56,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
-])
-}
-slot_9={
-"deadzone": 0.5,
-"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":57,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ])
 }
 scan={

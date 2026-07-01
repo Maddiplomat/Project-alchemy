@@ -47,12 +47,12 @@ func get_all_objectives() -> Array[Dictionary]:
 func _connect_completion_hooks() -> void:
 	if ElementDatabase != null and not ElementDatabase.element_discovered.is_connected(_on_element_discovered):
 		ElementDatabase.element_discovered.connect(_on_element_discovered)
-	if CraftingManager != null and not CraftingManager.crafting_completed.is_connected(_on_crafting_completed):
-		CraftingManager.crafting_completed.connect(_on_crafting_completed)
+	if EventBus != null and EventBus.has_signal("crafting_completed") and not EventBus.crafting_completed.is_connected(_on_crafting_completed):
+		EventBus.crafting_completed.connect(_on_crafting_completed)
 	if InventoryManager != null and not InventoryManager.inventory_changed.is_connected(_on_inventory_changed):
 		InventoryManager.inventory_changed.connect(_on_inventory_changed)
-	if BuildSystem != null and BuildSystem.has_signal("buildable_placed") and not BuildSystem.buildable_placed.is_connected(_on_buildable_placed):
-		BuildSystem.buildable_placed.connect(_on_buildable_placed)
+	if EventBus != null and EventBus.has_signal("buildable_placed") and not EventBus.buildable_placed.is_connected(_on_buildable_placed):
+		EventBus.buildable_placed.connect(_on_buildable_placed)
 	if GameManager != null and GameManager.has_signal("scanner_tier_changed") and not GameManager.scanner_tier_changed.is_connected(_on_scanner_tier_changed):
 		GameManager.scanner_tier_changed.connect(_on_scanner_tier_changed)
 	if not get_tree().node_added.is_connected(_on_tree_node_added):

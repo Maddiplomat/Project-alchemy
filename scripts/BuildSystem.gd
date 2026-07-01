@@ -2,16 +2,13 @@ extends Node
 
 signal buildable_placed(buildable_id: StringName)
 
+const BUILD_MENU_SCENE := preload("res://scenes/UI/BuildMenuPanel.tscn")
+const SHELTER_PREVIEW_SCENE := preload("res://scenes/UI/ShelterPreview.tscn")
 const DEFAULT_GHOST_SIZE := Vector2i(32, 32)
 const GHOST_VALID_COLOR := Color(0.36, 0.92, 0.48, 0.6)
 const GHOST_INVALID_COLOR := Color(0.92, 0.28, 0.24, 0.6)
 const PLACED_OBJECT_GROUP := &"placed_objects"
-const BUILD_MENU_PANEL_SIZE := Vector2(456.0, 420.0)
 const SHELTER_COVER_RADIUS_TILES := 1
-const SHELTER_COVER_VALID_COLOR := Color(0.38, 0.76, 0.98, 0.26)
-const SHELTER_COVER_INVALID_COLOR := Color(0.98, 0.54, 0.22, 0.22)
-const SHELTER_SUPPORT_OK_COLOR := Color(0.36, 0.92, 0.48, 0.76)
-const SHELTER_SUPPORT_MISSING_COLOR := Color(0.92, 0.28, 0.24, 0.76)
 
 @export var selected_prefab: PackedScene
 @export var selected_buildable_id: StringName = &"wall"
@@ -20,11 +17,7 @@ const SHELTER_SUPPORT_MISSING_COLOR := Color(0.92, 0.28, 0.24, 0.76)
 var _buildable_ids: Array[StringName] = []
 var _selected_prefab_index := 0
 var _ghost: Sprite2D = null
-var _build_menu_layer: CanvasLayer = null
-var _build_menu_panel: PanelContainer = null
-var _build_menu_title: Label = null
-var _build_menu_hint: Label = null
-var _build_menu_buildables_text: RichTextLabel = null
+var _build_menu = null
 var _ghost_texture: Texture2D = null
 var _placement_shape: Shape2D = null
 var _placement_shape_transform := Transform2D.IDENTITY
@@ -33,11 +26,8 @@ var _selected_rotation_degrees := 0.0
 var _last_tile_coords := Vector2i.ZERO
 var _last_world_position := Vector2.ZERO
 var _last_placement_valid := false
-var _restore_data: Dictionary = {}
-var _shelter_preview_root: Node2D = null
-var _shelter_coverage_markers: Array[Sprite2D] = []
-var _shelter_support_markers: Array[Sprite2D] = []
-var _preview_tile_texture: Texture2D = null
+var _pending_restore_payload: Dictionary = {}
+var _shelter_preview = null
 var _dynamic_build_hint := ""
 
 
@@ -47,8 +37,8 @@ func _ready() -> void:
 	_ensure_build_menu()
 	if has_node("/root/InventoryManager"):
 		InventoryManager.inventory_changed.connect(_refresh_build_menu.unbind(1))
-	if has_node("/root/DiscoveryLog"):
-		DiscoveryLog.discovery_made.connect(func(_entry: Dictionary) -> void: _refresh_build_menu())
+	if EventBus != null and EventBus.has_signal("discovery_entry_added"):
+		EventBus.discovery_entry_added.connect(func(_entry: Dictionary) -> void: _refresh_build_menu())
 	_select_prefab_by_index(_selected_prefab_index)
 	_set_build_mode(false)
 
@@ -91,7 +81,7 @@ func _input(event: InputEvent) -> void:
 			if _is_pointer_over_build_menu():
 				return
 			if _last_placement_valid:
-				_place_selected_prefab()
+				_confirm_selected_placement()
 			get_viewport().set_input_as_handled()
 
 
@@ -121,15 +111,14 @@ func enter_build_mode_for_existing(scene_path: String, restore_data: Variant = n
 			break
 	if target_id.is_empty():
 		return
-	# Store restore payload so _place_selected_prefab skips cost and applies it after
 	if restore_data is Dictionary:
-		_restore_data = (restore_data as Dictionary).duplicate(true)
+		_pending_restore_payload = (restore_data as Dictionary).duplicate(true)
 	elif restore_data is float and float(restore_data) >= 0.0:
-		_restore_data = {&"burn_time_remaining": float(restore_data)}
+		_pending_restore_payload = {&"burn_time_remaining": float(restore_data)}
 	else:
-		_restore_data = {}
+		_pending_restore_payload = {}
 	_select_prefab_by_id(target_id)
-	_selected_rotation_degrees = float(_restore_data.get(&"placed_rotation_degrees", 0.0)) if _is_selected_buildable_rotatable() else 0.0
+	_selected_rotation_degrees = float(_pending_restore_payload.get(&"placed_rotation_degrees", 0.0)) if _is_selected_buildable_rotatable() else 0.0
 	_enter_build_mode()
 
 
@@ -163,16 +152,16 @@ func _set_build_mode(enabled: bool) -> void:
 		if is_instance_valid(_ghost):
 			_ghost.visible = false
 		_hide_shelter_preview()
-		if is_instance_valid(_build_menu_layer):
-			_build_menu_layer.visible = false
+		if is_instance_valid(_build_menu):
+			_build_menu.visible = false
 		return
 
 	_ensure_ghost()
 	_refresh_build_menu()
 	if is_instance_valid(_ghost):
 		_ghost.visible = true
-	if is_instance_valid(_build_menu_layer):
-		_build_menu_layer.visible = true
+	if is_instance_valid(_build_menu):
+		_build_menu.visible = true
 
 
 func _cycle_selected_prefab() -> void:
@@ -335,8 +324,12 @@ func export_to_world_save_data(world_save_data) -> void:
 
 
 func build_world_save_data():
-	export_to_world_save_data(WorldSaveData)
-	return WorldSaveData
+	var world_save_data := EventBus.get_world_save_data()
+	if world_save_data == null:
+		return null
+	if world_save_data.has_method("sync_runtime_state"):
+		world_save_data.sync_runtime_state()
+	return world_save_data
 
 
 func import_from_world_save_data(world_save_data) -> void:
@@ -443,11 +436,24 @@ func _has_structural_support_at_tile(scene_root: Node, tile_coords: Vector2i) ->
 
 
 func _place_selected_prefab() -> void:
+	_place_selected_prefab_with_restore({})
+
+
+func _confirm_selected_placement() -> void:
+	_place_selected_prefab_with_restore(_consume_pending_restore_payload())
+
+
+func _consume_pending_restore_payload() -> Dictionary:
+	var restore_payload := _pending_restore_payload.duplicate(true)
+	_pending_restore_payload.clear()
+	return restore_payload
+
+
+func _place_selected_prefab_with_restore(restore_payload: Dictionary) -> void:
 	if not _last_placement_valid or selected_prefab == null:
 		return
 
-	# Only deduct cost when NOT in "re-place existing" mode
-	if _restore_data.is_empty():
+	if restore_payload.is_empty():
 		var build_cost := _get_selected_buildable_cost()
 		if not _can_afford_cost(build_cost):
 			return
@@ -476,13 +482,13 @@ func _place_selected_prefab() -> void:
 		placed_node.set_meta(&"build_tile_coords", _last_tile_coords)
 		placed_node.set_meta(&"object_type", String(selected_buildable_id))
 
-	# Restore saved state (e.g. campfire burn time) when re-placing an existing object
-	if not _restore_data.is_empty():
+	if not restore_payload.is_empty():
 		if placed_node.has_method("restore_from_pickup"):
-			placed_node.call("restore_from_pickup", _restore_data)
-		_restore_data = {}
+			placed_node.call("restore_from_pickup", restore_payload)
 
 	buildable_placed.emit(selected_buildable_id)
+	if EventBus != null and EventBus.has_method("emit_buildable_placed"):
+		EventBus.emit_buildable_placed(selected_buildable_id)
 	GameManager.mark_dirty()
 
 
@@ -505,45 +511,20 @@ func _ensure_ghost() -> void:
 
 
 func _ensure_shelter_preview() -> void:
-	if is_instance_valid(_shelter_preview_root):
+	if is_instance_valid(_shelter_preview):
 		return
 
 	var current_scene := get_tree().current_scene
 	if current_scene == null:
 		return
-	if _preview_tile_texture == null:
-		_preview_tile_texture = _build_preview_tile_texture()
-
-	_shelter_preview_root = Node2D.new()
-	_shelter_preview_root.name = "ShelterPreview"
-	_shelter_preview_root.z_index = 4095
-	current_scene.add_child(_shelter_preview_root)
-
-	_shelter_coverage_markers.clear()
-	for _i in range(9):
-		var coverage_marker := Sprite2D.new()
-		coverage_marker.texture = _preview_tile_texture
-		coverage_marker.visible = false
-		_shelter_preview_root.add_child(coverage_marker)
-		_shelter_coverage_markers.append(coverage_marker)
-
-	_shelter_support_markers.clear()
-	for _i in range(4):
-		var support_marker := Sprite2D.new()
-		support_marker.texture = _preview_tile_texture
-		support_marker.scale = Vector2(0.55, 0.55)
-		support_marker.visible = false
-		_shelter_preview_root.add_child(support_marker)
-		_shelter_support_markers.append(support_marker)
+	_shelter_preview = SHELTER_PREVIEW_SCENE.instantiate()
+	current_scene.add_child(_shelter_preview)
 
 
 func _hide_shelter_preview() -> void:
-	if not is_instance_valid(_shelter_preview_root):
+	if not is_instance_valid(_shelter_preview):
 		return
-	for marker in _shelter_coverage_markers:
-		marker.visible = false
-	for marker in _shelter_support_markers:
-		marker.visible = false
+	_shelter_preview.hide_preview()
 
 
 func _update_shelter_preview(context: Dictionary, tile_coords: Vector2i, placement_valid: bool) -> void:
@@ -552,7 +533,7 @@ func _update_shelter_preview(context: Dictionary, tile_coords: Vector2i, placeme
 		return
 
 	_ensure_shelter_preview()
-	if not is_instance_valid(_shelter_preview_root):
+	if not is_instance_valid(_shelter_preview):
 		return
 
 	var ground := context.get(&"ground") as TileMapLayer
@@ -561,26 +542,10 @@ func _update_shelter_preview(context: Dictionary, tile_coords: Vector2i, placeme
 		_hide_shelter_preview()
 		return
 
-	var coverage_color := SHELTER_COVER_VALID_COLOR if placement_valid else SHELTER_COVER_INVALID_COLOR
-	var coverage_index := 0
-	for y in range(-SHELTER_COVER_RADIUS_TILES, SHELTER_COVER_RADIUS_TILES + 1):
-		for x in range(-SHELTER_COVER_RADIUS_TILES, SHELTER_COVER_RADIUS_TILES + 1):
-			var coverage_tile := tile_coords + Vector2i(x, y)
-			var coverage_marker := _shelter_coverage_markers[coverage_index]
-			coverage_marker.global_position = ground.to_global(ground.map_to_local(coverage_tile))
-			coverage_marker.modulate = coverage_color
-			coverage_marker.visible = true
-			coverage_index += 1
-
-	var support_offsets: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
-	for support_index in range(support_offsets.size()):
-		var support_tile: Vector2i = tile_coords + support_offsets[support_index]
-		var support_marker := _shelter_support_markers[support_index]
-		support_marker.global_position = ground.to_global(ground.map_to_local(support_tile))
-		support_marker.modulate = SHELTER_SUPPORT_OK_COLOR \
-			if _has_structural_support_at_tile(scene_root, support_tile) \
-			else SHELTER_SUPPORT_MISSING_COLOR
-		support_marker.visible = true
+	var support_states: Array[bool] = []
+	for support_offset in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		support_states.append(_has_structural_support_at_tile(scene_root, tile_coords + support_offset))
+	_shelter_preview.show_preview(ground, tile_coords, placement_valid, support_states)
 
 
 func _update_dynamic_build_hint(context: Dictionary, tile_coords: Vector2i) -> void:
@@ -591,8 +556,7 @@ func _update_dynamic_build_hint(context: Dictionary, tile_coords: Vector2i) -> v
 			"Shelter Roof covers a 3x3 area. Needs 2 adjacent walls or doors. "
 			+ "Support near cursor: %d/2." % support_count
 		)
-	if _build_menu_hint != null:
-		_build_menu_hint.text = _build_hint_text()
+	_refresh_build_menu()
 
 
 func _cache_prefab_preview_data() -> void:
@@ -643,65 +607,17 @@ func _find_collision_shape_2d(node: Node) -> CollisionShape2D:
 
 
 func _ensure_build_menu() -> void:
-	if is_instance_valid(_build_menu_layer):
+	if is_instance_valid(_build_menu):
 		return
 
-	_build_menu_layer = CanvasLayer.new()
-	_build_menu_layer.name = "BuildMenu"
-	add_child(_build_menu_layer)
-
-	_build_menu_panel = PanelContainer.new()
-	_build_menu_panel.offset_left = 16.0
-	_build_menu_panel.offset_top = 16.0
-	_build_menu_panel.custom_minimum_size = BUILD_MENU_PANEL_SIZE
-	_build_menu_panel.offset_right = 16.0 + BUILD_MENU_PANEL_SIZE.x
-	_build_menu_panel.offset_bottom = 16.0 + BUILD_MENU_PANEL_SIZE.y
-	_build_menu_layer.add_child(_build_menu_panel)
-
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 12)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_right", 12)
-	margin.add_theme_constant_override("margin_bottom", 12)
-	_build_menu_panel.add_child(margin)
-
-	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 8)
-	margin.add_child(content)
-
-	_build_menu_title = Label.new()
-	_build_menu_title.add_theme_font_size_override("font_size", 20)
-	content.add_child(_build_menu_title)
-
-	_build_menu_hint = Label.new()
-	_build_menu_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	content.add_child(_build_menu_hint)
-
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content.add_child(scroll)
-
-	var text := RichTextLabel.new()
-	text.bbcode_enabled = false
-	text.fit_content = true
-	text.scroll_active = false
-	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text.selection_enabled = false
-	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(text)
-	_build_menu_buildables_text = text
+	_build_menu = BUILD_MENU_SCENE.instantiate()
+	add_child(_build_menu)
 
 
 func _refresh_build_menu() -> void:
-	if _build_menu_title == null or _build_menu_hint == null:
+	if _build_menu == null:
 		return
-
-	_build_menu_title.text = "Build Mode"
-	_build_menu_hint.text = _build_hint_text()
-
-	if _build_menu_buildables_text != null:
-		_build_menu_buildables_text.text = _build_buildables_text()
+	_build_menu.refresh_menu("Build Mode", _build_hint_text(), _build_buildables_text())
 
 
 func _get_selected_buildable_prefab() -> PackedScene:
@@ -880,7 +796,7 @@ func _format_resource_name(item_id: StringName) -> String:
 
 
 func _is_pointer_over_build_menu() -> bool:
-	return is_instance_valid(_build_menu_panel) and _build_menu_panel.get_global_rect().has_point(get_viewport().get_mouse_position())
+	return is_instance_valid(_build_menu) and _build_menu.contains_screen_point(get_viewport().get_mouse_position())
 
 
 func _can_afford_cost(cost: Dictionary) -> bool:
@@ -913,13 +829,3 @@ func _build_hint_text() -> String:
 	if selected_buildable_id == &"shelter_roof":
 		return "B or Esc closes. Tab cycles buildables. Shelter Roof covers a 3x3 area and needs 2 adjacent walls or doors."
 	return "B or Esc closes. Tab cycles buildables. Recipes live in the pack UI and field journal, not in the build menu."
-
-
-func _build_preview_tile_texture() -> Texture2D:
-	var image := Image.create(DEFAULT_GHOST_SIZE.x, DEFAULT_GHOST_SIZE.y, false, Image.FORMAT_RGBA8)
-	image.fill(Color(1.0, 1.0, 1.0, 0.0))
-	for y in range(DEFAULT_GHOST_SIZE.y):
-		for x in range(DEFAULT_GHOST_SIZE.x):
-			var is_border := x <= 1 or y <= 1 or x >= DEFAULT_GHOST_SIZE.x - 2 or y >= DEFAULT_GHOST_SIZE.y - 2
-			image.set_pixel(x, y, Color(1.0, 1.0, 1.0, 1.0 if is_border else 0.72))
-	return ImageTexture.create_from_image(image)

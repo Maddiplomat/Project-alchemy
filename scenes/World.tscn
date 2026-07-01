@@ -10,11 +10,53 @@
 [ext_resource type="PackedScene" path="res://scenes/ChemBench.tscn" id="9_cbnch"]
 [ext_resource type="PackedScene" path="res://scenes/EnemySpawner.tscn" id="10_spawner"]
 [ext_resource type="Script" path="res://scripts/IgnitionSystem.gd" id="11_ignite"]
+[ext_resource type="Script" path="res://scripts/CameraShake.gd" id="12_camera_shake"]
+[ext_resource type="Script" path="res://scripts/MapMarkers.gd" id="13_map_markers"]
+[ext_resource type="Script" path="res://scripts/WorldSaveData.gd" id="14_world_save_data"]
+[ext_resource type="Script" path="res://scripts/BaseGrid.gd" id="15_base_grid"]
+[ext_resource type="Script" path="res://scripts/PowerSwitchboard.gd" id="16_power_switchboard"]
+[ext_resource type="Script" path="res://scripts/ColdSystem.gd" id="17_cold_system"]
+[ext_resource type="Script" path="res://scripts/NightVisualController.gd" id="18_night_visual_controller"]
 
 [node name="World" type="Node2D" unique_id=1488050509]
 script = ExtResource("2_nvi4h")
 
+[node name="CameraShake" type="Node" parent="."]
+script = ExtResource("12_camera_shake")
+
+[node name="MapMarkers" type="Node" parent="."]
+script = ExtResource("13_map_markers")
+
+[node name="WorldSaveData" type="Node" parent="."]
+script = ExtResource("14_world_save_data")
+
+[node name="BaseGrid" type="Node" parent="."]
+script = ExtResource("15_base_grid")
+
+[node name="PowerSwitchboard" type="Node" parent="."]
+script = ExtResource("16_power_switchboard")
+
+[node name="ColdSystem" type="Node" parent="."]
+script = ExtResource("17_cold_system")
+
+[node name="FrostOverlayLayer" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="FrostOverlay" type="TextureRect" parent="FrostOverlayLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+modulate = Color(1, 1, 1, 0)
+
 [node name="CanvasModulate" type="CanvasModulate" parent="."]
+
+[node name="NightVisualController" type="Node" parent="."]
+script = ExtResource("18_night_visual_controller")
+night_modulate_path = NodePath("../CanvasModulate")
+frost_overlay_path = NodePath("../FrostOverlayLayer/FrostOverlay")
 
 [node name="Ground" type="TileMapLayer" parent="." unique_id=1510409461]
 texture_filter = 1

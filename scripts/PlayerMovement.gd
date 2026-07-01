@@ -42,12 +42,17 @@ const STAMINA_DRAIN_RATE: float = 25.0
 
 func _ready() -> void:
 	add_to_group("player")
+	GameManager.register_player(self)
 	_base_max_speed = max_speed
 	drop_item.connect(_on_drop_item)
 	InventoryManager.weight_changed.connect(_on_weight_changed)
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	melee_hitbox.body_entered.connect(_on_melee_hitbox_body_entered)
 	_setup_melee_animation()
+
+
+func _exit_tree() -> void:
+	GameManager.unregister_player(self)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -71,8 +76,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		_sprint_multiplier = 1.0
 		var recovery_rate = STAMINA_RECOVERY_RATE
-		if "cold_level" in GameManager:
-			var cold_ratio = clampf(float(GameManager.get("cold_level")) / 100.0, 0.0, 1.0)
+		if GameManager != null and GameManager.has_method("get_cold_level"):
+			var cold_ratio = clampf(GameManager.get_cold_level() / 100.0, 0.0, 1.0)
 			recovery_rate *= (1.0 - cold_ratio * 0.8)
 		stamina = minf(STAMINA_MAX, stamina + recovery_rate * delta)
 

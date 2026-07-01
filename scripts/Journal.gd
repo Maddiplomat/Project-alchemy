@@ -208,7 +208,7 @@ func _build_recipe_entries() -> Array[Dictionary]:
 		var output: Dictionary = recipe.get(&"output", {})
 		var output_id: StringName = StringName(output.get(&"item_id", output.get(&"id", &"")))
 		var title: String = str(recipe.get(&"name", _format_item_name(StringName(recipe.get(&"id", &"")))))
-		var try_next: String = "Craft at %s." % _format_station(StringName(recipe.get(&"station", &"")))
+		var try_next: String = _build_recipe_try_next(recipe)
 		var hazard_notes: String = ""
 		var scanner_clue: String = ""
 		if DiscoveryJournal != null and DiscoveryJournal.has_method("get_entry"):
@@ -219,7 +219,7 @@ func _build_recipe_entries() -> Array[Dictionary]:
 				scanner_clue = str(journal_entry.get(&"scanner_clue", ""))
 		result.append({
 			&"title": title,
-			&"unlock_chain": _format_recipe_inputs(recipe.get(&"inputs", [])),
+			&"unlock_chain": _format_recipe_inputs(recipe.get(&"inputs", []), recipe),
 			&"try_next": try_next,
 			&"hazard_notes": hazard_notes if not hazard_notes.is_empty() else "No hazard notes recorded.",
 			&"scanner_clue": scanner_clue if not scanner_clue.is_empty() else "No scanner clue recorded.",
@@ -250,7 +250,7 @@ func _format_reward_chain(objective: Dictionary) -> String:
 	return "%s -> %s" % [reward_type, _format_item_name(reward_target)]
 
 
-func _format_recipe_inputs(inputs: Array) -> String:
+func _format_recipe_inputs(inputs: Array, recipe: Dictionary = {}) -> String:
 	var parts: Array[String] = []
 	for input_data: Dictionary in inputs:
 		var item_id: StringName = StringName(input_data.get(&"item_id", input_data.get(&"id", &"")))
@@ -258,7 +258,27 @@ func _format_recipe_inputs(inputs: Array) -> String:
 		if item_id.is_empty() or qty <= 0:
 			continue
 		parts.append("%s x%d" % [_format_item_name(item_id), qty])
-	return ", ".join(parts) if not parts.is_empty() else "No inputs listed"
+	var base_text := ", ".join(parts) if not parts.is_empty() else "No inputs listed"
+	var process_hint := str(recipe.get(&"process_hint", "")).strip_edges()
+	if not process_hint.is_empty():
+		return "%s. %s" % [base_text, process_hint]
+	return base_text
+
+
+func _build_recipe_try_next(recipe: Dictionary) -> String:
+	var hints: Array[String] = []
+	var station_id := StringName(recipe.get(&"station", &""))
+	hints.append("Craft at %s." % _format_station(station_id))
+
+	var temperature_hint := str(recipe.get(&"temperature_hint", "")).strip_edges()
+	if not temperature_hint.is_empty():
+		hints.append(temperature_hint)
+
+	var ratio_hint := str(recipe.get(&"ratio_hint", "")).strip_edges()
+	if not ratio_hint.is_empty():
+		hints.append(ratio_hint)
+
+	return " ".join(hints)
 
 
 func _format_item_name(item_id: StringName) -> String:
@@ -269,6 +289,6 @@ func _format_item_name(item_id: StringName) -> String:
 
 
 func _format_station(station_id: StringName) -> String:
-	if station_id.is_empty():
+	if station_id.is_empty() or RecipeDatabase.is_inventory_station(station_id):
 		return "inventory"
 	return _format_item_name(station_id)

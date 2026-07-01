@@ -157,10 +157,7 @@ func _hide_prompt() -> void:
 
 
 func _get_player() -> CharacterBody2D:
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
-		return null
-	return current_scene.get_node_or_null("Player") as CharacterBody2D
+	return GameManager.get_player() as CharacterBody2D
 
 
 func to_world_save_entry() -> Dictionary:

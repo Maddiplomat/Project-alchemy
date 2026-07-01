@@ -1,5 +1,7 @@
 extends Node
 
+const InventoryItemData = preload("res://scripts/InventoryItem.gd")
+
 signal inventory_changed(slot_index: int)
 signal active_slot_changed(new_index: int)
 signal weight_changed(total_weight: float, carry_capacity: float)
@@ -9,7 +11,7 @@ signal item_added(item_id: StringName, quantity: int, total_quantity: int)
 signal item_removed(item_id: StringName, quantity: int, remaining_quantity: int)
 signal item_quantity_changed(item_id: StringName, quantity: int)
 signal held_item_changed(item_id: StringName)
-signal capacity_changed(current_weight: float, max_weight: float)
+signal capacity_changed(total_weight: float, carry_capacity: float)
 signal volatile_risk_changed(risk_item_ids: Array[StringName])
 
 const MAX_SLOTS := 5 # Intentional current vertical-slice field loadout target.
@@ -33,8 +35,6 @@ enum InventoryRiskLevel { NONE, LOW, MEDIUM, HIGH, EXTREME }
 var carry_capacity := 20.0
 var total_weight := 0.0
 var active_slot_index := 0
-var max_weight := 20.0
-var current_weight := 0.0
 
 var slots: Array[Dictionary] = []
 var items: Dictionary = {}
@@ -70,12 +70,12 @@ func add_element(id: StringName, qty: int, purity: float) -> bool:
 	return add_item(normalized, qty)
 
 
-func add_item(item_data: Dictionary, quantity: int = 1) -> bool:
+func add_item(item_data, quantity: int = 1) -> bool:
 	if quantity <= 0:
 		return false
 
-	var normalized := _normalize_item_data(item_data, quantity)
-	var item_id := StringName(normalized.get("id", NO_ITEM))
+	var normalized = _normalize_item_data(item_data, quantity)
+	var item_id = StringName(normalized.id)
 	if item_id.is_empty():
 		return false
 
@@ -93,7 +93,7 @@ func add_item(item_data: Dictionary, quantity: int = 1) -> bool:
 		previous_purity = float(slots[slot_index]["purity"])
 
 	var next_quantity := previous_quantity + quantity
-	var next_purity := _combine_purity(previous_purity, previous_quantity, float(normalized["purity"]), quantity)
+	var next_purity := _combine_purity(previous_purity, previous_quantity, normalized.purity, quantity)
 
 	slots[slot_index] = {
 		"item_id": item_id,
@@ -101,15 +101,18 @@ func add_item(item_data: Dictionary, quantity: int = 1) -> bool:
 		"purity": next_purity,
 	}
 
-	var stored_item: Dictionary = items.get(item_id, normalized.duplicate(true))
-	for key in normalized.keys():
-		if key == "quantity":
-			continue
-		stored_item[key] = normalized[key]
-	stored_item["id"] = item_id
-	stored_item["quantity"] = next_quantity
-	stored_item["purity"] = next_purity
-	stored_item["unit_weight"] = _get_stack_unit_weight(item_id, stored_item)
+	var stored_item = _get_stored_item(item_id)
+	if stored_item == null:
+		stored_item = normalized.duplicate_item()
+	else:
+		stored_item = stored_item.duplicate_item()
+		stored_item.merge_metadata_from(normalized)
+	stored_item.id = item_id
+	stored_item.item_id = item_id
+	stored_item.quantity = next_quantity
+	stored_item.purity = next_purity
+	stored_item.unit_weight = _get_stack_unit_weight(item_id, stored_item)
+	stored_item.weight = stored_item.unit_weight
 	items[item_id] = stored_item
 
 	_post_slot_mutation([slot_index], previous_active_item)
@@ -151,9 +154,9 @@ func remove_item(item_id: StringName, quantity: int = 1) -> bool:
 		slot["quantity"] = remaining_quantity
 		slots[slot_index] = slot
 
-		var stored_item: Dictionary = items[item_id]
-		stored_item["quantity"] = remaining_quantity
-		stored_item["purity"] = float(slot["purity"])
+		var stored_item = _get_stored_item(item_id)
+		stored_item.quantity = remaining_quantity
+		stored_item.purity = float(slot["purity"])
 		items[item_id] = stored_item
 
 	_post_slot_mutation([slot_index], previous_active_item)
@@ -166,7 +169,7 @@ func get_stack(id: StringName) -> Dictionary:
 	var item_id := StringName(String(id))
 	if not items.has(item_id):
 		return {"quantity": 0, "purity": 0.0}
-	return (items[item_id] as Dictionary).duplicate(true)
+	return _get_stored_item(item_id).to_dict()
 
 
 func get_all_items() -> Dictionary:
@@ -175,17 +178,17 @@ func get_all_items() -> Dictionary:
 		var item_id: StringName = slot["item_id"]
 		if item_id.is_empty() or not items.has(item_id):
 			continue
-		ordered_items[String(item_id)] = (items[item_id] as Dictionary).duplicate(true)
+		ordered_items[String(item_id)] = _get_stored_item(item_id).to_dict()
 	for item_id: StringName in items.keys():
 		if not ordered_items.has(String(item_id)):
-			ordered_items[String(item_id)] = (items[item_id] as Dictionary).duplicate(true)
+			ordered_items[String(item_id)] = _get_stored_item(item_id).to_dict()
 	return ordered_items
 
 
 func get_items() -> Dictionary:
 	var result := {}
 	for item_id: StringName in items.keys():
-		result[item_id] = (items[item_id] as Dictionary).duplicate(true)
+		result[item_id] = _get_stored_item(item_id).to_dict()
 	return result
 
 
@@ -199,8 +202,9 @@ func get_slot_data(slot_index: int) -> Dictionary:
 		return _empty_slot_data()
 
 	var merged := {}
-	if items.has(item_id):
-		merged = (items[item_id] as Dictionary).duplicate(true)
+	var stored_item = _get_stored_item(item_id)
+	if stored_item != null:
+		merged = stored_item.to_dict()
 	merged["id"] = item_id
 	merged["item_id"] = item_id
 	merged["quantity"] = int(slot["quantity"])
@@ -259,21 +263,25 @@ func has_item(item_id: StringName, quantity: int = 1) -> bool:
 func get_quantity(item_id: StringName) -> int:
 	if not items.has(item_id):
 		return 0
-	return int((items[item_id] as Dictionary).get("quantity", 0))
+	var stored_item = _get_stored_item(item_id)
+	if stored_item == null:
+		return 0
+	return stored_item.quantity
 
 
-func can_add_item(item_data: Dictionary, quantity: int = 1) -> bool:
+func can_add_item(item_data, quantity: int = 1) -> bool:
 	if quantity <= 0:
 		return false
 
-	var item_id := _get_item_id_from_dict(item_data)
+	var normalized = _normalize_item_data(item_data, quantity)
+	var item_id = StringName(normalized.id)
 	if item_id.is_empty():
 		return false
 
 	if _find_slot_for_item(item_id) == -1 and _find_free_slot() == -1:
 		return false
 
-	var added_weight := _get_stack_unit_weight(item_id, item_data) * float(quantity)
+	var added_weight := _get_stack_unit_weight(item_id, normalized) * float(quantity)
 	if total_weight < carry_capacity:
 		return true
 	return total_weight + added_weight <= carry_capacity
@@ -318,9 +326,10 @@ func destroy_random_occupied_slot() -> Dictionary:
 	}
 
 
-func receive_world_pickup(item_data: Dictionary, quantity: int = 1) -> bool:
-	var normalized_pickup := item_data.duplicate(true)
-	var item_id := _get_item_id_from_dict(normalized_pickup)
+func receive_world_pickup(item_data, quantity: int = 1) -> bool:
+	var normalized_pickup := _variant_to_dict(item_data)
+	var pickup_item = InventoryItemData.from_variant(normalized_pickup)
+	var item_id = StringName(pickup_item.id)
 	if item_id.is_empty():
 		return false
 
@@ -328,7 +337,7 @@ func receive_world_pickup(item_data: Dictionary, quantity: int = 1) -> bool:
 	normalized_pickup["item_id"] = item_id
 	var element_data := ElementDatabase.get_element(item_id)
 	if not element_data.is_empty():
-		normalized_pickup["purity"] = clampf(float(_dict_get(normalized_pickup, "purity", DEFAULT_ITEM_PURITY)), 0.0, 1.0)
+		normalized_pickup["purity"] = clampf(pickup_item.purity, 0.0, 1.0)
 		normalized_pickup["category"] = InventoryItemCategory.ELEMENT
 		normalized_pickup["risk_level"] = _to_inventory_risk_level(element_data.get(&"carrier_risk"))
 	return add_item(normalized_pickup, quantity)
@@ -338,20 +347,20 @@ func degrade_item(item_id: StringName, amount: float) -> bool:
 	if amount <= 0.0 or not items.has(item_id):
 		return false
 
-	var stored_item: Dictionary = items[item_id]
-	if stored_item.get("durability") == null:
+	var stored_item = _get_stored_item(item_id)
+	if stored_item == null or not stored_item.has_durability:
 		return false
 
-	var current_durability := float(stored_item.get("durability", DEFAULT_ITEM_DURABILITY))
-	var max_durability := maxf(0.0, float(stored_item.get("max_durability", DEFAULT_ITEM_MAX_DURABILITY)))
+	var current_durability = float(stored_item.durability)
+	var max_durability := maxf(0.0, stored_item.max_durability)
 	var next_durability := clampf(current_durability - amount, 0.0, max_durability)
 	if is_equal_approx(current_durability, next_durability):
 		return false
 
 	if next_durability <= 0.0:
-		return remove_item(item_id, int(stored_item.get("quantity", 1)))
+		return remove_item(item_id, stored_item.quantity)
 
-	stored_item["durability"] = next_durability
+	stored_item.durability = next_durability
 	items[item_id] = stored_item
 	_post_metadata_mutation(_get_active_item_id())
 	var slot_index := _find_slot_for_item(item_id)
@@ -363,20 +372,20 @@ func degrade_item(item_id: StringName, amount: float) -> bool:
 func get_item_charge(item_id: StringName) -> float:
 	if not items.has(item_id):
 		return 0.0
-	return clampf(float((items[item_id] as Dictionary).get("charge", 0.0)), 0.0, 1.0)
+	return clampf(_get_stored_item(item_id).charge, 0.0, 1.0)
 
 
 func drain_lithium_charge(amount: float) -> float:
 	if amount <= 0.0 or not items.has(LITHIUM_ITEM_ID):
 		return get_item_charge(LITHIUM_ITEM_ID)
 
-	var stored_item: Dictionary = items[LITHIUM_ITEM_ID]
-	var current_charge := clampf(float(stored_item.get("charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
+	var stored_item = _get_stored_item(LITHIUM_ITEM_ID)
+	var current_charge := clampf(stored_item.charge, 0.0, 1.0)
 	var next_charge := clampf(current_charge - amount, 0.0, 1.0)
 	if is_equal_approx(current_charge, next_charge):
 		return next_charge
 
-	stored_item["charge"] = next_charge
+	stored_item.charge = next_charge
 	items[LITHIUM_ITEM_ID] = stored_item
 	_post_metadata_mutation(_get_active_item_id())
 	var slot_index := _find_slot_for_item(LITHIUM_ITEM_ID)
@@ -389,14 +398,14 @@ func charge_lithium(amount: float) -> float:
 	if amount <= 0.0 or not items.has(LITHIUM_ITEM_ID):
 		return get_item_charge(LITHIUM_ITEM_ID)
 
-	var stored_item: Dictionary = items[LITHIUM_ITEM_ID]
-	var max_charge := clampf(float(stored_item.get("max_charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
-	var current_charge := clampf(float(stored_item.get("charge", DEFAULT_LITHIUM_CHARGE)), 0.0, max_charge)
+	var stored_item = _get_stored_item(LITHIUM_ITEM_ID)
+	var max_charge := clampf(stored_item.max_charge, 0.0, 1.0)
+	var current_charge := clampf(stored_item.charge, 0.0, max_charge)
 	var next_charge := clampf(current_charge + amount, 0.0, max_charge)
 	if is_equal_approx(current_charge, next_charge):
 		return next_charge
 
-	stored_item["charge"] = next_charge
+	stored_item.charge = next_charge
 	items[LITHIUM_ITEM_ID] = stored_item
 	_post_metadata_mutation(_get_active_item_id())
 	var slot_index := _find_slot_for_item(LITHIUM_ITEM_ID)
@@ -407,7 +416,6 @@ func charge_lithium(amount: float) -> float:
 
 func set_max_weight(value: float) -> void:
 	carry_capacity = maxf(0.0, value)
-	max_weight = carry_capacity
 	_emit_weight_signals()
 	_mark_game_dirty()
 
@@ -490,49 +498,47 @@ func _empty_slot_data() -> Dictionary:
 	}
 
 
-func _normalize_item_data(item_data: Dictionary, quantity: int) -> Dictionary:
-	var normalized := item_data.duplicate(true)
-	var item_id := _get_item_id_from_dict(normalized)
-	normalized["id"] = item_id
-	normalized["item_id"] = item_id
-	normalized["quantity"] = quantity
-	normalized["purity"] = clampf(float(_dict_get(normalized, "purity", DEFAULT_ITEM_PURITY)), 0.0, 1.0)
-	normalized["unit_weight"] = _get_stack_unit_weight(item_id, normalized)
+func _normalize_item_data(item_data, quantity: int):
+	var normalized = InventoryItemData.from_variant(item_data, {
+		&"id": NO_ITEM,
+		&"quantity": quantity,
+		&"purity": DEFAULT_ITEM_PURITY,
+		&"category": InventoryItemCategory.GENERIC,
+		&"risk_level": InventoryRiskLevel.NONE,
+		&"unit_weight": DEFAULT_ITEM_WEIGHT,
+		&"charge": DEFAULT_LITHIUM_CHARGE,
+		&"max_charge": DEFAULT_LITHIUM_CHARGE,
+		&"durability": DEFAULT_ITEM_DURABILITY,
+		&"max_durability": DEFAULT_ITEM_MAX_DURABILITY,
+	})
+	normalized.item_id = normalized.id
+	normalized.quantity = quantity
+	normalized.purity = clampf(normalized.purity, 0.0, 1.0)
+	normalized.category = _normalize_inventory_category(normalized.category)
+	normalized.risk_level = int(normalized.risk_level)
+	normalized.unit_weight = _get_stack_unit_weight(normalized.id, normalized)
+	normalized.weight = normalized.unit_weight
 
-	if not normalized.has("category") and not normalized.has(&"category"):
-		normalized["category"] = InventoryItemCategory.GENERIC
-	normalized["category"] = _normalize_inventory_category(_dict_get(normalized, "category", InventoryItemCategory.GENERIC))
+	if normalized.id == LITHIUM_ITEM_ID:
+		normalized.charge = clampf(normalized.charge, 0.0, 1.0)
+		normalized.max_charge = clampf(normalized.max_charge, 0.0, 1.0)
 
-	if not normalized.has("risk_level") and not normalized.has(&"risk_level"):
-		normalized["risk_level"] = InventoryRiskLevel.NONE
+	if normalized.category == InventoryItemCategory.ELEMENT or normalized.category == InventoryItemCategory.CONSUMABLE:
+		normalized.has_durability = false
 	else:
-		normalized["risk_level"] = int(_dict_get(normalized, "risk_level", InventoryRiskLevel.NONE))
-
-	if item_id == LITHIUM_ITEM_ID:
-		normalized["charge"] = clampf(float(_dict_get(normalized, "charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
-		normalized["max_charge"] = clampf(float(_dict_get(normalized, "max_charge", DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
-
-	var category: int = int(normalized["category"])
-	if category == InventoryItemCategory.ELEMENT or category == InventoryItemCategory.CONSUMABLE:
-		normalized["durability"] = null
-		normalized["max_durability"] = null
-	else:
-		var max_durability = _dict_get(normalized, "max_durability", DEFAULT_ITEM_MAX_DURABILITY)
-		max_durability = maxf(0.0, float(max_durability))
-		normalized["max_durability"] = max_durability
-		var durability = _dict_get(normalized, "durability", max_durability if max_durability > 0.0 else DEFAULT_ITEM_DURABILITY)
-		normalized["durability"] = clampf(float(durability), 0.0, max_durability)
-
-	_apply_common_string_aliases(normalized)
+		normalized.has_durability = true
+		normalized.max_durability = maxf(0.0, normalized.max_durability)
+		normalized.durability = clampf(normalized.durability, 0.0, normalized.max_durability)
 
 	return normalized
 
 
-func _get_stack_unit_weight(item_id: StringName, item_data: Dictionary) -> float:
+func _get_stack_unit_weight(item_id: StringName, item_data) -> float:
 	var element_data := ElementDatabase.get_element(item_id)
 	if not element_data.is_empty():
 		return maxf(0.0, float(element_data.get(&"weight", DEFAULT_ITEM_WEIGHT)))
-	return maxf(0.0, float(_dict_get(item_data, "unit_weight", _dict_get(item_data, "weight", DEFAULT_ITEM_WEIGHT))))
+	var inventory_item = InventoryItemData.from_variant(item_data, {&"unit_weight": DEFAULT_ITEM_WEIGHT})
+	return maxf(0.0, inventory_item.unit_weight if inventory_item.unit_weight > 0.0 else inventory_item.weight)
 
 
 func _combine_purity(existing_purity: float, existing_quantity: int, added_purity: float, added_quantity: int) -> float:
@@ -565,46 +571,6 @@ func _normalize_inventory_category(category_value) -> int:
 			return InventoryItemCategory.CONSUMABLE
 		_:
 			return InventoryItemCategory.GENERIC
-
-
-func _dict_get(data: Dictionary, key: String, default_value = null):
-	if data.has(key):
-		return data[key]
-	var key_name := StringName(key)
-	if data.has(key_name):
-		return data[key_name]
-	return default_value
-
-
-func _get_item_id_from_dict(data: Dictionary) -> StringName:
-	return StringName(_dict_get(data, "id", _dict_get(data, "item_id", NO_ITEM)))
-
-
-func _apply_common_string_aliases(data: Dictionary) -> void:
-	var aliased_keys := [
-		"id",
-		"item_id",
-		"display_name",
-		"category",
-		"risk_level",
-		"quantity",
-		"purity",
-		"unit_weight",
-		"weight",
-		"durability",
-		"max_durability",
-		"charge",
-		"max_charge",
-		"weapon_type",
-		"projectile_id",
-		"attack_cooldown",
-	]
-	for key: String in aliased_keys:
-		if data.has(key):
-			continue
-		var key_name := StringName(key)
-		if data.has(key_name):
-			data[key] = data[key_name]
 
 
 func _to_inventory_risk_level(risk_level_name) -> int:
@@ -669,11 +635,9 @@ func _post_metadata_mutation(previous_active_item: StringName) -> void:
 func _sync_weight_state() -> void:
 	var recalculated_weight := 0.0
 	for item_id: StringName in items.keys():
-		var stored_item: Dictionary = items[item_id]
-		recalculated_weight += _get_stack_unit_weight(item_id, stored_item) * float(stored_item.get("quantity", 0))
+		var stored_item = _get_stored_item(item_id)
+		recalculated_weight += _get_stack_unit_weight(item_id, stored_item) * float(stored_item.quantity)
 	total_weight = recalculated_weight
-	current_weight = recalculated_weight
-	max_weight = carry_capacity
 
 
 func _emit_weight_signals() -> void:
@@ -684,7 +648,7 @@ func _emit_weight_signals() -> void:
 func _recalculate_volatile_risk() -> void:
 	var next_risk_item_ids: Array[StringName] = []
 	for item_id: StringName in items.keys():
-		if _is_risky_item(item_id, items[item_id] as Dictionary):
+		if _is_risky_item(item_id, _get_stored_item(item_id)):
 			next_risk_item_ids.append(item_id)
 	if volatile_risk_item_ids == next_risk_item_ids:
 		return
@@ -692,8 +656,8 @@ func _recalculate_volatile_risk() -> void:
 	volatile_risk_changed.emit(volatile_risk_item_ids.duplicate())
 
 
-func _is_risky_item(item_id: StringName, item_data: Dictionary) -> bool:
-	var risk_level: int = int(item_data.get("risk_level", InventoryRiskLevel.NONE))
+func _is_risky_item(item_id: StringName, item_data) -> bool:
+	var risk_level: int = item_data.risk_level
 	if risk_level >= InventoryRiskLevel.MEDIUM:
 		return true
 
@@ -761,8 +725,8 @@ func _adjust_item_purity(item_id: StringName, amount: float) -> float:
 	slot["purity"] = next_purity
 	slots[slot_index] = slot
 
-	var stored_item: Dictionary = items[item_id]
-	stored_item["purity"] = next_purity
+	var stored_item = _get_stored_item(item_id)
+	stored_item.purity = next_purity
 	items[item_id] = stored_item
 
 	_post_metadata_mutation(_get_active_item_id())
@@ -772,10 +736,7 @@ func _adjust_item_purity(item_id: StringName, amount: float) -> float:
 
 
 func _is_player_exposed_to_rain() -> bool:
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
-		return true
-	var player := current_scene.find_child("Player", true, false) as Node2D
+	var player := GameManager.get_player()
 	if player == null:
 		return true
 	if BaseThreatDirector != null and BaseThreatDirector.has_method("is_rain_exposed_at"):
@@ -839,7 +800,18 @@ func _set_sulfur_heat_risk_active(active: bool) -> void:
 
 
 func _get_player() -> Node2D:
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
+	return GameManager.get_player()
+
+
+func _get_stored_item(item_id: StringName):
+	if not items.has(item_id):
 		return null
-	return current_scene.find_child("Player", true, false) as Node2D
+	return items[item_id]
+
+
+func _variant_to_dict(item_data) -> Dictionary:
+	if item_data != null and item_data.has_method("to_dict") and item_data.has_method("duplicate_item"):
+		return item_data.to_dict()
+	if item_data is Dictionary:
+		return (item_data as Dictionary).duplicate(true)
+	return {}

@@ -1,0 +1,88 @@
+[
+  {
+    "id": "charcoal",
+    "name": "Charcoal",
+    "inputs": [
+      {
+        "element_id": "wood",
+        "qty": 1
+      }
+    ],
+    "output": {
+      "item_id": "charcoal",
+      "qty": 1
+    },
+    "station": "furnace",
+    "process_hint": "Carbonise wood in the furnace. This is the fuel and carbon source for later iron outcomes.",
+    "durability": null
+  },
+  {
+    "id": "wrought_iron",
+    "name": "Wrought Iron",
+    "inputs": [
+      {
+        "element_id": "iron",
+        "qty": 1
+      },
+      {
+        "element_id": "charcoal",
+        "qty": 1
+      }
+    ],
+    "output": {
+      "item_id": "wrought_iron",
+      "qty": 1
+    },
+    "station": "furnace",
+    "process_hint": "Same iron plus charcoal charge as steel and cast iron. Furnace tuning decides the outcome.",
+    "ratio_hint": "Bias toward the lower-carbon side of the furnace ratio.",
+    "temperature_hint": "Run hot enough to smelt, but below the tighter steel window.",
+    "durability": null
+  },
+  {
+    "id": "steel",
+    "name": "Steel",
+    "inputs": [
+      {
+        "element_id": "iron",
+        "qty": 1
+      },
+      {
+        "element_id": "charcoal",
+        "qty": 1
+      }
+    ],
+    "output": {
+      "item_id": "steel",
+      "qty": 1
+    },
+    "station": "furnace",
+    "process_hint": "Same iron plus charcoal charge as wrought iron and cast iron. Furnace tuning decides the outcome.",
+    "ratio_hint": "Hold the carbon mix in the narrow middle window.",
+    "temperature_hint": "Reach the hotter steel window and keep the ratio controlled.",
+    "durability": null
+  },
+  {
+    "id": "cast_iron",
+    "name": "Cast Iron",
+    "inputs": [
+      {
+        "element_id": "iron",
+        "qty": 1
+      },
+      {
+        "element_id": "charcoal",
+        "qty": 1
+      }
+    ],
+    "output": {
+      "item_id": "cast_iron",
+      "qty": 1
+    },
+    "station": "furnace",
+    "process_hint": "Same iron plus charcoal charge as wrought iron and steel. Furnace tuning decides the outcome.",
+    "ratio_hint": "Push too far toward carbon and the melt tips into cast iron.",
+    "temperature_hint": "High heat with excess carbon produces the brittle cast outcome.",
+    "durability": null
+  }
+]

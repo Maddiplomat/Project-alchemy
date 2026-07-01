@@ -14,8 +14,9 @@ func _ready() -> void:
 	position_smoothing_enabled = true
 	position_smoothing_speed = smoothing_speed
 	limit_enabled = false
-	if has_node("/root/CameraShake"):
-		get_node("/root/CameraShake").register_camera(self)
+	var camera_shake := EventBus.get_camera_shake()
+	if camera_shake != null and camera_shake.has_method("register_camera"):
+		camera_shake.register_camera(self)
 
 
 func set_bounds(rect: Rect2) -> void:

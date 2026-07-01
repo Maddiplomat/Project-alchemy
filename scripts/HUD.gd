@@ -101,8 +101,8 @@ func _ready() -> void:
 	_setup_discovery_journal()
 	_setup_night_defense_warning()
 	_setup_weather_strip()
-	if has_node("/root/BaseDefenseSystem"):
-		BaseDefenseSystem.night_threat_detected.connect(_on_night_threat_detected)
+	if EventBus != null and EventBus.has_signal("night_threat_detected"):
+		EventBus.night_threat_detected.connect(_on_night_threat_detected)
 	if has_node("/root/BaseThreatDirector"):
 		BaseThreatDirector.threat_lesson_triggered.connect(_on_base_threat_lesson_triggered)
 	if WeatherSystem != null:
@@ -520,7 +520,7 @@ func _close_journal() -> void:
 
 
 func _pause_player_input() -> void:
-	var player := get_tree().current_scene.find_child("Player", true, false)
+	var player := GameManager.get_player()
 	if player == null or not player.has_method("pause_input"):
 		return
 
@@ -731,10 +731,7 @@ func _get_day_time_text() -> String:
 func _get_weather_player() -> Node2D:
 	if _weather_player != null and is_instance_valid(_weather_player):
 		return _weather_player
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
-		return null
-	_weather_player = current_scene.find_child("Player", true, false) as Node2D
+	_weather_player = GameManager.get_player()
 	return _weather_player
 
 

@@ -43,7 +43,8 @@ func get_craftable_recipe() -> Dictionary:
 		var recipe := RecipeDatabase.get_recipe(recipe_id)
 		if recipe.is_empty():
 			continue
-		if StringName(recipe.get(&"station", &"")) != &"":
+		var station_id := StringName(recipe.get(&"station", &""))
+		if not RecipeDatabase.is_inventory_station(station_id):
 			continue
 		if can_craft(recipe_id):
 			return recipe
@@ -101,6 +102,8 @@ func craft(recipe_id: StringName, station_id: StringName = &"") -> bool:
 	first_craft_completed = true
 	crafted.emit(recipe_id)
 	crafting_completed.emit(recipe_id, output_data.duplicate(true))
+	if EventBus != null and EventBus.has_method("emit_crafting_completed"):
+		EventBus.emit_crafting_completed(recipe_id, output_data)
 	return true
 
 
@@ -167,6 +170,6 @@ func _is_recipe_unlocked(recipe: Dictionary) -> bool:
 
 func _is_station_valid(recipe: Dictionary, station_id: StringName) -> bool:
 	var required_station := StringName(recipe.get(&"station", &""))
-	if required_station.is_empty():
-		return station_id.is_empty()
+	if RecipeDatabase.is_inventory_station(required_station):
+		return station_id.is_empty() or RecipeDatabase.is_inventory_station(station_id)
 	return station_id == required_station

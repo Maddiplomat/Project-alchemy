@@ -1,5 +1,4 @@
 extends Node
-# Autoload: MapMarkers
 
 signal markers_changed
 signal marker_added(marker_id: StringName, marker: Dictionary)
@@ -20,12 +19,17 @@ var _has_sulfur_zone_rect := false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	EventBus.register_service(EventBus.SERVICE_MAP_MARKERS, self)
 	if GameManager != null:
 		GameManager.player_died.connect(_on_player_died)
 		GameManager.game_state_changed.connect(_on_game_state_changed)
 	if not get_tree().node_added.is_connected(_on_tree_node_added):
 		get_tree().node_added.connect(_on_tree_node_added)
 	call_deferred("_refresh_world_bindings")
+
+
+func _exit_tree() -> void:
+	EventBus.unregister_service(EventBus.SERVICE_MAP_MARKERS, self)
 
 
 func _process(_delta: float) -> void:
@@ -76,7 +80,7 @@ func get_world_rect() -> Rect2:
 func _on_tree_node_added(node: Node) -> void:
 	if node == null:
 		return
-	if node.name == "Player" and node is Node2D:
+	if node == GameManager.get_player():
 		call_deferred("_refresh_world_bindings")
 		return
 	if node.name == "World":
@@ -98,7 +102,7 @@ func _refresh_world_bindings() -> void:
 		_bind_world_nodes(current_scene)
 
 	if (_bound_player == null or not is_instance_valid(_bound_player)):
-		var player: Node2D = current_scene.find_child("Player", true, false) as Node2D
+		var player := GameManager.get_player()
 		if player != null:
 			_bound_player = player
 			_set_marker(HOME_MARKER_ID, {

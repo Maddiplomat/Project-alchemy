@@ -1,5 +1,4 @@
 extends Node
-# Autoload: CameraShake
 
 signal shake_started
 signal shake_ended
@@ -7,6 +6,14 @@ signal shake_ended
 var _intensity: float = 0.0
 var _duration: float = 0.0
 var _camera: Camera2D = null
+
+
+func _ready() -> void:
+	EventBus.register_service(EventBus.SERVICE_CAMERA_SHAKE, self)
+
+
+func _exit_tree() -> void:
+	EventBus.unregister_service(EventBus.SERVICE_CAMERA_SHAKE, self)
 
 
 func shake(intensity: float, duration: float) -> void:

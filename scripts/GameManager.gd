@@ -17,6 +17,8 @@ signal playtime_changed(playtime_seconds: int)
 signal player_health_changed(current_health: int, max_health: int)
 signal player_status_effects_changed(status_effects: Array[StringName])
 signal player_died(cause_of_death: StringName)
+signal player_registered(player: Node2D)
+signal player_unregistered(player: Node2D)
 signal pause_changed(is_paused: bool)
 
 signal day_changed(day: int)
@@ -48,14 +50,9 @@ var day_start_time: float = 0.25
 var max_player_health: int = 100
 var player_health: int = 100
 var player_status_effects: Array[StringName] = []
+var player: Node2D = null
 var player_health_system: Node = null
 var _health_system: Node = null
-var is_player_warmed: bool = false
-var cold_level: float = 0.0
-const COLD_BUILDUP_RATE: float = 2.0
-const COLD_DECAY_RATE: float = 5.0
-const COLD_MAX: float = 100.0
-const COLD_DAMAGE_TICK_RATE: float = 2.0
 
 var is_paused: bool = false
 var active_environmental_warnings: Array[StringName] = []
@@ -63,95 +60,73 @@ var scanner_tier: ScannerTier = ScannerTier.BASIC
 
 var _seconds_since_autosave_request: int = 0
 var _is_night: bool = false
-var _cold_damage_timer: float = 0.0
-
-var _night_canvas_modulate: CanvasModulate = null
-var _frost_rect: TextureRect = null
 
 func _ready() -> void:
 	_is_night = _is_time_night(time_of_day)
-	_setup_night_modulate()
-	_setup_frost_overlay()
-
-func _setup_frost_overlay() -> void:
-	var canvas_layer = CanvasLayer.new()
-	canvas_layer.layer = 100
-	
-	_frost_rect = TextureRect.new()
-	_frost_rect.name = "FrostOverlay"
-	_frost_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_frost_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_frost_rect.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	
-	var gradient = Gradient.new()
-	gradient.add_point(0.0, Color(0.8, 0.9, 1.0, 0.0))
-	gradient.add_point(0.7, Color(0.8, 0.9, 1.0, 0.1))
-	gradient.add_point(1.0, Color(0.6, 0.8, 1.0, 0.6))
-	
-	var texture = GradientTexture2D.new()
-	texture.gradient = gradient
-	texture.fill = GradientTexture2D.FILL_RADIAL
-	texture.fill_from = Vector2(0.5, 0.5)
-	texture.fill_to = Vector2(1.0, 1.0)
-	texture.width = 1280
-	texture.height = 720
-	
-	_frost_rect.texture = texture
-	canvas_layer.add_child(_frost_rect)
-	add_child(canvas_layer)
-
-func _setup_night_modulate() -> void:
-	_night_canvas_modulate = CanvasModulate.new()
-	_night_canvas_modulate.name = "NightModulate"
-	_night_canvas_modulate.color = Color(1.0, 1.0, 1.0, 1.0)
-	add_child(_night_canvas_modulate)
-	_update_night_modulate()
-
-func _update_night_modulate() -> void:
-	if _night_canvas_modulate == null:
-		return
-	if _is_night:
-		_night_canvas_modulate.color = Color(0.6, 0.6, 0.7, 1.0)
-	else:
-		_night_canvas_modulate.color = Color(1.0, 1.0, 1.0, 1.0)
 
 func is_night() -> bool:
 	return _is_night
+
+
+func register_player(player_node: Node2D) -> void:
+	if player_node == null:
+		return
+	if player == player_node:
+		return
+	player = player_node
+	player_registered.emit(player_node)
+
+
+func unregister_player(player_node: Node2D) -> void:
+	if player != player_node:
+		return
+	player = null
+	player_unregistered.emit(player_node)
+
+
+func get_player() -> Node2D:
+	if player != null and is_instance_valid(player):
+		return player
+	player = null
+	return null
+
+
+func get_player_world_position() -> Variant:
+	var current_player := get_player()
+	if current_player == null:
+		return null
+	return current_player.global_position
+
+
+func set_player_warmed(value: bool) -> void:
+	var cold_system := EventBus.get_cold_system()
+	if cold_system != null and cold_system.has_method("set_player_warmed"):
+		cold_system.set_player_warmed(value)
+
+
+func get_player_warmed() -> bool:
+	var cold_system := EventBus.get_cold_system()
+	if cold_system != null and cold_system.has_method("is_warmed"):
+		return bool(cold_system.is_warmed())
+	return false
+
+
+func get_cold_level() -> float:
+	var cold_system := EventBus.get_cold_system()
+	if cold_system != null and cold_system.has_method("get_cold_level"):
+		return float(cold_system.get_cold_level())
+	return 0.0
+
+
+func reset_temperature_state() -> void:
+	var cold_system := EventBus.get_cold_system()
+	if cold_system != null and cold_system.has_method("reset_state"):
+		cold_system.reset_state()
 
 func _process(delta: float) -> void:
 	if game_state == GameState.PLAYING and not is_paused:
 		var new_time := _advance_time_of_day(delta)
 		set_time_of_day(new_time)
-		
-	_update_cold_level(delta)
-
-func _update_cold_level(delta: float) -> void:
-	var player_position: Variant = _get_player_world_position()
-	var cold_buildup_multiplier := 1.0
-	var warmth_decay_multiplier := 1.0
-	var effectively_warmed := is_player_warmed
-	if _is_night and has_node("/root/BaseThreatDirector") and player_position != null:
-		cold_buildup_multiplier = float(BaseThreatDirector.get_cold_buildup_multiplier(player_position))
-		warmth_decay_multiplier = float(BaseThreatDirector.get_warmth_decay_multiplier(player_position))
-		effectively_warmed = bool(BaseThreatDirector.should_count_as_warmed(player_position))
-
-	if not _is_night:
-		cold_level = maxf(0.0, cold_level - COLD_DECAY_RATE * delta)
-	elif effectively_warmed:
-		cold_level = maxf(0.0, cold_level - COLD_DECAY_RATE * warmth_decay_multiplier * delta)
-	else:
-		cold_level = minf(COLD_MAX, cold_level + COLD_BUILDUP_RATE * cold_buildup_multiplier * delta)
-		
-	if _frost_rect != null:
-		_frost_rect.modulate.a = (cold_level / COLD_MAX) * 0.95
-		
-	if cold_level >= COLD_MAX and not effectively_warmed:
-		_cold_damage_timer += delta
-		if _cold_damage_timer >= COLD_DAMAGE_TICK_RATE:
-			damage_player(2)
-			_cold_damage_timer = 0.0
-	else:
-		_cold_damage_timer = 0.0
 
 
 func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -> void:
@@ -167,6 +142,7 @@ func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -
 	set_scanner_tier(ScannerTier.BASIC)
 	set_gameplay_phase(GameplayPhase.SCAN)
 	reset_player_state()
+	reset_temperature_state()
 	clear_dirty()
 	new_game_started.emit()
 	var was_paused := is_paused or get_tree().paused
@@ -184,10 +160,16 @@ func request_load_game(slot_id: int) -> void:
 
 func request_save(trigger: SaveTrigger = SaveTrigger.MANUAL) -> void:
 	_seconds_since_autosave_request = 0
+	var world_save_data := EventBus.get_world_save_data()
+	if world_save_data != null and world_save_data.has_method("sync_runtime_state"):
+		world_save_data.sync_runtime_state()
 	save_requested.emit(trigger)
 
 
 func mark_dirty() -> void:
+	var world_save_data := EventBus.get_world_save_data()
+	if world_save_data != null and world_save_data.has_method("sync_runtime_state"):
+		world_save_data.sync_runtime_state()
 	if is_dirty:
 		return
 
@@ -290,7 +272,6 @@ func set_time_of_day(value: float) -> void:
 			night_started.emit()
 		else:
 			day_started.emit()
-		_update_night_modulate()
 
 
 func add_playtime(seconds: int) -> void:
@@ -367,7 +348,7 @@ func bind_player_health_system(system: Node) -> void:
 		if _health_system.player_died.is_connected(previous_player_died):
 			_health_system.player_died.disconnect(previous_player_died)
 
-		var previous_status_effects_changed := Callable(self, "_on_bound_player_status_effects_changed")
+		var previous_status_effects_changed := Callable(self, "_on_player_status_effects_changed_from_system")
 		if _health_system.status_effects_changed.is_connected(previous_status_effects_changed):
 			_health_system.status_effects_changed.disconnect(previous_status_effects_changed)
 
@@ -378,7 +359,7 @@ func bind_player_health_system(system: Node) -> void:
 
 	_health_system.health_changed.connect(_on_player_health_changed)
 	_health_system.player_died.connect(_on_player_died_from_system)
-	_health_system.status_effects_changed.connect(_on_bound_player_status_effects_changed)
+	_health_system.status_effects_changed.connect(_on_player_status_effects_changed_from_system)
 
 
 func reset_player_state() -> void:
@@ -445,32 +426,8 @@ func _on_player_died_from_system(_cause_of_death: StringName = &"unknown") -> vo
 		set_game_state(GameState.GAME_OVER)
 
 
-func _on_bound_player_health_changed(current_health: int, maximum_health: int) -> void:
-	max_player_health = maximum_health
-	_sync_player_health(current_health)
-
-
-func _on_bound_player_died(cause_of_death: StringName) -> void:
-	if game_state == GameState.GAME_OVER:
-		return
-
-	request_save(SaveTrigger.DEATH)
-	player_died.emit(cause_of_death)
-	set_game_state(GameState.GAME_OVER)
-
-
-func _on_bound_player_status_effects_changed(status_effects: Array[StringName]) -> void:
+func _on_player_status_effects_changed_from_system(status_effects: Array[StringName]) -> void:
 	set_player_status_effects(status_effects)
-
-
-func _sync_player_health(value: int) -> void:
-	var clamped_health := clampi(value, 0, max_player_health)
-	if player_health == clamped_health:
-		return
-
-	player_health = clamped_health
-	player_health_changed.emit(player_health, max_player_health)
-	mark_dirty()
 
 
 func _is_time_night(value: float) -> bool:
@@ -542,10 +499,4 @@ func _distance_to_cycle_boundary(from_time: float, to_time: float) -> float:
 
 
 func _get_player_world_position() -> Variant:
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
-		return null
-	var player := current_scene.find_child("Player", true, false) as Node2D
-	if player == null:
-		return null
-	return player.global_position
+	return get_player_world_position()

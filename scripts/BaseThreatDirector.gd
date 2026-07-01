@@ -301,7 +301,7 @@ func _process_night_pressure() -> void:
 	var enclosed := is_position_in_walled_enclosure(player.global_position)
 	if near_fire and enclosed:
 		_emit_lesson(LESSON_COLD_ENCLOSURE, "The walled room is holding campfire heat. Plan shelter before night, then close it with doors.")
-	elif near_fire and not enclosed and GameManager.cold_level >= 20.0:
+	elif near_fire and not enclosed and GameManager.get_cold_level() >= 20.0:
 		_emit_lesson(LESSON_OPEN_AIR_COLD, "Open air is bleeding off campfire heat. Walls and doors make night shelter retain warmth.")
 
 
@@ -523,10 +523,7 @@ func _world_to_tile(world_position: Vector2) -> Variant:
 
 
 func _get_player() -> Node2D:
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
-		return null
-	return current_scene.find_child("Player", true, false) as Node2D
+	return GameManager.get_player()
 
 
 func _display_item_name(item_id: StringName) -> String:

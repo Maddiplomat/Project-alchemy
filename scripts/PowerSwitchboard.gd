@@ -24,6 +24,11 @@ var _consumer_enabled: Dictionary = {}
 func _ready() -> void:
 	for consumer_id: StringName in CONSUMER_INFO.keys():
 		_consumer_enabled[consumer_id] = true
+	EventBus.register_service(EventBus.SERVICE_POWER_SWITCHBOARD, self)
+
+
+func _exit_tree() -> void:
+	EventBus.unregister_service(EventBus.SERVICE_POWER_SWITCHBOARD, self)
 
 
 func is_consumer_enabled(consumer_id: StringName) -> bool:

@@ -25,16 +25,17 @@ func _process(delta: float) -> void:
 		State.DEAD:
 			pass
 
-# Virtual methods to be overridden by subclasses
+# Virtual methods for subclasses to override.
+# The base implementation is intentionally silent so a missing override does not
+# flood the log every frame and hide real runtime errors.
 func patrol() -> void:
-	push_warning("patrol() not implemented in ", get_class())
+	pass
 
 func alert() -> void:
-	push_warning("alert() not implemented in ", get_class())
+	pass
 
 func attack() -> void:
-	push_warning("attack() not implemented in ", get_class())
+	pass
 
 func die() -> void:
 	current_state = State.DEAD
-	push_warning("die() not implemented in ", get_class())

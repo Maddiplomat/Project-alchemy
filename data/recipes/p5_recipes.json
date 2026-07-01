@@ -1,6 +1,7 @@
 [
   {
     "id": "sulfuric_bolt",
+    "name": "Sulfuric Bolt",
     "inputs": [
       {
         "sulfur": 1
@@ -28,6 +29,7 @@
   },
   {
     "id": "corrosive_slurry",
+    "name": "Corrosive Slurry",
     "inputs": [
       {
         "sulfur": 1

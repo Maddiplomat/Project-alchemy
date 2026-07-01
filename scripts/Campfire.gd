@@ -216,8 +216,8 @@ func _handle_pickup_input() -> void:
 	if not Input.is_key_pressed(KEY_G):
 		return
 	CarrierRiskSystem.set_sheltered(get_instance_id(), false)
-	if "is_player_warmed" in GameManager:
-		GameManager.is_player_warmed = false
+	if GameManager != null and GameManager.has_method("set_player_warmed"):
+		GameManager.set_player_warmed(false)
 	var build_system := get_node_or_null("/root/BuildSystem")
 	if build_system != null and build_system.has_method("enter_build_mode_for_existing"):
 		build_system.call("enter_build_mode_for_existing", scene_file_path, _build_restore_payload())
@@ -248,11 +248,11 @@ func _update_shelter_state() -> void:
 	CarrierRiskSystem.set_sheltered(get_instance_id(), sheltered and is_lit and _player_in_range)
 
 func _update_warmth_state() -> void:
-	if "is_player_warmed" in GameManager:
+	if GameManager != null and GameManager.has_method("set_player_warmed"):
 		var should_be_warm = (is_lit and _player_in_range)
 		# Only modify if we are currently providing warmth or if we were the one providing it
 		if should_be_warm:
-			GameManager.is_player_warmed = true
+			GameManager.set_player_warmed(true)
 		elif not is_lit or not _player_in_range:
 			# If the player is not in range, we should remove the warmth, but wait, if there are multiple campfires, this might conflict.
 			# Let's just set it to false if they leave this specific one, unless we have a better system.
@@ -428,7 +428,7 @@ func _configure_prompt_label() -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-	if body.name == "Player" and body is CharacterBody2D:
+	if body.is_in_group(&"player") and body is CharacterBody2D:
 		_set_player_in_range(body as CharacterBody2D)
 
 
@@ -522,7 +522,7 @@ func _sync_player_range_state() -> void:
 	if support_area == null:
 		return
 	for body in support_area.get_overlapping_bodies():
-		if body.name == "Player" and body is CharacterBody2D:
+		if body.is_in_group(&"player") and body is CharacterBody2D:
 			_set_player_in_range(body as CharacterBody2D)
 			return
 	_clear_player_in_range()
@@ -543,6 +543,6 @@ func _clear_player_in_range() -> void:
 	_player_in_range = false
 	_heal_accumulator = 0.0
 	CarrierRiskSystem.set_sheltered(get_instance_id(), false)
-	if "is_player_warmed" in GameManager:
-		GameManager.is_player_warmed = false
+	if GameManager != null and GameManager.has_method("set_player_warmed"):
+		GameManager.set_player_warmed(false)
 	_hide_prompt()

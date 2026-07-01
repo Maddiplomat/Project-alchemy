@@ -79,8 +79,8 @@ func _ready():
 	InventoryManager.inventory_changed.connect(refresh_grid.unbind(1))
 	InventoryManager.active_slot_changed.connect(func(_id): refresh_grid())
 	InventoryManager.weight_changed.connect(_on_weight_changed)
-	if has_node("/root/DiscoveryLog"):
-		DiscoveryLog.discovery_made.connect(func(_entry: Dictionary) -> void:
+	if EventBus != null and EventBus.has_signal("discovery_entry_added"):
+		EventBus.discovery_entry_added.connect(func(_entry: Dictionary) -> void:
 			_build_recipe_rows()
 			_refresh_recipe_states()
 		)
@@ -180,10 +180,7 @@ func _is_inventory_toggle_blocked() -> bool:
 	for station_ui in get_tree().get_nodes_in_group(&"station_inventory_drop_target"):
 		if station_ui != null and station_ui.has_method("is_open") and bool(station_ui.is_open()):
 			return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
-		return false
-	var player := current_scene.get_node_or_null("Player")
+	var player := GameManager.get_player()
 	return player != null and player.has_method("is_input_paused") and bool(player.call("is_input_paused"))
 
 func refresh_grid():
@@ -420,7 +417,7 @@ func _try_drop_to_world(dragged_item: Dictionary, initial_drag_quantity: int) ->
 	if item_id.is_empty() or quantity <= 0:
 		return false
 
-	var player := current_scene.get_node_or_null("Player") as Node2D
+	var player := GameManager.get_player()
 	var spawn_system := current_scene.get_node_or_null("ElementSpawnSystem")
 	if player == null or spawn_system == null or not spawn_system.has_method("spawn_inventory_pickup"):
 		return false
@@ -628,7 +625,8 @@ func _build_recipe_rows() -> void:
 		var recipe := RecipeDatabase.get_recipe(recipe_id)
 		if recipe.is_empty():
 			continue
-		if recipe.get(&"station", null) != null and StringName(recipe.get(&"station", &"")) != &"":
+		var station_id := StringName(recipe.get(&"station", &""))
+		if recipe.get(&"station", null) != null and not RecipeDatabase.is_inventory_station(station_id):
 			continue
 
 		var row := PanelContainer.new()

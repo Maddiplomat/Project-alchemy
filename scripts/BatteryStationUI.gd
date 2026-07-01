@@ -2,6 +2,11 @@ extends Control
 
 signal closed
 
+const CONSUMER_PERIMETER_LIGHTS := &"perimeter_lights"
+const CONSUMER_TRAP_NETWORK := &"trap_network"
+const CONSUMER_FURNACE_BOOST := &"furnace_boost"
+const CONSUMER_CHEM_BENCH_BOOST := &"chem_bench_boost"
+
 @onready var lithium_color: ColorRect = $Panel/Margin/VBox/InputRow/LithiumSlot/ColorRect
 @onready var iron_color: ColorRect = $Panel/Margin/VBox/InputRow/IronSlot/ColorRect
 @onready var react_button: Button = $Panel/Margin/VBox/ReactButton
@@ -25,12 +30,13 @@ signal closed
 
 var _is_open := false
 var _base_grid: Node = null
+var _power_switchboard: Node = null
 var _refreshing_toggles := false
 
 
 func _ready() -> void:
 	visible = false
-	_base_grid = get_node_or_null("/root/BaseGrid")
+	_bind_power_services()
 	title_label.text = "Battery Station"
 	power_label.text = "DEFENSE GRID POWER"
 	power_slot_label.text = "Defense Charge Slot"
@@ -42,12 +48,10 @@ func _ready() -> void:
 	trap_toggle.toggled.connect(_on_trap_toggled)
 	furnace_toggle.toggled.connect(_on_furnace_toggled)
 	chem_toggle.toggled.connect(_on_chem_toggled)
-	if _base_grid != null and _base_grid.has_signal("charge_level_changed"):
-		_base_grid.charge_level_changed.connect(_on_charge_changed)
 	if InventoryManager != null and InventoryManager.has_signal("inventory_changed"):
 		InventoryManager.inventory_changed.connect(_on_inventory_changed)
-	if PowerSwitchboard != null and PowerSwitchboard.has_signal("switchboard_changed"):
-		PowerSwitchboard.switchboard_changed.connect(_on_switchboard_changed)
+	if not EventBus.service_registered.is_connected(_on_service_registered):
+		EventBus.service_registered.connect(_on_service_registered)
 
 
 func _process(_delta: float) -> void:
@@ -92,23 +96,23 @@ func _refresh_ui() -> void:
 
 
 func _refresh_switchboard_panel() -> void:
-	if PowerSwitchboard == null:
+	if _power_switchboard == null:
 		return
 
 	_refreshing_toggles = true
-	perimeter_toggle.button_pressed = PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_PERIMETER_LIGHTS)
-	trap_toggle.button_pressed = PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_TRAP_NETWORK)
-	furnace_toggle.button_pressed = PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_FURNACE_BOOST)
-	chem_toggle.button_pressed = PowerSwitchboard.is_consumer_enabled(PowerSwitchboard.CONSUMER_CHEM_BENCH_BOOST)
+	perimeter_toggle.button_pressed = _power_switchboard.is_consumer_enabled(CONSUMER_PERIMETER_LIGHTS)
+	trap_toggle.button_pressed = _power_switchboard.is_consumer_enabled(CONSUMER_TRAP_NETWORK)
+	furnace_toggle.button_pressed = _power_switchboard.is_consumer_enabled(CONSUMER_FURNACE_BOOST)
+	chem_toggle.button_pressed = _power_switchboard.is_consumer_enabled(CONSUMER_CHEM_BENCH_BOOST)
 	_refreshing_toggles = false
 
-	perimeter_draw.text = _format_draw(PowerSwitchboard.get_consumer_draw_units_per_minute(PowerSwitchboard.CONSUMER_PERIMETER_LIGHTS))
-	trap_draw.text = _format_draw(PowerSwitchboard.get_consumer_draw_units_per_minute(PowerSwitchboard.CONSUMER_TRAP_NETWORK))
-	furnace_draw.text = _format_draw(PowerSwitchboard.get_consumer_draw_units_per_minute(PowerSwitchboard.CONSUMER_FURNACE_BOOST))
-	chem_draw.text = _format_draw(PowerSwitchboard.get_consumer_draw_units_per_minute(PowerSwitchboard.CONSUMER_CHEM_BENCH_BOOST))
+	perimeter_draw.text = _format_draw(_power_switchboard.get_consumer_draw_units_per_minute(CONSUMER_PERIMETER_LIGHTS))
+	trap_draw.text = _format_draw(_power_switchboard.get_consumer_draw_units_per_minute(CONSUMER_TRAP_NETWORK))
+	furnace_draw.text = _format_draw(_power_switchboard.get_consumer_draw_units_per_minute(CONSUMER_FURNACE_BOOST))
+	chem_draw.text = _format_draw(_power_switchboard.get_consumer_draw_units_per_minute(CONSUMER_CHEM_BENCH_BOOST))
 
-	var total_draw := PowerSwitchboard.get_total_draw_units_per_minute()
-	var capacity := PowerSwitchboard.get_total_capacity_units_per_minute()
+	var total_draw := float(_power_switchboard.get_total_draw_units_per_minute())
+	var capacity := float(_power_switchboard.get_total_capacity_units_per_minute())
 	draw_label.text = "Current Draw %.2f / %.2f units/min" % [total_draw, capacity]
 	if total_draw > capacity:
 		warning_label.visible = true
@@ -182,27 +186,47 @@ func _on_power_pressed() -> void:
 
 
 func _on_perimeter_toggled(enabled: bool) -> void:
-	_set_consumer(PowerSwitchboard.CONSUMER_PERIMETER_LIGHTS, enabled)
+	_set_consumer(CONSUMER_PERIMETER_LIGHTS, enabled)
 
 
 func _on_trap_toggled(enabled: bool) -> void:
-	_set_consumer(PowerSwitchboard.CONSUMER_TRAP_NETWORK, enabled)
+	_set_consumer(CONSUMER_TRAP_NETWORK, enabled)
 
 
 func _on_furnace_toggled(enabled: bool) -> void:
-	_set_consumer(PowerSwitchboard.CONSUMER_FURNACE_BOOST, enabled)
+	_set_consumer(CONSUMER_FURNACE_BOOST, enabled)
 
 
 func _on_chem_toggled(enabled: bool) -> void:
-	_set_consumer(PowerSwitchboard.CONSUMER_CHEM_BENCH_BOOST, enabled)
+	_set_consumer(CONSUMER_CHEM_BENCH_BOOST, enabled)
 
 
 func _set_consumer(consumer_id: StringName, enabled: bool) -> void:
-	if _refreshing_toggles or PowerSwitchboard == null:
+	if _refreshing_toggles or _power_switchboard == null:
 		return
-	PowerSwitchboard.set_consumer_enabled(consumer_id, enabled)
+	_power_switchboard.set_consumer_enabled(consumer_id, enabled)
 	_refresh_switchboard_panel()
 
 
 func _format_draw(draw_units_per_minute: float) -> String:
 	return "%.2f /min" % draw_units_per_minute
+
+
+func _on_service_registered(service_id: StringName, _service: Node) -> void:
+	if service_id == EventBus.SERVICE_BASE_GRID or service_id == EventBus.SERVICE_POWER_SWITCHBOARD:
+		_bind_power_services()
+		if _is_open:
+			_refresh_ui()
+
+
+func _bind_power_services() -> void:
+	var next_base_grid := EventBus.get_base_grid()
+	if next_base_grid != null and next_base_grid != _base_grid:
+		_base_grid = next_base_grid
+		if _base_grid.has_signal("charge_level_changed") and not _base_grid.charge_level_changed.is_connected(_on_charge_changed):
+			_base_grid.charge_level_changed.connect(_on_charge_changed)
+
+	_power_switchboard = EventBus.get_power_switchboard()
+	if _power_switchboard != null and _power_switchboard.has_signal("switchboard_changed"):
+		if not _power_switchboard.switchboard_changed.is_connected(_on_switchboard_changed):
+			_power_switchboard.switchboard_changed.connect(_on_switchboard_changed)
