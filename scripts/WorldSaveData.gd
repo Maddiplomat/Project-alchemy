@@ -58,6 +58,36 @@ func sync_runtime_state() -> void:
 	_sync_progression_state()
 
 
+func capture_runtime_state() -> Dictionary:
+	sync_runtime_state()
+	return serialize()
+
+
+func restore_runtime_state(data: Dictionary) -> void:
+	deserialize(data)
+
+
+func restore_pending_travel_state() -> void:
+	var world_system := get_node_or_null("/root/WorldSystem")
+	if world_system == null or not world_system.has_method("consume_pending_restore_state"):
+		return
+	var restore_state: Dictionary = world_system.consume_pending_restore_state()
+	if restore_state.is_empty():
+		return
+	deserialize(restore_state)
+
+	var travel_context: Dictionary = {}
+	if world_system.has_method("consume_pending_travel_context"):
+		travel_context = world_system.consume_pending_travel_context()
+	var should_use_entry_point := bool(travel_context.get(&"use_entry_point", false))
+	var entry_point_id := StringName(travel_context.get(&"entry_point_id", &""))
+	if should_use_entry_point and not entry_point_id.is_empty():
+		var current_scene := get_tree().current_scene
+		if current_scene != null and current_scene.has_method("move_player_to_travel_entry"):
+			current_scene.call("move_player_to_travel_entry", entry_point_id)
+	sync_runtime_state()
+
+
 func serialize() -> Dictionary:
 	var data := {}
 
@@ -136,9 +166,9 @@ func deserialize(data: Dictionary) -> void:
 					
 	if data.has("base"):
 		var base_data: Dictionary = data["base"]
-		placed_stations = base_data.get("placed_stations", [])
-		walls = base_data.get("walls", [])
-		storage = base_data.get("storage", [])
+		placed_stations = _coerce_dictionary_array(base_data.get("placed_stations", []))
+		walls = _coerce_dictionary_array(base_data.get("walls", []))
+		storage = _coerce_dictionary_array(base_data.get("storage", []))
 		chest_inventories = base_data.get("chest_inventories", {})
 		defense_grid_charge = float(base_data.get("defense_grid_charge", 0.0))
 		var base_grid := EventBus.get_base_grid()
@@ -156,8 +186,8 @@ func deserialize(data: Dictionary) -> void:
 
 	if data.has("resources"):
 		var resource_data: Dictionary = data["resources"]
-		active_trees = resource_data.get("active_trees", [])
-		pending_tree_respawns = resource_data.get("pending_tree_respawns", [])
+		active_trees = _coerce_dictionary_array(resource_data.get("active_trees", []))
+		pending_tree_respawns = _coerce_dictionary_array(resource_data.get("pending_tree_respawns", []))
 		var current_scene := get_tree().current_scene
 		if current_scene != null and current_scene.has_method("import_tree_state"):
 			current_scene.call("import_tree_state", active_trees, pending_tree_respawns)
@@ -185,7 +215,13 @@ func deserialize(data: Dictionary) -> void:
 
 func _sync_world_state() -> void:
 	var world_system := get_node_or_null("/root/WorldSystem")
-	if world_system != null and world_system.has_method("get_seed"):
+	if world_system == null:
+		return
+	var current_scene := get_tree().current_scene
+	var current_scene_path := str(current_scene.scene_file_path) if current_scene != null else ""
+	if world_system.has_method("get_seed_for_scene") and not current_scene_path.is_empty():
+		world_seed = str(world_system.get_seed_for_scene(current_scene_path))
+	elif world_system.has_method("get_seed"):
 		world_seed = str(world_system.get_seed())
 
 
@@ -198,6 +234,8 @@ func _sync_player_state() -> void:
 			if player.has_node("HealthSystem"):
 				player_health = float(player.get_node("HealthSystem").current_health)
 	player_status_effects = GameManager.player_status_effects.duplicate(true)
+	var current_scene := get_tree().current_scene
+	active_path = str(current_scene.scene_file_path) if current_scene != null else ""
 
 	var inv := get_node_or_null("/root/InventoryManager")
 	if inv != null:
@@ -239,3 +277,13 @@ func _sync_discoveries() -> void:
 
 func _sync_progression_state() -> void:
 	scanner_tier = int(GameManager.scanner_tier)
+
+
+func _coerce_dictionary_array(raw_value: Variant) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not (raw_value is Array):
+		return result
+	for entry in raw_value:
+		if entry is Dictionary:
+			result.append((entry as Dictionary).duplicate(true))
+	return result

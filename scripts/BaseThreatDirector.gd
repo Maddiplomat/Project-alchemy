@@ -13,6 +13,10 @@ const VOLATILE_SAFE_DISTANCE_PIXELS := 128.0
 const ENCLOSURE_RADIUS_TILES := 5
 const BREACH_REPORT_COOLDOWN_SECONDS := 4.0
 const NIGHT_ATTRACTION_RADIUS_PIXELS := 300.0
+const POST_TUTORIAL_ESCALATION_DAY_TIER_ONE := 3
+const POST_TUTORIAL_ESCALATION_DAY_TIER_TWO := 5
+const POST_TUTORIAL_NIGHT_ATTRACTION_RADIUS_TIER_ONE_PIXELS := 380.0
+const POST_TUTORIAL_NIGHT_ATTRACTION_RADIUS_TIER_TWO_PIXELS := 440.0
 const WET_STATUS_ID := &"wet"
 const WET_STATUS_REFRESH_SECONDS := 3.0
 
@@ -41,6 +45,7 @@ var _last_cold_enclosed := false
 var _last_cold_near_fire := false
 var _night_staging_checked := false
 var _rain_was_active := false
+var _loop_escalation_tier := 0
 
 
 func _ready() -> void:
@@ -48,12 +53,17 @@ func _ready() -> void:
 		GameManager.night_started.connect(_on_night_started)
 	if GameManager != null and GameManager.has_signal("day_started"):
 		GameManager.day_started.connect(_on_day_started)
+	if GameManager != null and GameManager.has_signal("day_changed"):
+		GameManager.day_changed.connect(_on_day_changed)
 	if BuildSystem != null and BuildSystem.has_signal("buildable_placed"):
 		BuildSystem.buildable_placed.connect(_on_buildable_placed)
 	if WeatherSystem != null and WeatherSystem.has_signal("weather_changed"):
 		WeatherSystem.weather_changed.connect(_on_weather_changed)
+	if ResearchObjectives != null and ResearchObjectives.has_signal("objective_completed"):
+		ResearchObjectives.objective_completed.connect(_on_objective_completed)
 	if WeatherSystem != null and WeatherSystem.has_method("get_current_state"):
 		_rain_was_active = int(WeatherSystem.get_current_state()) == WeatherSystem.WeatherState.RAIN
+	_loop_escalation_tier = _get_loop_escalation_tier()
 
 
 func _physics_process(delta: float) -> void:
@@ -124,12 +134,13 @@ func get_chemistry_slowdown_multiplier(world_position: Vector2) -> float:
 func get_enemy_attraction_target(enemy_position: Vector2) -> Vector2:
 	var best_target := Vector2(INF, INF)
 	var best_distance := INF
+	var attraction_radius := _get_night_attraction_radius()
 	for source in _get_attraction_sources():
 		var source_node := source as Node2D
 		if source_node == null:
 			continue
 		var distance := enemy_position.distance_to(source_node.global_position)
-		if distance < best_distance and distance <= NIGHT_ATTRACTION_RADIUS_PIXELS:
+		if distance < best_distance and distance <= attraction_radius:
 			best_distance = distance
 			best_target = source_node.global_position
 	return best_target
@@ -341,6 +352,10 @@ func _on_day_started() -> void:
 	_night_staging_checked = false
 
 
+func _on_day_changed(_day: int) -> void:
+	_refresh_loop_escalation_tier()
+
+
 func _on_weather_changed(new_state: int) -> void:
 	var rain_active := new_state == WeatherSystem.WeatherState.RAIN
 	if rain_active:
@@ -365,6 +380,12 @@ func _on_buildable_placed(buildable_id: StringName) -> void:
 			_emit_lesson(LESSON_COLD_ENCLOSURE, "Night shelter needs three parts: heat, walls, and doors.")
 		&"powered_light_post", &"electric_trap":
 			_emit_lesson(LESSON_NIGHT_DEFENSE, "Powered defenses shape night attacks: lights reveal pressure and traps punish the route.")
+
+
+func _on_objective_completed(objective_id: StringName) -> void:
+	if objective_id != &"power_defenses":
+		return
+	_refresh_loop_escalation_tier()
 
 
 func _emit_lesson(lesson_id: StringName, message: String) -> void:
@@ -531,6 +552,39 @@ func _display_item_name(item_id: StringName) -> String:
 	if not data.is_empty():
 		return str(data.get(&"display_name", item_id))
 	return String(item_id).replace("_", " ").capitalize()
+
+
+func _get_night_attraction_radius() -> float:
+	match _get_loop_escalation_tier():
+		2:
+			return POST_TUTORIAL_NIGHT_ATTRACTION_RADIUS_TIER_TWO_PIXELS
+		1:
+			return POST_TUTORIAL_NIGHT_ATTRACTION_RADIUS_TIER_ONE_PIXELS
+		_:
+			return NIGHT_ATTRACTION_RADIUS_PIXELS
+
+
+func _get_loop_escalation_tier() -> int:
+	if GameManager == null:
+		return 0
+	if not GameManager.post_tutorial_loop_active:
+		return 0
+	if GameManager.current_day >= POST_TUTORIAL_ESCALATION_DAY_TIER_TWO:
+		return 2
+	if GameManager.current_day >= POST_TUTORIAL_ESCALATION_DAY_TIER_ONE:
+		return 1
+	return 0
+
+
+func _refresh_loop_escalation_tier() -> void:
+	var next_tier := _get_loop_escalation_tier()
+	if next_tier <= _loop_escalation_tier:
+		_loop_escalation_tier = next_tier
+		return
+	for tier in range(_loop_escalation_tier + 1, next_tier + 1):
+		if EventBus != null and EventBus.has_method("emit_loop_milestone_reached"):
+			EventBus.emit_loop_milestone_reached(tier)
+	_loop_escalation_tier = next_tier
 
 
 func _spawn_small_warning_flash(world_position: Vector2) -> void:

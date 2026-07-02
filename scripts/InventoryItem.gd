@@ -20,12 +20,11 @@ var extra_data: Dictionary = {}
 
 static func from_variant(data, defaults: Dictionary = {}):
 	var item = preload("res://scripts/InventoryItem.gd").new()
-	if data != null and data.has_method("duplicate_item"):
-		return data.duplicate_item()
-
 	var source: Dictionary = {}
 	if data is Dictionary:
 		source = data
+	elif data is Object and data.has_method("duplicate_item"):
+		return data.duplicate_item()
 	item.id = StringName(_read_value(source, "id", _read_value(source, "item_id", defaults.get(&"id", &""))))
 	item.item_id = item.id
 	item.display_name = str(_read_value(source, "display_name", defaults.get(&"display_name", "")))

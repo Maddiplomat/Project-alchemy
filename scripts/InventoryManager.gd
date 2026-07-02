@@ -810,8 +810,8 @@ func _get_stored_item(item_id: StringName):
 
 
 func _variant_to_dict(item_data) -> Dictionary:
-	if item_data != null and item_data.has_method("to_dict") and item_data.has_method("duplicate_item"):
-		return item_data.to_dict()
 	if item_data is Dictionary:
 		return (item_data as Dictionary).duplicate(true)
+	if item_data is Object and item_data.has_method("to_dict") and item_data.has_method("duplicate_item"):
+		return item_data.to_dict()
 	return {}

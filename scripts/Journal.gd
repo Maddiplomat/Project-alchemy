@@ -67,6 +67,7 @@ func _wire_events() -> void:
 	if ResearchObjectives != null:
 		ResearchObjectives.objective_completed.connect(_on_objectives_changed)
 		ResearchObjectives.objective_activated.connect(_on_objectives_changed)
+		ResearchObjectives.objective_progressed.connect(_on_objective_progressed)
 	if RecipeDatabase != null and RecipeDatabase.has_signal("recipe_unlocked"):
 		RecipeDatabase.recipe_unlocked.connect(_on_recipe_unlocked)
 
@@ -81,6 +82,11 @@ func _on_journal_changed(_entry: Dictionary) -> void:
 
 
 func _on_objectives_changed(_objective_id: StringName) -> void:
+	if visible and tab_bar.current_tab == TAB_ACTIVE_RESEARCH:
+		_refresh()
+
+
+func _on_objective_progressed(_objective_id: StringName, _current: int, _target: int) -> void:
 	if visible and tab_bar.current_tab == TAB_ACTIVE_RESEARCH:
 		_refresh()
 
@@ -168,14 +174,31 @@ func _build_research_entries() -> Array[Dictionary]:
 		if bool(objective.get(&"completed", false)):
 			continue
 		var title_prefix: String = "[Active] " if bool(objective.get(&"active", false)) else "[Queued] "
+		var progress_text := _format_objective_progress(objective)
 		result.append({
-			&"title": "%s%s" % [title_prefix, str(objective.get(&"title", "Objective"))],
+			&"title": "%s%s%s" % [title_prefix, str(objective.get(&"title", "Objective")), progress_text],
 			&"unlock_chain": _format_reward_chain(objective),
 			&"try_next": str(objective.get(&"hint", "")),
-			&"hazard_notes": "Condition: %s" % str(objective.get(&"condition_type", "")),
+			&"hazard_notes": "Condition: %s%s" % [str(objective.get(&"condition_type", "")), _format_objective_progress_label(objective)],
 			&"scanner_clue": "Target: %s" % String(objective.get(&"condition_target", &"")),
 		})
 	return result
+
+
+func _format_objective_progress(objective: Dictionary) -> String:
+	var target := int(objective.get(&"condition_count", 0))
+	if target <= 1:
+		return ""
+	var current := clampi(int(objective.get(&"progress", 0)), 0, target)
+	return " (%d/%d)" % [current, target]
+
+
+func _format_objective_progress_label(objective: Dictionary) -> String:
+	var target := int(objective.get(&"condition_count", 0))
+	if target <= 1:
+		return ""
+	var current := clampi(int(objective.get(&"progress", 0)), 0, target)
+	return " [%d/%d]" % [current, target]
 
 
 func _build_hazard_entries() -> Array[Dictionary]:

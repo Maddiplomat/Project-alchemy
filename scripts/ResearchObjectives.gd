@@ -3,6 +3,7 @@ extends Node
 
 signal objective_completed(objective_id: StringName)
 signal objective_activated(objective_id: StringName)
+signal objective_progressed(objective_id: StringName, current: int, target: int)
 
 const STARTER_SCAN_TARGETS: Array[StringName] = [&"wood", &"stone", &"iron"]
 const FIRST_SMELT_OUTPUTS: Array[StringName] = [&"wrought_iron", &"steel", &"cast_iron"]
@@ -17,16 +18,25 @@ var objectives: Dictionary[StringName, Dictionary] = {}
 var _objective_order: Array[StringName] = []
 var _progress: Dictionary[StringName, int] = {}
 var _scanner_tools: Array[Node] = []
+var _pickup_nodes: Array[Node] = []
+var _defense_uptime_elapsed := 0.0
 
 
 func _ready() -> void:
 	_seed_objectives()
 	_connect_completion_hooks()
 	_activate_first_incomplete()
+	_activate_post_tutorial_repeatables()
+	set_physics_process(true)
 
 
 func get_objective(id: StringName) -> Dictionary:
-	return objectives.get(id, {}).duplicate(true)
+	var objective: Dictionary = objectives.get(id, {}).duplicate(true)
+	if objective.is_empty():
+		return {}
+	objective[&"progress"] = int(_progress.get(id, 0))
+	objective[&"repeatable"] = bool(objective.get(&"repeatable", false))
+	return objective
 
 
 func get_active_objective() -> Dictionary:
@@ -55,11 +65,17 @@ func _connect_completion_hooks() -> void:
 		EventBus.buildable_placed.connect(_on_buildable_placed)
 	if GameManager != null and GameManager.has_signal("scanner_tier_changed") and not GameManager.scanner_tier_changed.is_connected(_on_scanner_tier_changed):
 		GameManager.scanner_tier_changed.connect(_on_scanner_tier_changed)
+	if GameManager != null and GameManager.has_signal("day_changed") and not GameManager.day_changed.is_connected(_on_day_changed):
+		GameManager.day_changed.connect(_on_day_changed)
 	if not get_tree().node_added.is_connected(_on_tree_node_added):
 		get_tree().node_added.connect(_on_tree_node_added)
 
 	for node in get_tree().get_nodes_in_group(&"scanner_tool"):
 		_bind_scanner_tool(node)
+	var current_scene := get_tree().current_scene
+	if current_scene != null:
+		for node in current_scene.find_children("*", "", true, false):
+			_bind_world_pickup(node)
 
 
 func _seed_objectives() -> void:
@@ -231,13 +247,54 @@ func _seed_objectives() -> void:
 		&"completed": false,
 		&"active": false,
 	})
+	_add_objective({
+		&"id": &"daily_lithium_circuit",
+		&"title": "Daily Lithium Circuit",
+		&"hint": "Recover 2 fresh lithium pickups from the field today and route them back toward dry storage.",
+		&"condition_type": "collect",
+		&"condition_target": &"lithium",
+		&"condition_count": 2,
+		&"reward_type": "",
+		&"reward_target": &"",
+		&"repeatable": true,
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
+		&"id": &"daily_sulfur_circuit",
+		&"title": "Daily Sulfur Circuit",
+		&"hint": "Recover 2 sulfur pickups from the flats today and clear them into a separated volatile route.",
+		&"condition_type": "collect",
+		&"condition_target": &"sulfur",
+		&"condition_count": 2,
+		&"reward_type": "",
+		&"reward_target": &"",
+		&"repeatable": true,
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
+		&"id": &"night_defense_uptime",
+		&"title": "Perimeter Uptime",
+		&"hint": "Keep powered perimeter coverage online for 45 seconds during the night.",
+		&"condition_type": "defense_uptime",
+		&"condition_target": &"powered_perimeter",
+		&"condition_count": 45,
+		&"reward_type": "",
+		&"reward_target": &"",
+		&"repeatable": true,
+		&"completed": false,
+		&"active": false,
+	})
 
 
 func _add_objective(objective: Dictionary) -> void:
 	var objective_id := StringName(objective.get(&"id", &""))
 	if objective_id.is_empty():
 		return
-	objectives[objective_id] = objective.duplicate(true)
+	var normalized := objective.duplicate(true)
+	normalized[&"repeatable"] = bool(normalized.get(&"repeatable", false))
+	objectives[objective_id] = normalized
 	_objective_order.append(objective_id)
 	_progress[objective_id] = 0
 
@@ -245,11 +302,14 @@ func _add_objective(objective: Dictionary) -> void:
 func _activate_first_incomplete() -> void:
 	for objective_id: StringName in _objective_order:
 		var objective: Dictionary = objectives.get(objective_id, {})
+		if bool(objective.get(&"repeatable", false)):
+			continue
 		if not bool(objective.get(&"completed", false)):
 			_set_active_objective(objective_id)
 			_refresh_active_objective()
 			return
 	_clear_active_flags()
+	_activate_post_tutorial_repeatables()
 
 
 func _set_active_objective(objective_id: StringName) -> void:
@@ -276,11 +336,16 @@ func _complete_objective(objective_id: StringName) -> void:
 	if objective.is_empty() or bool(objective.get(&"completed", false)):
 		return
 
+	var is_repeatable := bool(objective.get(&"repeatable", false))
 	objective[&"completed"] = true
 	objective[&"active"] = false
 	objectives[objective_id] = objective
+	_progress[objective_id] = maxi(int(objective.get(&"condition_count", 0)), int(_progress.get(objective_id, 0)))
 	_apply_reward(objective)
 	objective_completed.emit(objective_id)
+	if is_repeatable:
+		_activate_post_tutorial_repeatables()
+		return
 	_activate_first_incomplete()
 
 
@@ -359,6 +424,7 @@ func _refresh_active_objective() -> void:
 
 func _on_tree_node_added(node: Node) -> void:
 	_bind_scanner_tool(node)
+	_bind_world_pickup(node)
 
 
 func _bind_scanner_tool(node: Node) -> void:
@@ -375,6 +441,22 @@ func _bind_scanner_tool(node: Node) -> void:
 
 func _on_scanner_tool_exited(node: Node) -> void:
 	_scanner_tools.erase(node)
+
+
+func _bind_world_pickup(node: Node) -> void:
+	if node == null or _pickup_nodes.has(node):
+		return
+	if not node.has_signal("picked_up"):
+		return
+	var pickup_callable := Callable(self, "_on_world_pickup_collected").bind(node)
+	if not node.is_connected("picked_up", pickup_callable):
+		node.connect("picked_up", pickup_callable)
+	node.tree_exited.connect(_on_world_pickup_exited.bind(node), CONNECT_ONE_SHOT)
+	_pickup_nodes.append(node)
+
+
+func _on_world_pickup_exited(node: Node) -> void:
+	_pickup_nodes.erase(node)
 
 
 func _on_scan_completed(element_id: StringName) -> void:
@@ -450,9 +532,123 @@ func _on_scanner_tier_changed(_previous_tier: int, new_tier: int) -> void:
 	_complete_objective(&"charge_base")
 
 
+func _on_day_changed(_day: int) -> void:
+	_defense_uptime_elapsed = 0.0
+	for objective_id: StringName in _objective_order:
+		var objective: Dictionary = objectives.get(objective_id, {})
+		if not bool(objective.get(&"repeatable", false)):
+			continue
+		objective[&"completed"] = false
+		objective[&"active"] = false
+		objectives[objective_id] = objective
+		_progress[objective_id] = 0
+		objective_progressed.emit(objective_id, 0, maxi(int(objective.get(&"condition_count", 0)), 1))
+	_activate_post_tutorial_repeatables()
+
+
+func _physics_process(delta: float) -> void:
+	if delta <= 0.0:
+		return
+	if not _is_active_objective(&"night_defense_uptime"):
+		return
+	if not _should_count_night_defense_uptime():
+		return
+	_defense_uptime_elapsed += delta
+	var current_progress := int(_progress.get(&"night_defense_uptime", 0))
+	var next_progress := mini(int(floor(_defense_uptime_elapsed)), _get_objective_target_count(&"night_defense_uptime"))
+	if next_progress <= current_progress:
+		return
+	_set_objective_progress(&"night_defense_uptime", next_progress)
+
+
 func _is_active_objective(objective_id: StringName) -> bool:
 	var objective: Dictionary = objectives.get(objective_id, {})
 	return not objective.is_empty() and bool(objective.get(&"active", false)) and not bool(objective.get(&"completed", false))
+
+
+func _activate_post_tutorial_repeatables() -> void:
+	if GameManager == null or not GameManager.post_tutorial_loop_active:
+		for objective_id: StringName in _objective_order:
+			var objective: Dictionary = objectives.get(objective_id, {})
+			if bool(objective.get(&"repeatable", false)):
+				objective[&"active"] = false
+				objectives[objective_id] = objective
+		return
+	for objective_id: StringName in _objective_order:
+		var objective: Dictionary = objectives.get(objective_id, {})
+		if not bool(objective.get(&"repeatable", false)):
+			continue
+		var should_be_active := not bool(objective.get(&"completed", false))
+		var was_active := bool(objective.get(&"active", false))
+		objective[&"active"] = should_be_active
+		objectives[objective_id] = objective
+		if should_be_active and not was_active:
+			objective_activated.emit(objective_id)
+
+
+func _on_world_pickup_collected(item_data: Dictionary, quantity: int, pickup_node: Node) -> void:
+	if pickup_node == null or not _is_resource_spawn_pickup(pickup_node):
+		return
+	if quantity <= 0:
+		return
+	var item_id := StringName(item_data.get(&"id", item_data.get(&"item_id", &"")))
+	if item_id.is_empty():
+		return
+	for objective_id: StringName in _objective_order:
+		var objective: Dictionary = objectives.get(objective_id, {})
+		if not bool(objective.get(&"repeatable", false)):
+			continue
+		if not _is_active_objective(objective_id):
+			continue
+		if str(objective.get(&"condition_type", "")) != "collect":
+			continue
+		if StringName(objective.get(&"condition_target", &"")) != item_id:
+			continue
+		_increment_objective_progress(objective_id, quantity)
+
+
+func _is_resource_spawn_pickup(node: Node) -> bool:
+	if node == null:
+		return false
+	if StringName(node.get_meta(&"pickup_origin", &"")) == &"resource_spawn":
+		return true
+	return node.has_meta(&"tile_coords")
+
+
+func _increment_objective_progress(objective_id: StringName, amount: int) -> void:
+	if amount <= 0 or not _is_active_objective(objective_id):
+		return
+	var target_count := _get_objective_target_count(objective_id)
+	var next_progress := mini(int(_progress.get(objective_id, 0)) + amount, target_count)
+	_set_objective_progress(objective_id, next_progress)
+
+
+func _set_objective_progress(objective_id: StringName, value: int) -> void:
+	var objective: Dictionary = objectives.get(objective_id, {})
+	if objective.is_empty():
+		return
+	var target_count := _get_objective_target_count(objective_id)
+	var next_progress := clampi(value, 0, target_count)
+	var previous_progress := int(_progress.get(objective_id, 0))
+	if previous_progress == next_progress:
+		return
+	_progress[objective_id] = next_progress
+	objective_progressed.emit(objective_id, next_progress, target_count)
+	if next_progress >= target_count:
+		_complete_objective(objective_id)
+
+
+func _get_objective_target_count(objective_id: StringName) -> int:
+	var objective: Dictionary = objectives.get(objective_id, {})
+	return maxi(int(objective.get(&"condition_count", 0)), 1)
+
+
+func _should_count_night_defense_uptime() -> bool:
+	if GameManager == null or not GameManager.has_method("is_night") or not GameManager.is_night():
+		return false
+	if BaseDefenseSystem == null or not BaseDefenseSystem.has_method("get_total_drain_per_second"):
+		return false
+	return float(BaseDefenseSystem.get_total_drain_per_second()) > 0.0
 
 
 func _get_scan_progress() -> int:

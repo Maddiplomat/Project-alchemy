@@ -82,6 +82,7 @@ func _ready() -> void:
 	if ResearchObjectives != null:
 		ResearchObjectives.objective_completed.connect(_on_objectives_changed)
 		ResearchObjectives.objective_activated.connect(_on_objectives_changed)
+		ResearchObjectives.objective_progressed.connect(_on_objectives_progressed)
 	retry_button.pressed.connect(_on_retry_button_pressed)
 	quit_button.pressed.connect(_on_quit_button_pressed)
 	if has_node("/root/CarrierRiskSystem"):
@@ -103,6 +104,8 @@ func _ready() -> void:
 	_setup_weather_strip()
 	if EventBus != null and EventBus.has_signal("night_threat_detected"):
 		EventBus.night_threat_detected.connect(_on_night_threat_detected)
+	if EventBus != null and EventBus.has_signal("loop_milestone_reached"):
+		EventBus.loop_milestone_reached.connect(_on_loop_milestone_reached)
 	if has_node("/root/BaseThreatDirector"):
 		BaseThreatDirector.threat_lesson_triggered.connect(_on_base_threat_lesson_triggered)
 	if WeatherSystem != null:
@@ -224,7 +227,10 @@ func _refresh_objectives() -> void:
 			var title := str(objective.get(&"title", "Untitled Objective"))
 			var hint := str(objective.get(&"hint", ""))
 			var prefix := "[Active] " if bool(objective.get(&"active", false)) else "[Queued] "
+			var progress_suffix := _format_objective_progress(objective)
 			var line := "%s%s" % [prefix, title]
+			if not progress_suffix.is_empty():
+				line = "%s %s" % [line, progress_suffix]
 			if not hint.is_empty():
 				line = "%s - %s" % [line, hint]
 			lines.append(line)
@@ -236,6 +242,14 @@ func _refresh_objectives() -> void:
 	objective_2_label.text = lines[1] if lines.size() > 1 else ""
 	objective_3_label.text = lines[2] if lines.size() > 2 else ""
 	objectives_panel.visible = _objectives_panel_visible
+
+
+func _format_objective_progress(objective: Dictionary) -> String:
+	var target := int(objective.get(&"condition_count", 0))
+	if target <= 1:
+		return ""
+	var current := clampi(int(objective.get(&"progress", 0)), 0, target)
+	return "(%d/%d)" % [current, target]
 
 
 func _show_death_overlay(cause_of_death: StringName) -> void:
@@ -871,6 +885,20 @@ func _on_environmental_warning_changed(warning_id: StringName, active: bool) -> 
 
 func _on_base_threat_lesson_triggered(_lesson_id: StringName, message: String) -> void:
 	_queue_toast(message)
+
+
+func _on_loop_milestone_reached(tier: int) -> void:
+	match tier:
+		1:
+			_queue_toast("Loop pressure increased. Night threats now pull from farther heat, light, and sulfur trails.")
+		2:
+			_queue_toast("Loop pressure increased again. The perimeter now needs tighter routes and steadier power.")
+		_:
+			_queue_toast("Loop pressure increased to tier %d." % tier)
+
+
+func _on_objectives_progressed(_objective_id: StringName, _current: int, _target: int) -> void:
+	_refresh_objectives()
 
 func _queue_toast(message: String) -> void:
 	_toast_queue.append(message)

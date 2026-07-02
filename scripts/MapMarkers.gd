@@ -13,8 +13,8 @@ var markers: Dictionary[StringName, Dictionary] = {}
 var _bound_player: Node2D = null
 var _bound_world: Node = null
 var _sulfur_marker_discovered := false
-var _sulfur_zone_rect := Rect2()
-var _has_sulfur_zone_rect := false
+var _sulfur_marker_position := Vector2.ZERO
+var _has_sulfur_marker_position := false
 
 
 func _ready() -> void:
@@ -83,7 +83,7 @@ func _on_tree_node_added(node: Node) -> void:
 	if node == GameManager.get_player():
 		call_deferred("_refresh_world_bindings")
 		return
-	if node.name == "World":
+	if node.has_node("Ground"):
 		call_deferred("_refresh_world_bindings")
 		return
 	if node is Node2D:
@@ -97,9 +97,10 @@ func _refresh_world_bindings() -> void:
 
 	if _bound_world != current_scene:
 		_bound_world = current_scene
-		_has_sulfur_zone_rect = false
+		_has_sulfur_marker_position = false
 		_sulfur_marker_discovered = markers.has(SULFUR_FLATS_MARKER_ID)
 		_bind_world_nodes(current_scene)
+		_refresh_sulfur_marker_for_world()
 
 	if (_bound_player == null or not is_instance_valid(_bound_player)):
 		var player := GameManager.get_player()
@@ -120,64 +121,56 @@ func _bind_world_nodes(world_root: Node) -> void:
 	_bind_sulfur_zone(world_root)
 
 
-func _bind_mining_node(node: Node2D) -> void:
-	if node == null:
+func _bind_mining_node(node: Node) -> void:
+	var node_2d := node as Node2D
+	if node_2d == null:
 		return
-	if node.has_meta(&"map_markers_bound"):
+	if node_2d.has_meta(&"map_markers_bound"):
 		return
 
 	var signal_name: String = ""
 	var title: String = ""
-	if node.has_signal("stone_mined"):
+	if node_2d.has_signal("stone_mined"):
 		signal_name = "stone_mined"
 		title = "Stone Quarry"
-	elif node.has_signal("iron_mined"):
+	elif node_2d.has_signal("iron_mined"):
 		signal_name = "iron_mined"
 		title = "Iron Mine"
-	elif node.has_signal("limestone_mined"):
+	elif node_2d.has_signal("limestone_mined"):
 		signal_name = "limestone_mined"
 		title = "Limestone Mine"
 
 	if signal_name.is_empty():
 		return
 
-	node.set_meta(&"map_markers_bound", true)
-	node.connect(signal_name, Callable(self, "_on_mining_node_interacted").bind(node.global_position, StringName(title.to_snake_case()), title))
+	node_2d.set_meta(&"map_markers_bound", true)
+	node_2d.connect(signal_name, Callable(self, "_on_mining_node_interacted").bind(node_2d.global_position, StringName(title.to_snake_case()), title))
 
 
 func _bind_sulfur_zone(world_root: Node) -> void:
 	if world_root == null:
 		return
-	if _has_sulfur_zone_rect:
+	if _has_sulfur_marker_position:
 		return
 	var world_gen: Node = world_root as Node
 	if world_gen == null:
 		return
-	if not world_gen.get_script():
+	if not world_gen.has_method("get_sulfur_flats_marker_position"):
 		return
-	if not world_gen.has_node("Ground"):
+	var marker_position := world_gen.call("get_sulfur_flats_marker_position") as Vector2
+	if marker_position == Vector2.ZERO:
 		return
-	var ground: TileMapLayer = world_root.get_node_or_null("Ground") as TileMapLayer
-	if ground == null:
-		return
-
-	var map_size: Vector2i = world_gen.get("MAP_SIZE") if "MAP_SIZE" in world_gen else Vector2i(64, 64)
-	var sulfur_size: Vector2i = world_gen.get("SULFUR_FLATS_SIZE") if "SULFUR_FLATS_SIZE" in world_gen else Vector2i(10, 10)
-	var zone_origin: Vector2i = map_size - sulfur_size
-	var top_left: Vector2 = ground.to_global(ground.map_to_local(zone_origin))
-	var bottom_right: Vector2 = ground.to_global(ground.map_to_local(zone_origin + sulfur_size))
-	_sulfur_zone_rect = Rect2(top_left, bottom_right - top_left)
-	_has_sulfur_zone_rect = true
+	_sulfur_marker_position = marker_position
+	_has_sulfur_marker_position = true
 
 
 func _update_sulfur_flats_marker() -> void:
-	if _sulfur_marker_discovered:
-		return
-	if not _has_sulfur_zone_rect:
-		return
 	if _bound_player == null or not is_instance_valid(_bound_player):
 		return
-	if not _sulfur_zone_rect.has_point(_bound_player.global_position):
+	if _sulfur_marker_discovered:
+		_refresh_sulfur_marker_for_world()
+		return
+	if not _is_player_in_sulfur_flats():
 		return
 
 	_sulfur_marker_discovered = true
@@ -185,8 +178,39 @@ func _update_sulfur_flats_marker() -> void:
 		&"id": SULFUR_FLATS_MARKER_ID,
 		&"type": &"sulfur_flats",
 		&"title": "Sulfur Flats",
-		&"world_position": _sulfur_zone_rect.get_center(),
+		&"world_position": _get_sulfur_marker_position(),
 	})
+
+
+func _is_player_in_sulfur_flats() -> bool:
+	if _bound_world == null:
+		return false
+	if _bound_world.has_method("is_sulfur_flats_scene") and bool(_bound_world.call("is_sulfur_flats_scene")):
+		return true
+	if _bound_world.has_method("is_sulfur_flats_at_world_position"):
+		return bool(_bound_world.call("is_sulfur_flats_at_world_position", _bound_player.global_position))
+	return false
+
+
+func _get_sulfur_marker_position() -> Vector2:
+	if _has_sulfur_marker_position:
+		return _sulfur_marker_position
+	return _bound_player.global_position
+
+
+func _refresh_sulfur_marker_for_world() -> void:
+	if not _sulfur_marker_discovered:
+		return
+	if not _has_sulfur_marker_position:
+		return
+	if not markers.has(SULFUR_FLATS_MARKER_ID):
+		return
+	var marker := (markers[SULFUR_FLATS_MARKER_ID] as Dictionary).duplicate(true)
+	var world_position := _get_sulfur_marker_position()
+	if marker.get(&"world_position", Vector2.ZERO) == world_position:
+		return
+	marker[&"world_position"] = world_position
+	_set_marker(SULFUR_FLATS_MARKER_ID, marker)
 
 
 func _on_mining_node_interacted(_amount: int, world_position: Vector2, marker_id: StringName, title: String) -> void:

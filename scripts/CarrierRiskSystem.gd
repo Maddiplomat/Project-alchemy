@@ -8,6 +8,7 @@ const CHECK_INTERVAL_SECONDS := 0.5
 const WARNING_DURATION_SECONDS := 3.0
 const LITHIUM_DEGRADE_INTERVAL_SECONDS := 1.0
 const LITHIUM_ITEM_ID := &"lithium"
+const SODIUM_ITEM_ID := &"sodium"
 const LITHIUM_CHARGE_LOSS_PER_SECOND := 0.15
 const LITHIUM_EXPLOSION_RADIUS_PIXELS := 16.0
 const LITHIUM_EXPLOSION_DAMAGE := 15
@@ -67,6 +68,8 @@ func _get_active_volatile_items() -> Array[StringName]:
 
 
 func _should_trigger_risk_for(element_id: StringName) -> bool:
+	if element_id == SODIUM_ITEM_ID:
+		return _is_sodium_exposed()
 	if bool(_external_triggers.get(element_id, false)):
 		return true
 
@@ -156,6 +159,20 @@ func _is_lithium_exposed() -> bool:
 	return false
 
 
+func _is_sodium_exposed() -> bool:
+	if is_sheltered():
+		return false
+	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
+	var player := GameManager.get_player()
+	if player == null:
+		return false
+	if GameManager.active_environmental_warnings.has(&"rain"):
+		return true
+	if scene_root != null and scene_root.has_method("is_water_at_world_position"):
+		return bool(scene_root.call("is_water_at_world_position", player.global_position))
+	return false
+
+
 func get_active_risk_reason(element_id: StringName) -> String:
 	if element_id == LITHIUM_ITEM_ID:
 		if is_sheltered():
@@ -177,6 +194,13 @@ func get_active_risk_reason(element_id: StringName) -> String:
 			if bool(scene_root.call("is_water_at_world_position", player.global_position)):
 				return "Lithium charge is draining because you are standing in water."
 		return ""
+
+	if element_id == SODIUM_ITEM_ID:
+		if not _is_sodium_exposed():
+			return ""
+		if GameManager.active_environmental_warnings.has(&"rain"):
+			return "Sodium is reacting to rain. Get under cover or stage it into a Dry Box fast."
+		return "Sodium is reacting to standing water. Move it out of the shoals before it flashes."
 
 	if bool(_external_triggers.get(element_id, false)):
 		return str(_external_trigger_reasons.get(element_id, ""))

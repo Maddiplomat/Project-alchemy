@@ -57,12 +57,16 @@ var _health_system: Node = null
 var is_paused: bool = false
 var active_environmental_warnings: Array[StringName] = []
 var scanner_tier: ScannerTier = ScannerTier.BASIC
+var post_tutorial_loop_active := false
 
 var _seconds_since_autosave_request: int = 0
 var _is_night: bool = false
 
 func _ready() -> void:
 	_is_night = _is_time_night(time_of_day)
+	if ResearchObjectives != null and ResearchObjectives.has_signal("objective_completed"):
+		if not ResearchObjectives.objective_completed.is_connected(_on_objective_completed):
+			ResearchObjectives.objective_completed.connect(_on_objective_completed)
 
 func is_night() -> bool:
 	return _is_night
@@ -132,6 +136,7 @@ func _process(delta: float) -> void:
 func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -> void:
 	set_session_mode(mode)
 	set_active_save_slot(slot_id)
+	post_tutorial_loop_active = false
 	current_day = 1
 	day_changed.emit(current_day)
 	time_of_day = day_start_time
@@ -428,6 +433,11 @@ func _on_player_died_from_system(_cause_of_death: StringName = &"unknown") -> vo
 
 func _on_player_status_effects_changed_from_system(status_effects: Array[StringName]) -> void:
 	set_player_status_effects(status_effects)
+
+
+func _on_objective_completed(objective_id: StringName) -> void:
+	if objective_id == &"power_defenses":
+		post_tutorial_loop_active = true
 
 
 func _is_time_night(value: float) -> bool:

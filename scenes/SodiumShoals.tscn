@@ -1,4 +1,4 @@
-[gd_scene format=4 uid="uid://dse4mn6qgavfq"]
+[gd_scene format=4]
 
 [ext_resource type="TileSet" uid="uid://dtioyuhcvq6ca" path="res://assets/tilesets/forest_16x16.tres" id="1_kqs1s"]
 [ext_resource type="Script" uid="uid://bfxjpw77wdrga" path="res://scripts/WorldGen.gd" id="2_nvi4h"]
@@ -20,6 +20,7 @@
 
 [node name="World" type="Node2D" unique_id=1488050509]
 script = ExtResource("2_nvi4h")
+world_profile = 1
 
 [node name="CameraShake" type="Node" parent="."]
 script = ExtResource("12_camera_shake")
@@ -80,28 +81,16 @@ tile_set = ExtResource("1_kqs1s")
 [node name="SulfurFlatsZone" type="Node2D" parent="."]
 script = ExtResource("11_ignite")
 
-[node name="EnemySpawner" parent="." instance=ExtResource("10_spawner")]
-spawn_position = Array[Vector2]([Vector2(752, 448)])
-
 [node name="Player" parent="." unique_id=297416554 instance=ExtResource("3_7g83o")]
-position = Vector2(512, 512)
+position = Vector2(120, 520)
 
 [node name="TravelEntries" type="Node2D" parent="."]
 
-[node name="from_sodium_shoals" type="Marker2D" parent="TravelEntries"]
-position = Vector2(960, 520)
+[node name="arrival_from_overworld" type="Marker2D" parent="TravelEntries"]
+position = Vector2(120, 520)
 
-[node name="from_sulfur_flats" type="Marker2D" parent="TravelEntries"]
-position = Vector2(928, 800)
-
-[node name="Furnace" parent="." instance=ExtResource("7_ot3xq")]
-position = Vector2(464, 512)
-
-[node name="CharcoalPileProp" parent="." instance=ExtResource("8_cp1v9")]
-position = Vector2(490, 518)
-
-[node name="ChemBench" parent="." instance=ExtResource("9_cbnch")]
-position = Vector2(720, 448)
+[node name="return_to_overworld" type="Marker2D" parent="TravelEntries"]
+position = Vector2(120, 520)
 
 [node name="HUD" parent="." unique_id=1866474338 instance=ExtResource("4_hud")]
 
