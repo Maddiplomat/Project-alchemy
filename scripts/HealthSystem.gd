@@ -157,6 +157,18 @@ func reset_state() -> void:
 	health_changed.emit(current_health, max_health)
 
 
+func restore_state(saved_health: int, saved_status_effects: Array[StringName] = []) -> void:
+	_is_dead = false
+	current_health = clampi(saved_health, 0, max_health)
+	damage_log.clear()
+	_status_effect_runtime.clear()
+	status_effects = saved_status_effects.duplicate()
+	if current_health <= 0:
+		_is_dead = true
+	health_changed.emit(current_health, max_health)
+	status_effects_changed.emit(status_effects.duplicate())
+
+
 func add_status_effect(effect: StringName, damage_per_second: int = 0, duration_seconds: float = 0.0, source_label: String = "") -> void:
 	if effect.is_empty():
 		return

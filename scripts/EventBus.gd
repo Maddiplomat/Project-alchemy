@@ -9,6 +9,7 @@ signal crafting_completed(recipe_id: StringName, output: Dictionary)
 signal buildable_placed(buildable_id: StringName)
 signal night_threat_detected(world_position: Vector2, stack_count: int)
 signal loop_milestone_reached(tier: int)
+signal chemistry_lesson_triggered(lesson_id: StringName, message: String)
 signal service_registered(service_id: StringName, service: Node)
 signal service_unregistered(service_id: StringName)
 
@@ -107,3 +108,9 @@ func emit_loop_milestone_reached(tier: int) -> void:
 	if tier <= 0:
 		return
 	loop_milestone_reached.emit(tier)
+
+
+func emit_chemistry_lesson_triggered(lesson_id: StringName, message: String) -> void:
+	if lesson_id.is_empty() or message.strip_edges().is_empty():
+		return
+	chemistry_lesson_triggered.emit(lesson_id, message)

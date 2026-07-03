@@ -136,6 +136,12 @@ func _build_output_item_data(recipe: Dictionary) -> Dictionary:
 	elif item_id == &"corrosive_slurry":
 		item_data[&"category"] = InventoryManager.InventoryItemCategory.CONSUMABLE
 		item_data[&"mixture_type"] = "corrosive_slurry"
+	elif item_id == &"mercury_amalgam":
+		item_data[&"category"] = InventoryManager.InventoryItemCategory.CONSUMABLE
+		item_data[&"mixture_type"] = "mercury_amalgam"
+	elif item_id == &"toxic_slurry":
+		item_data[&"category"] = InventoryManager.InventoryItemCategory.CONSUMABLE
+		item_data[&"mixture_type"] = "toxic_slurry"
 
 	var durability = recipe.get(&"durability")
 	if durability != null:

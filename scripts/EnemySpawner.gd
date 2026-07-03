@@ -5,36 +5,66 @@ const DAY_RESPAWN_SECONDS := 300.0
 const NIGHT_RESPAWN_SECONDS := 180.0
 const SPAWN_EFFECT_LIFETIME := 0.45
 
+@export var enemy_scene: PackedScene = IRON_GOLEM_SCENE
 @export var spawn_position: Array[Vector2] = []
+@export_range(1, 8, 1) var spawn_group_size := 1
+@export var spawn_group_radius := 18.0
+@export var requires_post_tutorial_loop := false
 
-var _active_golems: Dictionary = {}
+var _active_enemies: Dictionary = {}
 var _respawn_timers: Dictionary = {}
 
 
 func _ready() -> void:
+	if requires_post_tutorial_loop and not _is_post_tutorial_loop_active():
+		if ResearchObjectives != null and ResearchObjectives.has_signal("objective_completed"):
+			var objective_callable := Callable(self, "_on_objective_completed")
+			if not ResearchObjectives.objective_completed.is_connected(objective_callable):
+				ResearchObjectives.objective_completed.connect(objective_callable)
+		return
 	for index: int in spawn_position.size():
 		_ensure_respawn_timer(index)
-		_spawn_golem(index)
+		_spawn_enemy_group(index)
 
 
-func _spawn_golem(index: int) -> void:
+func _spawn_enemy_group(index: int) -> void:
 	if index < 0 or index >= spawn_position.size():
 		return
-	if _active_golems.has(index):
-		var existing_golem: Node = _active_golems[index]
-		if is_instance_valid(existing_golem):
+	if enemy_scene == null:
+		return
+	if _active_enemies.has(index):
+		var active_group: Array = _active_enemies[index]
+		if _has_living_enemy(active_group):
 			return
 
-	var golem := IRON_GOLEM_SCENE.instantiate()
-	golem.global_position = spawn_position[index]
-	add_child(golem)
-	_active_golems[index] = golem
+	var active_group: Array[Node] = []
+	for group_index in range(spawn_group_size):
+		var enemy := enemy_scene.instantiate()
+		if enemy is Node2D:
+			(enemy as Node2D).position = to_local(spawn_position[index] + _get_group_offset(group_index))
+		add_child(enemy)
+		active_group.append(enemy)
 
-	var died_callable := Callable(self, "_on_golem_died").bind(index)
-	if not golem.died.is_connected(died_callable):
-		golem.died.connect(died_callable, CONNECT_ONE_SHOT)
+		var died_callable := Callable(self, "_on_enemy_died").bind(index)
+		if enemy.has_signal("died") and not enemy.died.is_connected(died_callable):
+			enemy.died.connect(died_callable, CONNECT_ONE_SHOT)
 
+	_active_enemies[index] = active_group
 	_play_spawn_effect(spawn_position[index])
+
+
+func _has_living_enemy(active_group: Array) -> bool:
+	for enemy in active_group:
+		if enemy != null and is_instance_valid(enemy):
+			return true
+	return false
+
+
+func _get_group_offset(group_index: int) -> Vector2:
+	if spawn_group_size <= 1:
+		return Vector2.ZERO
+	var angle := (TAU / float(spawn_group_size)) * float(group_index)
+	return Vector2(cos(angle), sin(angle)) * spawn_group_radius
 
 
 func _ensure_respawn_timer(index: int) -> Timer:
@@ -50,8 +80,17 @@ func _ensure_respawn_timer(index: int) -> Timer:
 	return timer
 
 
-func _on_golem_died(_golem: CharacterBody2D, index: int) -> void:
-	_active_golems.erase(index)
+func _on_enemy_died(_enemy: CharacterBody2D, index: int) -> void:
+	var active_group: Array = _active_enemies.get(index, [])
+	var remaining_group: Array[Node] = []
+	for enemy in active_group:
+		if enemy == _enemy or enemy == null or not is_instance_valid(enemy):
+			continue
+		remaining_group.append(enemy)
+	if _has_living_enemy(remaining_group):
+		_active_enemies[index] = remaining_group
+		return
+	_active_enemies.erase(index)
 	var timer := _ensure_respawn_timer(index)
 	
 	var wait_time := DAY_RESPAWN_SECONDS
@@ -63,7 +102,21 @@ func _on_golem_died(_golem: CharacterBody2D, index: int) -> void:
 
 
 func _on_respawn_timeout(index: int) -> void:
-	_spawn_golem(index)
+	if requires_post_tutorial_loop and not _is_post_tutorial_loop_active():
+		return
+	_spawn_enemy_group(index)
+
+
+func _on_objective_completed(_objective_id: StringName) -> void:
+	if not _is_post_tutorial_loop_active():
+		return
+	for index: int in spawn_position.size():
+		_ensure_respawn_timer(index)
+		_spawn_enemy_group(index)
+
+
+func _is_post_tutorial_loop_active() -> bool:
+	return GameManager != null and GameManager.post_tutorial_loop_active
 
 
 func _play_spawn_effect(effect_position: Vector2) -> void:

@@ -273,6 +273,8 @@ func _build_discovery_hint(discovery_id: StringName) -> String:
 			return "Discover the Distillation Kit before attempting sulfur chemistry."
 		&"stabilization_success":
 			return "Achieve a successful stabilization to identify buffered sulfur chemistry."
+		&"mercury_handling":
+			return "Recover mercury from Sodium Shoals before attempting mercury chemistry."
 		_:
 			return "Discover %s to unlock this recipe." % _format_name(discovery_id)
 

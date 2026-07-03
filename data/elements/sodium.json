@@ -1,0 +1,20 @@
+{
+  "id": "sodium",
+  "symbol": "Na",
+  "display_name": "Sodium",
+  "category": "volatile",
+  "weight": 0.9,
+  "stress_multiplier": 1.35,
+  "extraction_tool": null,
+  "properties": {
+    "flammability": 0.75,
+    "toxicity": 0.15,
+    "reactivity": 1.0,
+    "conductivity": 0.5,
+    "radiation": 0.0
+  },
+  "carrier_risk_conditions": {},
+  "environmental_hint": "White alkali crusts around the brine pans of Sodium Shoals",
+  "carrier_risk": "Explodes on rain or standing-water exposure; move it out of the shoals and keep it dry.",
+  "biome_spawn": ["sodium_shoals"]
+}

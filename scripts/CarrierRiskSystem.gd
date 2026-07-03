@@ -9,10 +9,12 @@ const WARNING_DURATION_SECONDS := 3.0
 const LITHIUM_DEGRADE_INTERVAL_SECONDS := 1.0
 const LITHIUM_ITEM_ID := &"lithium"
 const SODIUM_ITEM_ID := &"sodium"
+const MERCURY_ITEM_ID := &"mercury"
 const LITHIUM_CHARGE_LOSS_PER_SECOND := 0.15
 const LITHIUM_EXPLOSION_RADIUS_PIXELS := 16.0
 const LITHIUM_EXPLOSION_DAMAGE := 15
 const CHEMICAL_EXPLOSION_SCENE := preload("res://scenes/ChemicalExplosion.tscn")
+const TOXIC_CLOUD_SCENE := preload("res://scenes/ToxicCloud.tscn")
 
 var _check_timer: Timer = null
 var _countdowns: Dictionary = {}
@@ -58,6 +60,9 @@ func _get_active_volatile_items() -> Array[StringName]:
 	for item_id: StringName in InventoryManager.items.keys():
 		if item_id == LITHIUM_ITEM_ID:
 			continue
+		if item_id == MERCURY_ITEM_ID:
+			volatile_items.append(item_id)
+			continue
 		var element_data: Dictionary = ElementDatabase.get_element(item_id)
 		if element_data.is_empty():
 			continue
@@ -70,6 +75,8 @@ func _get_active_volatile_items() -> Array[StringName]:
 func _should_trigger_risk_for(element_id: StringName) -> bool:
 	if element_id == SODIUM_ITEM_ID:
 		return _is_sodium_exposed()
+	if element_id == MERCURY_ITEM_ID:
+		return _is_mercury_exposed()
 	if bool(_external_triggers.get(element_id, false)):
 		return true
 
@@ -173,6 +180,31 @@ func _is_sodium_exposed() -> bool:
 	return false
 
 
+func _is_mercury_exposed() -> bool:
+	if is_sheltered():
+		return false
+	var player := GameManager.get_player()
+	if player == null:
+		return false
+	if GameManager.player_status_effects.has(&"toxic") or GameManager.player_status_effects.has(&"burning"):
+		return true
+	if GameManager.active_environmental_warnings.has(&"acid_mist"):
+		return true
+	if float(GameManager.player_health) <= float(GameManager.max_player_health) * 0.25:
+		return true
+	return _is_near_heat_source(player.global_position)
+
+
+func _is_near_heat_source(world_position: Vector2) -> bool:
+	for node in get_tree().get_nodes_in_group(&"heat_source"):
+		var heat_source := node as Node2D
+		if heat_source == null or not is_instance_valid(heat_source):
+			continue
+		if world_position.distance_to(heat_source.global_position) <= 96.0:
+			return true
+	return false
+
+
 func get_active_risk_reason(element_id: StringName) -> String:
 	if element_id == LITHIUM_ITEM_ID:
 		if is_sheltered():
@@ -201,6 +233,20 @@ func get_active_risk_reason(element_id: StringName) -> String:
 		if GameManager.active_environmental_warnings.has(&"rain"):
 			return "Sodium is reacting to rain. Get under cover or stage it into a Dry Box fast."
 		return "Sodium is reacting to standing water. Move it out of the shoals before it flashes."
+
+	if element_id == MERCURY_ITEM_ID:
+		if not _is_mercury_exposed():
+			return ""
+		var player := GameManager.get_player()
+		if GameManager.active_environmental_warnings.has(&"acid_mist"):
+			return "Mercury is fuming in acid mist. Get under cover or store it before it vents."
+		if GameManager.player_status_effects.has(&"toxic"):
+			return "Mercury vapor is building while you are already toxic."
+		if GameManager.player_status_effects.has(&"burning"):
+			return "Mercury is heating while you are burning."
+		if player != null and _is_near_heat_source(player.global_position):
+			return "Mercury is heating near an active heat source."
+		return "Mercury vapor is building while your health is critically low."
 
 	if bool(_external_triggers.get(element_id, false)):
 		return str(_external_trigger_reasons.get(element_id, ""))
@@ -306,9 +352,9 @@ func _trigger_ignition(element_id: StringName) -> void:
 	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
 	var player := GameManager.get_player()
 	if player is Node2D:
-		var explosion: Node2D = CHEMICAL_EXPLOSION_SCENE.instantiate()
-		scene_root.add_child(explosion)
-		explosion.global_position = (player as Node2D).global_position
+		var effect: Node2D = TOXIC_CLOUD_SCENE.instantiate() if element_id == MERCURY_ITEM_ID else CHEMICAL_EXPLOSION_SCENE.instantiate()
+		scene_root.add_child(effect)
+		effect.global_position = (player as Node2D).global_position
 
 	carrier_risk_ignition.emit(element_id)
 

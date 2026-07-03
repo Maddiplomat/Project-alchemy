@@ -61,6 +61,9 @@ var _is_open := false
 var _ratio_target_slot: StringName = RATIO_TARGET_INPUT_B
 var _power_status_label: Label = null
 var _power_button: Button = null
+var _lesson_banner: PanelContainer = null
+var _lesson_banner_label: Label = null
+var _lesson_banner_tween: Tween = null
 
 
 func _ready() -> void:
@@ -85,6 +88,9 @@ func _ready() -> void:
 	close_button.pressed.connect(_on_close_button_pressed)
 	get_viewport().size_changed.connect(_layout_panel)
 	_layout_panel()
+	_ensure_lesson_banner()
+	if EventBus != null and EventBus.has_signal("chemistry_lesson_triggered"):
+		EventBus.chemistry_lesson_triggered.connect(_on_chemistry_lesson_triggered)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -348,6 +354,8 @@ func _on_stabilization_failed(reason: StringName) -> void:
 	if _chem_bench != null and _chem_bench.has_method("trigger_stabilization_failure"):
 		_chem_bench.trigger_stabilization_failure(reason)
 	_consume_result_inputs(result, true)
+	if ChemistryEngine != null and ChemistryEngine.has_method("emit_chemistry_lesson_for_result"):
+		ChemistryEngine.emit_chemistry_lesson_for_result(result)
 	_log_chem_bench_result(result, false, reason, inputs_log, catalyst_id)
 	output_name_label.text = _format_failure_label(reason)
 	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_DANGER_COLOR)
@@ -384,6 +392,8 @@ func _apply_success_result(result: Dictionary) -> void:
 		react_button.text = "Inventory Full"
 		return
 
+	if ChemistryEngine != null and ChemistryEngine.has_method("emit_chemistry_lesson_for_result"):
+		ChemistryEngine.emit_chemistry_lesson_for_result(result)
 	_log_chem_bench_result(result, true, &"", inputs_log, catalyst_id)
 	if bool(result.get("requires_stabilization", false)) and DiscoveryLog != null and DiscoveryLog.has_method("log_progression_discovery"):
 		DiscoveryLog.log_progression_discovery(
@@ -403,6 +413,8 @@ func _apply_failure_result(result: Dictionary, failure_reason: StringName) -> vo
 	_consume_result_inputs(result, true)
 	if _chem_bench != null and _chem_bench.has_method("trigger_stabilization_failure"):
 		_chem_bench.trigger_stabilization_failure(failure_reason)
+	if ChemistryEngine != null and ChemistryEngine.has_method("emit_chemistry_lesson_for_result"):
+		ChemistryEngine.emit_chemistry_lesson_for_result(result)
 	_log_chem_bench_result(result, false, failure_reason, inputs_log, catalyst_id)
 	output_name_label.text = _format_failure_label(failure_reason)
 	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_DANGER_COLOR)
@@ -504,6 +516,10 @@ func _build_output_item(output_id: StringName) -> Dictionary:
 		item_data[&"base_damage"] = 22.0
 	elif output_id == &"corrosive_slurry":
 		item_data[&"mixture_type"] = "corrosive_slurry"
+	elif output_id == &"mercury_amalgam":
+		item_data[&"mixture_type"] = "mercury_amalgam"
+	elif output_id == &"toxic_slurry":
+		item_data[&"mixture_type"] = "toxic_slurry"
 	return item_data
 
 
@@ -606,6 +622,65 @@ func _on_close_button_pressed() -> void:
 	if _stabilization_active:
 		return
 	emit_signal("ui_closed")
+
+
+func _ensure_lesson_banner() -> void:
+	if _lesson_banner != null:
+		return
+	_lesson_banner = PanelContainer.new()
+	_lesson_banner.name = "LessonBanner"
+	_lesson_banner.visible = false
+	_lesson_banner.modulate.a = 0.0
+	_lesson_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_lesson_banner)
+	_lesson_banner.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_lesson_banner.offset_left = 96.0
+	_lesson_banner.offset_top = 22.0
+	_lesson_banner.offset_right = -96.0
+	_lesson_banner.offset_bottom = 78.0
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.18, 0.12, 0.08, 0.96)
+	style.border_color = Color(0.82, 0.56, 0.24, 1.0)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
+	style.content_margin_left = 14
+	style.content_margin_right = 14
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	_lesson_banner.add_theme_stylebox_override("panel", style)
+
+	_lesson_banner_label = Label.new()
+	_lesson_banner_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_lesson_banner_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_lesson_banner_label.add_theme_font_size_override("font_size", 15)
+	_lesson_banner.add_child(_lesson_banner_label)
+
+
+func _on_chemistry_lesson_triggered(_lesson_id: StringName, message: String) -> void:
+	if not _is_open or not visible or _lesson_banner == null or _lesson_banner_label == null:
+		return
+	if message.strip_edges().is_empty():
+		return
+	_lesson_banner_label.text = message
+	_lesson_banner.visible = true
+	_lesson_banner.modulate.a = 0.0
+	if _lesson_banner_tween != null and _lesson_banner_tween.is_valid():
+		_lesson_banner_tween.kill()
+	_lesson_banner_tween = create_tween()
+	_lesson_banner_tween.tween_property(_lesson_banner, "modulate:a", 1.0, 0.18)
+	_lesson_banner_tween.tween_interval(3.0)
+	_lesson_banner_tween.tween_property(_lesson_banner, "modulate:a", 0.0, 0.28)
+	_lesson_banner_tween.finished.connect(func() -> void:
+		if _lesson_banner != null:
+			_lesson_banner.visible = false
+	)
 
 
 func _layout_panel() -> void:

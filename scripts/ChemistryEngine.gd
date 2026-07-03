@@ -149,6 +149,21 @@ func evaluate_chem_bench_reaction(state: Dictionary) -> Dictionary:
 	return base_result
 
 
+func emit_chemistry_lesson_for_result(result: Dictionary) -> void:
+	if result.is_empty():
+		return
+	var tier := String(result.get(&"tier", result.get("tier", ""))).to_lower()
+	if tier != "danger" and tier != "waste":
+		return
+	var notes := str(result.get(&"notes", result.get("notes", ""))).strip_edges()
+	if notes.is_empty():
+		return
+	var output_id := StringName(str(result.get(&"output_id", result.get("output_id", ""))))
+	var lesson_id := output_id if not output_id.is_empty() else StringName("chem_%s" % tier)
+	if EventBus != null and EventBus.has_method("emit_chemistry_lesson_triggered"):
+		EventBus.emit_chemistry_lesson_triggered(lesson_id, notes)
+
+
 func can_use_chem_bench_reactant(item_id: StringName) -> bool:
 	_ensure_chem_bench_reactions_loaded()
 	return _chem_bench_reactant_ids.has(item_id)

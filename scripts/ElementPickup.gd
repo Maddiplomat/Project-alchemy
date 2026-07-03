@@ -209,7 +209,7 @@ func _apply_weather_degradation_visuals(purity: float) -> void:
 func _is_rain_vulnerable() -> bool:
 	if _is_resource_spawn_pickup():
 		return false
-	return get_element_id() in [&"wood", &"charcoal", &"iron", &"sulfur", &"lithium", &"energy_cell"]
+	return get_element_id() in [&"wood", &"charcoal", &"iron", &"sulfur", &"lithium", &"sodium", &"energy_cell"]
 
 
 func _is_resource_spawn_pickup() -> bool:
@@ -455,6 +455,10 @@ func _get_pickup_texture(element_key: String) -> Texture2D:
 			_build_sulfur_texture(image)
 		"lithium":
 			_build_lithium_texture(image)
+		"sodium":
+			_build_sodium_texture(image)
+		"mercury":
+			_build_mercury_texture(image)
 		"limestone":
 			_build_limestone_texture(image)
 		_:
@@ -545,6 +549,42 @@ func _build_lithium_texture(image: Image) -> void:
 	for pixel: Vector2i in [Vector2i(10, 3), Vector2i(10, 4), Vector2i(11, 5), Vector2i(9, 7)]:
 		image.set_pixel(pixel.x, pixel.y, accent)
 	for pixel: Vector2i in [Vector2i(10, 5), Vector2i(10, 6), Vector2i(8, 8), Vector2i(9, 8), Vector2i(8, 9)]:
+		image.set_pixel(pixel.x, pixel.y, shadow)
+
+
+func _build_sodium_texture(image: Image) -> void:
+	var core := Color(0.86, 0.88, 0.78, 1.0)
+	var highlight := Color(1.0, 0.98, 0.82, 1.0)
+	var shadow := Color(0.60, 0.64, 0.54, 1.0)
+	for y in range(4, 12):
+		for x in range(4, 12):
+			if Vector2(float(x), float(y)).distance_to(Vector2(7.5, 7.5)) <= 4.2:
+				image.set_pixel(x, y, core)
+	for pixel: Vector2i in [Vector2i(6, 4), Vector2i(7, 4), Vector2i(5, 5), Vector2i(6, 5)]:
+		image.set_pixel(pixel.x, pixel.y, highlight)
+	for pixel: Vector2i in [Vector2i(10, 8), Vector2i(9, 9), Vector2i(10, 9), Vector2i(8, 10)]:
+		image.set_pixel(pixel.x, pixel.y, shadow)
+
+
+func _build_mercury_texture(image: Image) -> void:
+	var core := Color(0.78, 0.81, 0.86, 1.0)
+	var highlight := Color(0.96, 0.98, 1.0, 1.0)
+	var shadow := Color(0.46, 0.49, 0.55, 1.0)
+	var beads := [
+		{&"center": Vector2(6.0, 7.0), &"radius": 3.2},
+		{&"center": Vector2(10.0, 9.0), &"radius": 2.5},
+		{&"center": Vector2(9.0, 5.0), &"radius": 1.8},
+	]
+	for bead: Dictionary in beads:
+		var center := bead[&"center"] as Vector2
+		var radius := float(bead[&"radius"])
+		for y in range(2, 13):
+			for x in range(2, 13):
+				if Vector2(float(x), float(y)).distance_to(center) <= radius:
+					image.set_pixel(x, y, core)
+	for pixel: Vector2i in [Vector2i(5, 5), Vector2i(8, 4), Vector2i(9, 8)]:
+		image.set_pixel(pixel.x, pixel.y, highlight)
+	for pixel: Vector2i in [Vector2i(7, 9), Vector2i(11, 10), Vector2i(10, 6)]:
 		image.set_pixel(pixel.x, pixel.y, shadow)
 
 

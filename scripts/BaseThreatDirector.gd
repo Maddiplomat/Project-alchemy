@@ -139,9 +139,44 @@ func get_enemy_attraction_target(enemy_position: Vector2) -> Vector2:
 		var source_node := source as Node2D
 		if source_node == null:
 			continue
+		if not _is_attraction_source_active(source_node):
+			continue
 		var distance := enemy_position.distance_to(source_node.global_position)
 		if distance < best_distance and distance <= attraction_radius:
 			best_distance = distance
+			best_target = source_node.global_position
+	return best_target
+
+
+func get_weighted_enemy_attraction_target(
+	enemy_position: Vector2,
+	powered_light_weight: float = 1.0,
+	heat_weight: float = 1.0,
+	sulfur_storage_weight: float = 1.0
+) -> Vector2:
+	var best_target := Vector2(INF, INF)
+	var best_score := INF
+	var attraction_radius := _get_night_attraction_radius()
+	for source in _get_attraction_sources():
+		var source_node := source as Node2D
+		if source_node == null:
+			continue
+		if not _is_attraction_source_active(source_node):
+			continue
+		var distance := enemy_position.distance_to(source_node.global_position)
+		if distance > attraction_radius:
+			continue
+		var weight := _get_attraction_source_weight(
+			source_node,
+			powered_light_weight,
+			heat_weight,
+			sulfur_storage_weight
+		)
+		if weight <= 0.0:
+			continue
+		var score := distance / weight
+		if score < best_score:
+			best_score = score
 			best_target = source_node.global_position
 	return best_target
 
@@ -475,6 +510,33 @@ func _get_attraction_sources() -> Array[Node2D]:
 		if not container_id.is_empty() and StorageManager.get_container_quantity(container_id, &"sulfur") > 0:
 			sources.append(node_2d)
 	return sources
+
+
+func _is_attraction_source_active(source_node: Node2D) -> bool:
+	if source_node.is_in_group(&"powered_light") and source_node.has_method("is_attracting_swarmer"):
+		return bool(source_node.call("is_attracting_swarmer"))
+	return true
+
+
+func _get_attraction_source_weight(
+	source_node: Node2D,
+	powered_light_weight: float,
+	heat_weight: float,
+	sulfur_storage_weight: float
+) -> float:
+	if source_node.is_in_group(&"powered_light"):
+		return powered_light_weight
+	if source_node.is_in_group(&"placed_storage"):
+		var container_id := _get_storage_container_id(source_node)
+		if not container_id.is_empty() and StorageManager.get_container_quantity(container_id, &"sulfur") > 0:
+			return sulfur_storage_weight
+	if source_node.is_in_group(&"heat_source"):
+		return heat_weight
+	if source_node.is_in_group(&"placed_stations"):
+		var type_name := String(source_node.get(&"object_type")) if "object_type" in source_node else ""
+		if type_name == "furnace" or type_name == "campfire":
+			return heat_weight
+	return 1.0
 
 
 func _has_lit_campfire_near(world_position: Vector2) -> bool:

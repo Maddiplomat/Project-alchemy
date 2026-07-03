@@ -1,0 +1,29 @@
+[gd_scene load_steps=3 format=4]
+
+[ext_resource type="Script" path="res://scripts/LightSwarmer.gd" id="1_swarmer"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+radius = 6.0
+
+[node name="LightSwarmer" type="CharacterBody2D"]
+collision_layer = 1
+collision_mask = 3
+script = ExtResource("1_swarmer")
+
+[node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(0, -3)
+
+[node name="EnemyHealthBar" type="ProgressBar" parent="."]
+visible = false
+offset_left = -12.0
+offset_top = -18.0
+offset_right = 12.0
+offset_bottom = -15.0
+show_percentage = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 1)
+shape = SubResource("CircleShape2D_body")

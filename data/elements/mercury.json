@@ -1,0 +1,23 @@
+{
+  "id": "mercury",
+  "symbol": "Hg",
+  "display_name": "Mercury",
+  "category": "metal",
+  "weight": 3.4,
+  "stress_multiplier": 1.5,
+  "extraction_tool": null,
+  "properties": {
+    "flammability": 0.0,
+    "toxicity": 0.9,
+    "reactivity": 0.4,
+    "conductivity": 0.6,
+    "radiation": 0.0
+  },
+  "carrier_risk_conditions": {
+    "hp_threshold": 0.25,
+    "status_trigger": "toxic"
+  },
+  "environmental_hint": "Silver beads trapped in contaminated Sodium Shoals marsh sediment",
+  "carrier_risk": "Toxic vapor builds when carried through heat, acid mist, toxic exposure, or critical injury; venting creates a toxic cloud.",
+  "biome_spawn": ["sodium_shoals"]
+}

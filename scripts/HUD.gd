@@ -69,6 +69,8 @@ var _weather_detail_label: Label = null
 var _weather_warning_label: Label = null
 var _weather_day_label: Label = null
 var _weather_player: Node2D = null
+var _journal_update_indicator: Label = null
+var _journal_has_unread_entries := false
 
 func _ready() -> void:
 	GameManager.player_health_changed.connect(_update_health)
@@ -100,12 +102,15 @@ func _ready() -> void:
 	_hide_scanner_upgrade_toast()
 	_setup_carrier_warning_audio()
 	_setup_discovery_journal()
+	_setup_journal_update_indicator()
 	_setup_night_defense_warning()
 	_setup_weather_strip()
 	if EventBus != null and EventBus.has_signal("night_threat_detected"):
 		EventBus.night_threat_detected.connect(_on_night_threat_detected)
 	if EventBus != null and EventBus.has_signal("loop_milestone_reached"):
 		EventBus.loop_milestone_reached.connect(_on_loop_milestone_reached)
+	if EventBus != null and EventBus.has_signal("discovery_entry_added"):
+		EventBus.discovery_entry_added.connect(_on_discovery_entry_added)
 	if has_node("/root/BaseThreatDirector"):
 		BaseThreatDirector.threat_lesson_triggered.connect(_on_base_threat_lesson_triggered)
 	if WeatherSystem != null:
@@ -502,6 +507,28 @@ func _setup_discovery_journal() -> void:
 		_journal_panel.hide_panel()
 
 
+func _setup_journal_update_indicator() -> void:
+	if _journal_update_indicator != null:
+		return
+	_journal_update_indicator = Label.new()
+	_journal_update_indicator.name = "JournalUpdateIndicator"
+	_journal_update_indicator.visible = false
+	_journal_update_indicator.text = "New Entry [J]"
+	_journal_update_indicator.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_journal_update_indicator.add_theme_font_size_override("font_size", 14)
+	_journal_update_indicator.add_theme_color_override("font_color", Color(0.98, 0.86, 0.42, 1.0))
+	_journal_update_indicator.add_theme_color_override("font_outline_color", Color(0.04, 0.04, 0.05, 0.9))
+	_journal_update_indicator.add_theme_constant_override("outline_size", 3)
+	_journal_update_indicator.anchor_left = 1.0
+	_journal_update_indicator.anchor_right = 1.0
+	_journal_update_indicator.offset_left = -180.0
+	_journal_update_indicator.offset_top = 46.0
+	_journal_update_indicator.offset_right = -20.0
+	_journal_update_indicator.offset_bottom = 72.0
+	_journal_update_indicator.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_journal_update_indicator)
+
+
 func _setup_carrier_warning_audio() -> void:
 	_carrier_warning_audio_player = AudioStreamPlayer.new()
 	add_child(_carrier_warning_audio_player)
@@ -521,6 +548,7 @@ func _open_journal() -> void:
 
 	_pause_player_input()
 	_journal_open = true
+	_set_journal_update_indicator(false)
 	_journal_panel.show_panel()
 
 
@@ -531,6 +559,18 @@ func _close_journal() -> void:
 	_journal_open = false
 	_journal_panel.hide_panel()
 	_resume_player_input()
+
+
+func _on_discovery_entry_added(_entry: Dictionary) -> void:
+	if _journal_open:
+		return
+	_set_journal_update_indicator(true)
+
+
+func _set_journal_update_indicator(active: bool) -> void:
+	_journal_has_unread_entries = active
+	if _journal_update_indicator != null:
+		_journal_update_indicator.visible = active
 
 
 func _pause_player_input() -> void:
@@ -624,10 +664,18 @@ func _get_item_color(item_id: String) -> Color:
 			return Color(0.17, 0.18, 0.20, 1.0)
 		"lithium":
 			return Color(0.76, 0.88, 1.0, 1.0)
+		"sodium":
+			return Color(0.92, 0.94, 0.86, 1.0)
+		"mercury":
+			return Color(0.84, 0.86, 0.90, 1.0)
 		"rust_bolt":
 			return Color(0.84, 0.38, 0.12, 1.0)
 		"sulfuric_bolt":
 			return Color(0.76, 0.90, 0.22, 1.0)
+		"mercury_amalgam":
+			return Color(0.72, 0.75, 0.79, 1.0)
+		"toxic_slurry":
+			return Color(0.42, 0.90, 0.35, 1.0)
 		"steel_sword":
 			return Color(0.82, 0.85, 0.90, 1.0)
 		_:

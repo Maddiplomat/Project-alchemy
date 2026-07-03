@@ -172,5 +172,95 @@
         "consumed_catalyst": 1
       }
     ]
+  },
+  {
+    "id": "iron_mercury_amalgam",
+    "pair": ["iron", "mercury"],
+    "outcomes": [
+      {
+        "ratio_min": 35.0,
+        "ratio_max": 55.0,
+        "temp_min": 40.0,
+        "temp_max": 95.0,
+        "catalyst": "limestone",
+        "output_id": "mercury_amalgam",
+        "output_qty": 1,
+        "quality": 0.85,
+        "tier": "optimal",
+        "notes": "Limestone keeps the contaminated amalgam from fuming while mercury wets the iron surface.",
+        "preview_label": "Mercury Amalgam",
+        "requires_stabilization": false
+      },
+      {
+        "ratio_min": 35.0,
+        "ratio_max": 55.0,
+        "temp_min": 40.0,
+        "temp_max": 95.0,
+        "catalyst": "none",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "Unbuffered mercury flashes into vapor across the iron surface.",
+        "preview_label": "Toxic vapor",
+        "failure_reason": "timer_expiry"
+      },
+      {
+        "ratio_min": 0.0,
+        "ratio_max": 100.0,
+        "temp_min": 120.0,
+        "temp_max": 260.0,
+        "catalyst": "any",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "Overheating the amalgam bath releases a dense mercury cloud.",
+        "preview_label": "Toxic vapor",
+        "failure_reason": "timer_expiry",
+        "consumed_catalyst": 1
+      }
+    ]
+  },
+  {
+    "id": "mercury_sulfur_toxic_slurry",
+    "pair": ["mercury", "sulfur"],
+    "outcomes": [
+      {
+        "ratio_min": 40.0,
+        "ratio_max": 60.0,
+        "temp_min": 55.0,
+        "temp_max": 105.0,
+        "catalyst": "limestone",
+        "output_id": "toxic_slurry",
+        "output_qty": 1,
+        "quality": 0.9,
+        "tier": "optimal",
+        "notes": "Buffered mercury sulfide slurry holds long enough to bottle for poison craft.",
+        "preview_label": "Toxic Slurry",
+        "requires_stabilization": false
+      },
+      {
+        "ratio_min": 40.0,
+        "ratio_max": 60.0,
+        "temp_min": 55.0,
+        "temp_max": 105.0,
+        "catalyst": "none",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "The poison mix needs limestone or it vents before it binds.",
+        "preview_label": "Toxic vapor",
+        "failure_reason": "timer_expiry"
+      },
+      {
+        "ratio_min": 0.0,
+        "ratio_max": 100.0,
+        "temp_min": 130.0,
+        "temp_max": 260.0,
+        "catalyst": "any",
+        "quality": 0.0,
+        "tier": "danger",
+        "notes": "Too much heat cooks the slurry into a toxic plume.",
+        "preview_label": "Toxic vapor",
+        "failure_reason": "timer_expiry",
+        "consumed_catalyst": 1
+      }
+    ]
   }
 ]

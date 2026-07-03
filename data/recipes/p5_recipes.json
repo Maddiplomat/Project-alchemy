@@ -53,5 +53,59 @@
       "water": 0.5
     },
     "durability": null
+  },
+  {
+    "id": "mercury_amalgam",
+    "name": "Mercury Amalgam",
+    "inputs": [
+      {
+        "mercury": 1
+      },
+      {
+        "iron": 1
+      }
+    ],
+    "output": {
+      "mercury_amalgam": 1
+    },
+    "station": "chem_bench",
+    "reaction_type": "chemical",
+    "discovery_gate": {
+      "entry_id": "mercury_handling",
+      "hint": "Recover mercury from Sodium Shoals before attempting amalgam work.",
+      "locked_name": "???"
+    },
+    "ratio": {
+      "mercury": 0.5,
+      "iron": 0.5
+    },
+    "durability": null
+  },
+  {
+    "id": "toxic_slurry",
+    "name": "Toxic Slurry",
+    "inputs": [
+      {
+        "mercury": 1
+      },
+      {
+        "sulfur": 1
+      }
+    ],
+    "output": {
+      "toxic_slurry": 1
+    },
+    "station": "chem_bench",
+    "reaction_type": "chemical",
+    "discovery_gate": {
+      "entry_id": "mercury_handling",
+      "hint": "Recover mercury from Sodium Shoals before attempting poison craft.",
+      "locked_name": "???"
+    },
+    "ratio": {
+      "mercury": 0.5,
+      "sulfur": 0.5
+    },
+    "durability": null
   }
 ]

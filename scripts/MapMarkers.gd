@@ -87,7 +87,7 @@ func _on_tree_node_added(node: Node) -> void:
 		call_deferred("_refresh_world_bindings")
 		return
 	if node is Node2D:
-		call_deferred("_bind_mining_node", node)
+		call_deferred("_bind_mining_node_by_id", node.get_instance_id())
 
 
 func _refresh_world_bindings() -> void:
@@ -145,6 +145,15 @@ func _bind_mining_node(node: Node) -> void:
 
 	node_2d.set_meta(&"map_markers_bound", true)
 	node_2d.connect(signal_name, Callable(self, "_on_mining_node_interacted").bind(node_2d.global_position, StringName(title.to_snake_case()), title))
+
+
+func _bind_mining_node_by_id(node_id: int) -> void:
+	if node_id <= 0:
+		return
+	var node := instance_from_id(node_id) as Node
+	if node == null or not is_instance_valid(node):
+		return
+	_bind_mining_node(node)
 
 
 func _bind_sulfur_zone(world_root: Node) -> void:

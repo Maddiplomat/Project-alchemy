@@ -71,6 +71,18 @@ const DISCOVERY_DATA := {
 		&"hazard_notes": "Rain or open water drains lithium charge. Electrical storms recharge it slowly. Keep it dry or store it in a Dry Box.",
 		&"scanner_clue": "Highly reactive light metal with strong charge-storage behavior.",
 	},
+	&"sodium": {
+		&"unlocks_recipe": [],
+		&"next_hint": "Keep sodium dry and use Sodium Shoals runs to practice water-safe cargo routing.",
+		&"hazard_notes": "Sodium reacts violently with rain or standing water. Dry storage is mandatory.",
+		&"scanner_clue": "Alkali metal crust with extreme water reactivity.",
+	},
+	&"mercury": {
+		&"unlocks_recipe": [StringName(&"mercury_amalgam"), StringName(&"toxic_slurry")],
+		&"next_hint": "Use mercury at the chem bench for amalgams or poison mixtures after contamination handling is logged.",
+		&"hazard_notes": "Mercury vents toxic vapor under heat, acid mist, toxic exposure, or critical injury.",
+		&"scanner_clue": "Dense liquid metal contamination trapped in shoals sediment.",
+	},
 	&"rust_bolt": {
 		&"unlocks_recipe": [],
 		&"next_hint": "Refine your chem bench process further with sulfur-bearing inputs.",
@@ -88,6 +100,18 @@ const DISCOVERY_DATA := {
 		&"next_hint": "Stabilize volatile mixtures before scaling production.",
 		&"hazard_notes": "Corrosive suspension. Unsafe without controlled handling.",
 		&"scanner_clue": "Unstable slurry with active corrosive response.",
+	},
+	&"mercury_amalgam": {
+		&"unlocks_recipe": [],
+		&"next_hint": "Use amalgam chemistry as a bridge into precision poison and metal-binding recipes.",
+		&"hazard_notes": "Contains mercury. Keep away from heat and broken containers.",
+		&"scanner_clue": "Mercury-wetted metal surface with stabilized contamination.",
+	},
+	&"toxic_slurry": {
+		&"unlocks_recipe": [],
+		&"next_hint": "Treat poison mixtures as payloads, not storage materials.",
+		&"hazard_notes": "Toxic suspension. Exposure can compound mercury carrier risk.",
+		&"scanner_clue": "Buffered mercury sulfide mixture with strong toxicity.",
 	},
 	&"explosion": {
 		&"unlocks_recipe": [],

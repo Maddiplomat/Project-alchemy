@@ -32,6 +32,7 @@ const IRON_MINE_SCENE := preload("res://scenes/IronMine.tscn")
 const LIMESTONE_MINE_SCENE := preload("res://scenes/LimestoneMine.tscn")
 const ACID_CRAWLER_SPAWNER_SCENE := preload("res://scenes/AcidCrawlerSpawner.tscn")
 const ENEMY_SPAWNER_SCENE := preload("res://scenes/EnemySpawner.tscn")
+const LIGHT_SWARMER_SCENE := preload("res://scenes/LightSwarmer.tscn")
 const BATTERY_STATION_SCENE := preload("res://scenes/BatteryStation.tscn")
 const TREE_RESOURCE_SCENE := preload("res://scenes/TreeResource.tscn")
 const TRAILHEAD_PROP_SCENE := preload("res://scenes/TrailheadProp.tscn")
@@ -42,10 +43,15 @@ const SODIUM_SHOALS_ORIGIN := Vector2i(11, 17)
 const SODIUM_SHOALS_SIZE := Vector2i(26, 22)
 const SODIUM_MIN_SPAWNS := 8
 const SODIUM_MAX_SPAWNS := 12
+const MERCURY_MIN_SPAWNS := 3
+const MERCURY_MAX_SPAWNS := 5
 const SODIUM_SHOALS_BRINE_SPEED_MULTIPLIER := 0.84
 const OVERWORLD_SCENE_PATH := "res://scenes/World.tscn"
 const SODIUM_SHOALS_SCENE_PATH := "res://scenes/SodiumShoals.tscn"
 const SULFUR_FLATS_SCENE_PATH := "res://scenes/SulfurFlats.tscn"
+const SODIUM_SHOALS_DISCOVERY_ENTRY_ID := &"sodium_shoals_survey"
+const SODIUM_SHOALS_DISCOVERY_TITLE := "Sodium Shoals Logged"
+const SODIUM_SHOALS_DISCOVERY_NOTES := "The shoals hold sodium crusts around brine pans, with contaminated sediment warning signs near dumped industrial scrap."
 const TREE_CANOPY_SOURCE_ID := SOURCE_ID
 const TREE_CANOPY_ATLAS_COORDS := TREE_TILE
 const IRON_MINE_COORDS := Vector2i(12, 8)
@@ -170,13 +176,17 @@ func _generate_overworld(world_seed: int) -> void:
 	_spawn_elements(world_seed)
 	_spawn_lithium_deposits(world_seed)
 	_spawn_water_pickups(world_seed)
+	_place_light_swarmer_spawners()
 
 
 func _generate_sodium_shoals(world_seed: int) -> void:
+	_log_sodium_shoals_discovery()
 	_place_sodium_shoals_zone(world_seed)
 	_place_sodium_shoals_return_trailhead()
+	_place_sodium_shoals_contamination_props()
 	_spawn_elements(world_seed)
 	_spawn_sodium_deposits(world_seed)
+	_spawn_mercury_deposits(world_seed)
 	_place_sodium_shoals_threats(world_seed)
 
 
@@ -1134,6 +1144,24 @@ func _spawn_sodium_deposits(world_seed: int) -> void:
 		element_spawn_system.spawn_element_at(&"sodium", candidate_tiles[index], ground_layer)
 
 
+func _spawn_mercury_deposits(world_seed: int) -> void:
+	if element_spawn_system == null or not element_spawn_system.has_method("spawn_element_at"):
+		return
+	var candidate_tiles := _get_mercury_shoals_spawn_tiles()
+	if candidate_tiles.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = world_seed + 60257
+	for index in range(candidate_tiles.size() - 1, 0, -1):
+		var swap_index := rng.randi_range(0, index)
+		var tmp: Vector2i = candidate_tiles[index]
+		candidate_tiles[index] = candidate_tiles[swap_index]
+		candidate_tiles[swap_index] = tmp
+	var spawn_count := mini(rng.randi_range(MERCURY_MIN_SPAWNS, MERCURY_MAX_SPAWNS), candidate_tiles.size())
+	for index in range(spawn_count):
+		element_spawn_system.spawn_element_at(&"mercury", candidate_tiles[index], ground_layer)
+
+
 func _get_sodium_shoals_spawn_tiles() -> Array[Vector2i]:
 	var spawn_tiles: Array[Vector2i] = []
 	for coords: Vector2i in _sodium_shoals_tiles.keys():
@@ -1143,6 +1171,55 @@ func _get_sodium_shoals_spawn_tiles() -> Array[Vector2i]:
 			continue
 		spawn_tiles.append(coords)
 	return spawn_tiles
+
+
+func _get_mercury_shoals_spawn_tiles() -> Array[Vector2i]:
+	var spawn_tiles: Array[Vector2i] = []
+	for coords: Vector2i in _sodium_shoals_tiles.keys():
+		var local_coords := coords - SODIUM_SHOALS_ORIGIN
+		if local_coords.x < 11:
+			continue
+		if local_coords.y < 7:
+			continue
+		if not _has_adjacent_sodium_shoals_brine_tile(coords):
+			continue
+		spawn_tiles.append(coords)
+	return spawn_tiles
+
+
+func _has_adjacent_sodium_shoals_brine_tile(coords: Vector2i) -> bool:
+	var neighbor_offsets := [
+		Vector2i.LEFT,
+		Vector2i.RIGHT,
+		Vector2i.UP,
+		Vector2i.DOWN,
+	]
+	for offset: Vector2i in neighbor_offsets:
+		if _sodium_shoals_brine_tiles.has(coords + offset):
+			return true
+	return false
+
+
+func _place_sodium_shoals_contamination_props() -> void:
+	if generated_zone_props == null:
+		return
+	var sign_tile := SODIUM_SHOALS_ORIGIN + Vector2i(18, 8)
+	var crate_tile := SODIUM_SHOALS_ORIGIN + Vector2i(20, 10)
+	_clear_tree_patch(sign_tile, 1, 1)
+	_clear_tree_patch(crate_tile, 1, 1)
+
+	var sign := RUSTED_WARNING_SIGN_SCENE.instantiate()
+	generated_zone_props.add_child(sign)
+	sign.position = ground_layer.map_to_local(sign_tile) + Vector2(0.0, -4.0)
+
+	var scorched_crate := SCORCHED_CRATE_NOTE_SCENE.instantiate()
+	scorched_crate.set("note_title", "Dumping Manifest")
+	scorched_crate.set("note_text", "Brine held the sodium waste. Mercury beads settled in the black mud below it. Do not heat the sample drums.")
+	scorched_crate.set("discovery_entry_id", &"mercury_dumping_warning")
+	scorched_crate.set("discovery_title", "Shoals Dumping Warning")
+	scorched_crate.set("discovery_notes", "Industrial dumping left mercury in the Sodium Shoals sediment. Heat and acid exposure can turn carried mercury into toxic vapor.")
+	generated_zone_props.add_child(scorched_crate)
+	scorched_crate.position = ground_layer.map_to_local(crate_tile) + Vector2(0.0, 2.0)
 
 
 func _place_sodium_shoals_threats(world_seed: int) -> void:
@@ -1169,6 +1246,41 @@ func _place_sodium_shoals_threats(world_seed: int) -> void:
 		ground_layer.to_global(ground_layer.map_to_local(SODIUM_SHOALS_ORIGIN + Vector2i(21, 16))),
 	])
 	generated_zone_props.add_child(golem_spawner)
+
+
+func _place_light_swarmer_spawners() -> void:
+	if generated_zone_props == null or ENEMY_SPAWNER_SCENE == null or LIGHT_SWARMER_SCENE == null:
+		return
+	var swarmer_spawn_tiles := [
+		Vector2i(8, 50),
+		Vector2i(56, 16),
+	]
+	var spawn_positions: Array[Vector2] = []
+	for coords: Vector2i in swarmer_spawn_tiles:
+		if _is_edge(coords):
+			continue
+		_clear_tree_patch(coords, 1, 1)
+		spawn_positions.append(ground_layer.to_global(ground_layer.map_to_local(coords)))
+	if spawn_positions.is_empty():
+		return
+	var spawner := ENEMY_SPAWNER_SCENE.instantiate()
+	spawner.name = "LightSwarmerSpawner"
+	spawner.set("enemy_scene", LIGHT_SWARMER_SCENE)
+	spawner.set("spawn_position", spawn_positions)
+	spawner.set("spawn_group_size", 3)
+	spawner.set("spawn_group_radius", 16.0)
+	spawner.set("requires_post_tutorial_loop", true)
+	generated_zone_props.add_child(spawner)
+
+
+func _log_sodium_shoals_discovery() -> void:
+	if DiscoveryLog == null or not DiscoveryLog.has_method("log_progression_discovery"):
+		return
+	DiscoveryLog.log_progression_discovery(
+		SODIUM_SHOALS_DISCOVERY_ENTRY_ID,
+		SODIUM_SHOALS_DISCOVERY_TITLE,
+		SODIUM_SHOALS_DISCOVERY_NOTES
+	)
 
 
 func _place_sulfur_flats_threats() -> void:

@@ -194,8 +194,16 @@ func _get_item_color(item_id: String) -> Color:
 			return Color(0.95, 0.87, 0.24, 1.0)
 		"lithium":
 			return Color(0.84, 0.90, 0.97, 1.0)
+		"sodium":
+			return Color(0.92, 0.94, 0.86, 1.0)
+		"mercury":
+			return Color(0.84, 0.86, 0.90, 1.0)
 		"sulfuric_bolt":
 			return Color(0.76, 0.90, 0.22, 1.0)
+		"mercury_amalgam":
+			return Color(0.72, 0.75, 0.79, 1.0)
+		"toxic_slurry":
+			return Color(0.42, 0.90, 0.35, 1.0)
 		_:
 			return Color.WHITE
 
@@ -207,13 +215,15 @@ func _apply_background_style() -> void:
 	var is_sulfur_risk_slot := has_item() and current_item_id == "sulfur" and _carrier_risk_active
 	var is_lithium_held_slot := has_item() and current_item_id == "lithium" and is_equipped
 	var is_lithium_risk_slot := has_item() and current_item_id == "lithium" and _carrier_risk_active
+	var is_generic_risk_slot := has_item() and _carrier_risk_active and not is_sulfur_risk_slot and not is_lithium_risk_slot
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = (
 		SLOT_BG_RISK if is_sulfur_risk_slot else
 		(SLOT_BG_LITHIUM_RISK if is_lithium_risk_slot else
+		(SLOT_BG_RISK if is_generic_risk_slot else
 		(SLOT_BG_SULFUR if is_sulfur_held_slot else
 		(SLOT_BG_LITHIUM if is_lithium_held_slot else
-		(SLOT_BG_CHARCOAL if is_charcoal_slot else SLOT_BG_DEFAULT))))
+		(SLOT_BG_CHARCOAL if is_charcoal_slot else SLOT_BG_DEFAULT)))))
 	)
 	if is_sulfur_risk_slot:
 		var flash_phase := fmod(_carrier_risk_time * 4.0, 1.0)
@@ -227,6 +237,9 @@ func _apply_background_style() -> void:
 			SLOT_BORDER_LITHIUM_RISK.b,
 			risk_pulse_alpha
 		)
+	elif is_generic_risk_slot:
+		var generic_flash_alpha := 0.45 + 0.35 * sin(_carrier_risk_time * TAU * 1.6)
+		panel_style.border_color = Color(SLOT_BORDER_RISK.r, SLOT_BORDER_RISK.g, SLOT_BORDER_RISK.b, generic_flash_alpha)
 	elif is_sulfur_held_slot:
 		var pulse_alpha := 0.55 + 0.25 * sin(_pulse_time * TAU * 1.2)
 		panel_style.border_color = Color(
@@ -245,7 +258,7 @@ func _apply_background_style() -> void:
 		)
 	else:
 		panel_style.border_color = SLOT_BORDER_CHARCOAL if is_charcoal_slot else SLOT_BORDER_DEFAULT
-	var emphasized_border := is_sulfur_held_slot or is_sulfur_risk_slot or is_lithium_held_slot or is_lithium_risk_slot
+	var emphasized_border := is_sulfur_held_slot or is_sulfur_risk_slot or is_lithium_held_slot or is_lithium_risk_slot or is_generic_risk_slot
 	panel_style.border_width_left = 2 if emphasized_border else 1
 	panel_style.border_width_top = 2 if emphasized_border else 1
 	panel_style.border_width_right = 2 if emphasized_border else 1
@@ -258,7 +271,7 @@ func _apply_background_style() -> void:
 
 
 func _supports_passive_risk_pulse() -> bool:
-	return item_id == &"sulfur" or item_id == &"lithium"
+	return item_id in [&"sulfur", &"lithium", &"sodium", &"mercury"]
 
 
 func _supports_carrier_risk_visuals() -> bool:

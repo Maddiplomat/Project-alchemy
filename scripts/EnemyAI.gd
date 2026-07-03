@@ -1,5 +1,5 @@
 class_name EnemyAI
-extends Node
+extends CharacterBody2D
 
 ## EnemyAI Base Class
 ## Defines abstract methods for core enemy behaviors.

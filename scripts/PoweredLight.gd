@@ -3,6 +3,7 @@ extends PointLight2D
 var _base_grid: Node = null
 var _power_switchboard: Node = null
 var _registered_with_defense := false
+var _disrupted_until_msec := 0
 
 @export var defense_radius := 96.0
 @export var drain_units_per_minute := 1.0
@@ -16,6 +17,7 @@ func _ready() -> void:
 	_bind_power_services()
 	if _base_grid == null:
 		energy = 0.0
+	set_process(true)
 
 	_configure_light_texture()
 	if GameManager != null:
@@ -28,11 +30,34 @@ func _ready() -> void:
 	_refresh_power_state()
 
 
+func _process(_delta: float) -> void:
+	if _disrupted_until_msec <= 0:
+		return
+	if Time.get_ticks_msec() < _disrupted_until_msec:
+		return
+	_disrupted_until_msec = 0
+	_refresh_power_state()
+
+
 func get_power_drain_units_per_minute() -> float:
+	if _is_disrupted():
+		return 0.0
 	if _power_switchboard != null and _power_switchboard.has_method("is_consumer_enabled"):
 		if not _power_switchboard.is_consumer_enabled(&"perimeter_lights"):
 			return 0.0
 	return drain_units_per_minute
+
+
+func disrupt(duration_seconds: float) -> void:
+	_disrupted_until_msec = maxi(
+		_disrupted_until_msec,
+		Time.get_ticks_msec() + int(maxf(duration_seconds, 0.0) * 1000.0)
+	)
+	_refresh_power_state()
+
+
+func is_attracting_swarmer() -> bool:
+	return _should_show_visual_light()
 
 
 func _exit_tree() -> void:
@@ -58,12 +83,18 @@ func _refresh_power_state() -> void:
 
 
 func _should_show_visual_light() -> bool:
+	if _is_disrupted():
+		return false
 	if _base_grid == null or not _base_grid.has_method("is_powered") or not _base_grid.is_powered():
 		return false
 	if _power_switchboard != null and _power_switchboard.has_method("is_consumer_enabled"):
 		if not _power_switchboard.is_consumer_enabled(&"perimeter_lights"):
 			return false
 	return _is_defense_light_source()
+
+
+func _is_disrupted() -> bool:
+	return Time.get_ticks_msec() < _disrupted_until_msec
 
 
 func _should_enable_defense_effect() -> bool:

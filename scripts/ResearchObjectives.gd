@@ -11,6 +11,8 @@ const SULFUR_FLATS_WEATHER_ENTRY_ID := &"sulfur_flats_weather_unlocked"
 const CHEM_BENCH_ACCESS_ENTRY_ID := &"chem_bench_access"
 const SULFUR_STORAGE_ENTRY_ID := &"sulfur_storage"
 const DRY_BOX_ACCESS_ENTRY_ID := &"dry_box_access"
+const SODIUM_HANDLING_ENTRY_ID := &"sodium_handling"
+const MERCURY_HANDLING_ENTRY_ID := &"mercury_handling"
 const BASE_POWER_ONLINE_ENTRY_ID := &"base_power_online"
 
 var objectives: Dictionary[StringName, Dictionary] = {}
@@ -222,6 +224,34 @@ func _seed_objectives() -> void:
 		&"active": false,
 	})
 	_add_objective({
+		&"id": &"recover_sodium",
+		&"title": "Recover Sodium",
+		&"hint": "Bring sodium back from the shoals without letting it touch water.",
+		&"condition_type": "collect",
+		&"condition_target": &"sodium",
+		&"condition_count": 1,
+		&"reward_type": "unlock_journal",
+		&"reward_target": SODIUM_HANDLING_ENTRY_ID,
+		&"reward_entry_title": "Sodium Handling",
+		&"reward_entry_notes": "Sodium from the shoals must stay dry. Rain and standing water can turn a carry run into an explosive reaction.",
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
+		&"id": &"recover_mercury",
+		&"title": "Recover Mercury",
+		&"hint": "Collect mercury from contaminated shoals sediment and keep it away from heat.",
+		&"condition_type": "collect",
+		&"condition_target": &"mercury",
+		&"condition_count": 1,
+		&"reward_type": "unlock_journal",
+		&"reward_target": MERCURY_HANDLING_ENTRY_ID,
+		&"reward_entry_title": "Mercury Handling",
+		&"reward_entry_notes": "Mercury unlocks amalgam and poison chemistry. Heat, acid mist, and toxic exposure can vent it into a toxic cloud.",
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
 		&"id": &"charge_base",
 		&"title": "Charge the Base Grid",
 		&"hint": "Use lithium and iron at the Battery Station, then slot an energy cell into the grid.",
@@ -414,6 +444,16 @@ func _refresh_active_objective() -> void:
 		&"build_dry_box":
 			if _has_placed_buildable(&"dry_box"):
 				_complete_objective(objective_id)
+		&"recover_sodium":
+			if InventoryManager != null and InventoryManager.get_stack(&"sodium").quantity >= 1:
+				_complete_objective(objective_id)
+			elif ElementDatabase != null and ElementDatabase.is_element_discovered(&"sodium"):
+				_complete_objective(objective_id)
+		&"recover_mercury":
+			if InventoryManager != null and InventoryManager.get_stack(&"mercury").quantity >= 1:
+				_complete_objective(objective_id)
+			elif ElementDatabase != null and ElementDatabase.is_element_discovered(&"mercury"):
+				_complete_objective(objective_id)
 		&"charge_base":
 			if GameManager != null and GameManager.scanner_tier == GameManager.ScannerTier.ADVANCED:
 				_complete_objective(objective_id)
@@ -497,6 +537,16 @@ func _on_element_discovered(element_id: StringName) -> void:
 	if _is_active_objective(&"discover_steel") and element_id == &"steel":
 		_progress[&"discover_steel"] = 1
 		_complete_objective(&"discover_steel")
+		return
+
+	if _is_active_objective(&"recover_sodium") and element_id == &"sodium":
+		_progress[&"recover_sodium"] = 1
+		_complete_objective(&"recover_sodium")
+		return
+
+	if _is_active_objective(&"recover_mercury") and element_id == &"mercury":
+		_progress[&"recover_mercury"] = 1
+		_complete_objective(&"recover_mercury")
 
 
 func _on_inventory_changed(_slot_index: int) -> void:

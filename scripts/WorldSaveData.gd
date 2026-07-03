@@ -145,20 +145,28 @@ func deserialize(data: Dictionary) -> void:
 			else:
 				player_inventory.append({})
 		active_path = str(player_data.get("active_path", ""))
+		var restored_inventory: Array[Dictionary] = player_inventory.duplicate(true)
 		if has_node("/root/GameManager"):
 			var gm = get_node("/root/GameManager")
 			if is_instance_valid(gm) and gm.get("player") != null:
 				var player = gm.player
 				player.global_position = player_position
-				
 				if player.has_node("HealthSystem"):
-					player.get_node("HealthSystem").current_health = player_health
+					var health_system: Node = player.get_node("HealthSystem")
+					if health_system.has_method("restore_state"):
+						health_system.restore_state(int(player_health), player_status_effects)
+					else:
+						health_system.current_health = int(player_health)
+				if gm.has_method("set_player_health"):
+					gm.set_player_health(int(player_health))
+				if gm.has_method("set_player_status_effects"):
+					gm.set_player_status_effects(player_status_effects)
 					
 		if has_node("/root/InventoryManager"):
 			var inv = get_node("/root/InventoryManager")
 			inv.clear_inventory()
-			for i in range(mini(player_inventory.size(), inv.DEFAULT_SLOT_COUNT)):
-				var item_data = player_inventory[i]
+			for i in range(mini(restored_inventory.size(), inv.DEFAULT_SLOT_COUNT)):
+				var item_data = restored_inventory[i]
 				if not item_data.is_empty():
 					var qty = item_data.get("quantity", 1)
 					inv.add_item(item_data, qty)
