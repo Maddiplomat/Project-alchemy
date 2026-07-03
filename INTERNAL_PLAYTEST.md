@@ -2,16 +2,18 @@
 
 ## Purpose
 
-This document should reflect the game that is actually in the repo today, not the earlier Prototype 4 planning state.
+This document should reflect the game that is actually in the repo today, not an earlier planning state.
 
 The current playable slice is a survival-crafting loop with:
 
 - a `Furnace` for smelting and charcoal production
-- a `ChemBench` for recipe crafting, including `rust_bolt`, `sulfuric_bolt`, and `distillation_kit`
-- inventory drag/drop, slot selection, weight pressure, and held-item feedback
-- a `Discovery Journal` that logs chemistry outcomes and environmental notes
-- an `IronGolem` encounter near the crafting area
-- a `Sulfur Flats` biome with sulfur collection requirements and carrier-risk pressure
+- a `ChemBench` for crafting, dangerous chemistry outcomes, and inline failure lessons
+- a five-slot active field inventory with drag/drop, stack management, weight pressure, and held-item feedback
+- a `Discovery Journal` with HUD unread-entry signaling
+- separate travel destinations for `Sulfur Flats` and `Sodium Shoals`
+- sulfur, sodium, and mercury as distinct expedition resources with different handling rules
+- weather pressure, volatile storage pressure, and night-defense pressure
+- `IronGolem`, `AcidCrawler`, and `LightSwarmer` threats in the current build
 - death presentation, retry flow, and cause-of-death readouts
 
 The playtest goal is to answer two questions:
@@ -25,34 +27,37 @@ The playtest goal is to answer two questions:
 
 The intended loop appears to be:
 
-1. gather wood, stone, iron, and water
+1. gather wood, stone, iron, water, and other nearby starter materials
 2. use the `Furnace` to produce charcoal and smelting outputs
-3. use the `ChemBench` to make tools or munitions
-4. travel into higher-risk spaces such as the `Sulfur Flats`
-5. collect sulfur with the `distillation_kit`
-6. manage carrier risk while escaping with sulfur
-7. turn sulfur into stronger chemistry outputs such as `sulfuric_bolt`
+3. use the `ChemBench` to make progression tools and combat chemistry
+4. travel into separate riskier scenes such as `Sulfur Flats` and `Sodium Shoals`
+5. recover sulfur, sodium, and mercury while reading each biome's handling rule
+6. bring hazardous cargo back through the travel system with health and inventory state preserved
+7. stage that cargo correctly at home using shelter, Dry Boxes, Volatile Lockers, and distance from heat
+8. turn recovered materials into stronger chemistry outputs and better base planning
 
-This is materially stronger than the old P4 loop because the world now includes a concrete mid-game objective and a risk rule tied to carrying sulfur.
+This is materially stronger than the older sulfur-only framing because the build now has two distinct expedition scenes and multiple chemistry resources that teach different storage and failure rules.
 
 ### Systems That Appear Present And Playable
 
 - `Furnace`
   Supports temperature, fuel burn, charcoal conversion, smelting, and furnace explosion failure.
 - `ChemBench`
-  Supports active recipes, recipe summaries, and stabilization failure states including shrapnel, explosion, and toxic cloud outcomes.
+  Supports active recipes, recipe summaries, stabilization failure states, and inline danger or waste notes at the moment of failure.
 - `Inventory`
-  Supports 20 slots, drag splitting, dropping into world, item selection, durability display, and weight feedback.
+  Supports five active field slots, drag/drop, splitting, dropping into the world, held-item display, and weight feedback.
 - `Discovery Journal`
-  Opens from HUD, logs chemistry results, and now accepts environmental discoveries such as the sulfur warning note.
+  Opens from the HUD, logs chemistry and environmental discoveries, and now has a HUD unread-entry indicator.
 - `Sulfur Flats`
-  Exists as a generated biome with sulfur spawns, an entrance warning sign, and new environmental teaching props.
+  Exists as a separate travel scene with its own trailhead, environmental teaching props, weather unlock pacing, sulfur collection pressure, and two `AcidCrawler` enemies.
+- `Sodium Shoals`
+  Exists as a separate travel scene with sodium crust deposits, exposed mercury spawns, contaminated sediment storytelling, and return travel that preserves expedition state.
 - `Carrier Risk`
-  Surfaces as HUD warning strip, slot highlighting, and ignition countdown pressure while sulfur is carried.
+  Surfaces as HUD warning strip, slot highlighting, ignition countdown pressure, and hazardous outcomes for reactive cargo.
 - `Combat Pressure`
-  The `IronGolem` is still part of the world and applies pressure near the work area.
+  `IronGolem` remains part of the base area pressure, while `LightSwarmer` adds a specific counter-pressure against over-reliance on powered lights.
 - `Failure And Recovery`
-  Death overlay, cause-of-death summary, retry, and main-menu exit are implemented.
+  Death overlay, cause-of-death summary, retry, main-menu exit, and clearer chemistry failure messaging are implemented.
 
 ## What The Current Playtest Needs To Learn
 
@@ -61,47 +66,57 @@ This is materially stronger than the old P4 loop because the world now includes 
 The strongest version of the game now depends on players inferring:
 
 - the furnace matters before the chem bench matters
-- sulfur is a special resource, not just another pickup
-- the `distillation_kit` is required for safe sulfur extraction
-- carrying sulfur is itself the danger state
+- expedition travel is the next step after basic station understanding
+- sulfur, sodium, and mercury are not interchangeable pickups
+- shelter and storage are part of chemistry progression, not side systems
+- dangerous chemistry outcomes are meant to teach, not just punish
 
-If players do not infer those four things on their own, more recipes or more combat will not solve the problem.
+If players do not infer those things on their own, adding more content will not solve the actual problem.
 
-### 2. Does the sulfur loop land as the current signature feature?
+### 2. Do the two expedition zones teach different rules clearly?
 
-The sulfur loop is the most distinctive system in the current build. The playtest should verify whether players can understand:
+The build now has two separate biome lessons:
 
-- why the `Sulfur Flats` are dangerous
-- why the charred remains and note matter
-- why sulfur should be dropped under pressure
-- whether the warning countdown gives enough time to make a decision
-- whether getting sulfur back out feels tense in a good way or only punitive
+- `Sulfur Flats` should teach hazard telegraphing, sulfur recovery pressure, and weather escalation
+- `Sodium Shoals` should teach dry handling for sodium and toxic contamination logic for mercury
 
-If this loop is confusing, Prototype 5 should stay focused on sulfur readability before broadening the chemistry tree.
+The playtest should verify whether players can understand:
+
+- why `Sulfur Flats` and `Sodium Shoals` feel different
+- whether each travel point reads as a meaningful destination
+- whether sulfur, sodium, and mercury communicate their danger before or immediately after pickup
+- whether returning from an expedition feels tense in a good way rather than buggy or arbitrary
+
+If both zones collapse into "just another pickup map," the expedition layer still needs readability work.
 
 ### 3. Does the chemistry loop have a clear payoff structure?
 
-There are now multiple chemistry outputs, but the player still needs to understand:
+There are now multiple chemistry outputs and multiple hazardous ingredients, but the player still needs to understand:
 
 - what each station is for
 - what they should craft first
-- what `rust_bolt`, `distillation_kit`, and `sulfuric_bolt` are good for
+- what `distillation_kit`, sulfur outputs, and mercury chemistry are good for
 - whether failed chemistry feels educational instead of arbitrary
+- whether the inline bench message and journal indicator actually improve learning
 
-If players can craft but cannot explain why one recipe matters more than another, the system still needs stronger framing.
+If players can craft but cannot explain why one recipe or ingredient matters more than another, the system still needs stronger framing.
 
 ### 4. Does combat create useful pressure or just noise?
 
-The `IronGolem` should test whether danger meaningfully shapes routing and station use.
+Combat now has more than one job:
+
+- `IronGolem` pressures the base-adjacent early loop
+- `AcidCrawler` pressures Sulfur Flats traversal
+- `LightSwarmer` should punish a specific defensive choice instead of acting like a generic enemy
 
 We need to observe:
 
-- whether players notice the golem before it attacks
-- whether they can distinguish combat danger from sulfur danger
-- whether the golem interrupts crafting in a way that adds tension rather than annoyance
-- whether its reward or encounter logic justifies its presence in the current loop
+- whether players notice enemy intent before damage happens
+- whether they can distinguish combat danger from chemistry danger and weather danger
+- whether `LightSwarmer` pressure makes powered lights feel strategically risky instead of merely decorative
+- whether enemy placement adds tension rather than annoyance
 
-If players treat the enemy as irrelevant background clutter, combat should not expand yet.
+If players treat the enemies as unrelated noise, combat should not expand yet.
 
 ### 5. Is failure readable enough to support iteration?
 
@@ -111,99 +126,103 @@ There are now several failure sources:
 - furnace explosion
 - chem bench failure outcomes
 - sulfur carrier ignition
+- toxic outcomes involving contaminated materials
+- weather misuse and bad storage decisions
 
 The current build only works if players can usually answer:
 
-- what killed me
+- what killed me or ruined the result
 - what I should have done differently
 - whether the recovery cost feels fair
 
-If death is visible but not instructive, recovery still needs another pass.
+If failure is visible but not instructive, readability still needs another pass.
 
 ## Recommended Playtest Tasks
 
 - Ask players to explain what they think the starting priorities are after 2 to 3 minutes.
 - Ask players to find and use both the `Furnace` and `ChemBench` without coaching.
 - Ask players to produce charcoal and at least one crafted result.
-- Ask players to enter the `Sulfur Flats` and describe what they think the biome rule is before interacting with sulfur.
-- Ask players to obtain sulfur and return with it alive.
-- Ask players to explain what the `distillation_kit` is for.
-- Let the `IronGolem` encounter happen naturally before giving combat instructions.
-- Ask players to open the `Discovery Journal` and explain what information it is useful for.
+- Ask players to enter `Sulfur Flats` and describe what they think the biome rule is before interacting with sulfur.
+- Ask players to obtain sulfur and return with it alive if possible.
+- Ask players to enter `Sodium Shoals` and explain what they think sodium and mercury are asking them to do differently.
+- Ask players to return from a shoals run with at least one hazardous resource.
+- Let enemy encounters happen naturally before giving combat instructions.
+- Ask players to open the `Discovery Journal` and explain what information it is useful for after a chemistry failure or biome discovery.
 
 ## Questions To Ask Testers After The Session
 
 - What did you believe the main goal of the game was?
 - When did the `Furnace` make sense to you?
 - When did the `ChemBench` make sense to you?
-- Did you understand what sulfur does before or after you picked it up?
-- Did the warning note and corpse at the `Sulfur Flats` entrance help you understand the risk?
-- Did you know when to drop sulfur, and did dropping it feel like a meaningful decision?
-- What recipe felt most valuable?
-- Did the `Discovery Journal` help you learn, or did it feel optional?
-- If you died, did the game clearly tell you why?
+- Did `Sulfur Flats` and `Sodium Shoals` feel meaningfully different?
+- Did you understand sulfur before or after you picked it up?
+- Did you understand what mercury or sodium were asking you to do differently?
+- Did the bench failure text and journal cue help you learn, or did they feel ignorable?
+- What recipe or resource felt most valuable?
+- If you died or lost a result, did the game clearly tell you why?
 - What part of the loop felt most confusing or unfinished?
 
 ## Current Strengths
 
-- The game now has a more coherent objective chain than the older P4 build.
-- Sulfur introduces a concrete risk/reward loop instead of abstract experimentation only.
-- Environmental teaching at the `Sulfur Flats` entrance is the right direction for non-tooltip onboarding.
-- The HUD already supports several useful feedback channels: health, held item, weight, sulfur warning, and death cause.
-- The `Discovery Journal` is starting to work as a memory aid instead of only a reward banner.
+- The game now has a stronger objective chain than the older single-biome framing.
+- Separate travel scenes make expeditions feel more intentional than overworld corner zones.
+- Sodium, mercury, and sulfur teach different handling rules instead of repeating the same lesson.
+- Environmental teaching around travel entrances and contamination props is the right direction for non-tooltip onboarding.
+- The HUD now supports several useful feedback channels: health, held item, weight, danger warnings, death cause, and journal unread state.
+- Chemistry failure messaging is more actionable now that the authored explanation appears immediately.
 
 ## Improvements Needed
 
 ### High Priority
 
 - Clarify crafting order
-  The player still needs stronger guidance on what to craft first and why `distillation_kit` matters before sulfur collection.
-- Improve station differentiation
-  `Furnace` and `ChemBench` functions are clearer than before, but the game still risks asking the player to discover too much through UI reading.
-- Make sulfur extraction success criteria clearer
-  Players must understand whether the kit is required, consumed, damaged, or merely recommended.
-- Tighten carrier-risk feedback
-  The warning strip exists, but the exact consequence window and best response may still be too easy to miss under stress.
+  The player still needs stronger guidance on what to craft first and why certain recipes matter before expeditions.
+- Strengthen zone-role readability
+  `Sulfur Flats` and `Sodium Shoals` should be understood as distinct lessons, not just distinct maps.
+- Make hazardous-resource handling clearer
+  Players must understand the difference between volatile storage, dry storage, toxic handling, and simple inventory carrying.
+- Tighten enemy signaling
+  `LightSwarmer` in particular only works if its attraction to powered light is legible in play.
 - Strengthen recipe payoff communication
-  `rust_bolt`, `distillation_kit`, and `sulfuric_bolt` need clearer use-case framing so the recipe list feels strategic rather than flat.
+  Sulfur and mercury outputs need clearer use-case framing so the recipe list feels strategic rather than flat.
 
 ### Medium Priority
 
-- Improve biome approach readability
-  The warning sign, corpse, and crate note are good cues, but the entrance may still need stronger visual contrast or vent telegraphing.
+- Improve expedition approach readability
+  Trailheads and warning props are good cues, but the transition from base safety to biome rule may still need stronger telegraphing.
 - Make the `Discovery Journal` more actionable
-  It logs information, but players may still not recognize when they should consult it during play.
+  The unread indicator helps, but players may still not recognize when the journal is worth opening.
 - Re-evaluate `IronGolem` relevance
-  If the enemy does not materially shape decisions around stations or sulfur runs, it should be repositioned, redesigned, or temporarily deemphasized.
+  If it does not materially shape the current route, it should be repositioned, redesigned, or deemphasized.
 - Reduce inventory-management friction
-  Drag/drop and quantity splitting are implemented, but the amount of manipulation required during high-risk moments may still be too high.
+  Hazardous return trips can still expose too much manipulation overhead at stressful moments.
 
 ### Lower Priority Unless The Playtest Flags Them Hard
 
 - Expand chemistry breadth
   The current risk is not lack of content. It is whether the existing content is legible and motivating enough.
 - Add more enemies
-  Additional enemy types should wait until the current encounter clearly improves the loop.
+  Additional enemy types should wait until the current encounter mix clearly improves the loop.
 - Add explicit tutorialization
-  The current direction should prefer environmental teaching and stronger affordances before adding heavy tutorial text.
+  The current direction should prefer environmental teaching and stronger affordances before heavier tutorial text.
 
 ## Success Signals
 
-- Players independently identify charcoal, chemistry, sulfur, and extraction as the main progression chain.
-- Players understand the `distillation_kit` without being told directly.
-- Players recognize that carrying sulfur is the danger state and know dropping it cancels the risk.
-- Players can explain at least one chemistry rule and one sulfur rule after a short session.
-- The `Discovery Journal` is opened voluntarily or remembered as useful.
-- Death usually leads to a concrete lesson, not just frustration.
+- Players independently identify furnace use, chemistry, travel, and hazardous return handling as one connected progression chain.
+- Players can explain at least one distinct lesson from `Sulfur Flats` and one from `Sodium Shoals`.
+- Players understand that sodium and lithium demand dry handling.
+- Players recognize that mercury is a contaminated chemistry resource rather than just generic ore.
+- Players notice the chemistry failure explanation or the journal cue without being pushed hard.
+- Death or failed chemistry usually leads to a concrete lesson, not just frustration.
 
 ## Warning Signals
 
-- Players enter the `Sulfur Flats` without noticing the environmental teaching.
-- Players pick up sulfur without understanding why the countdown started.
-- Players cannot tell whether they are failing due to combat, chemistry, or carrier risk.
-- Players use the `ChemBench` but cannot explain what to craft first.
-- Testers ignore the `Discovery Journal` completely or describe it as cosmetic.
-- The `IronGolem` is either unnoticed or feels unrelated to player goals.
+- Players do not notice that `Sulfur Flats` and `Sodium Shoals` are separate destination choices.
+- Players return from travel with the wrong lesson about sodium, mercury, or sulfur.
+- Players cannot tell whether they are failing due to combat, chemistry, weather, or carrier risk.
+- Players use the `ChemBench` but still cannot explain what to craft first.
+- Testers ignore the `Discovery Journal` completely even after the unread cue appears.
+- `LightSwarmer` pressure is either unnoticed or feels unrelated to the player's defense choice.
 
 ## Recommendation Bias
 
@@ -211,4 +230,4 @@ The current build should still bias toward readability and payoff clarity over c
 
 The game now has enough systems to expose the intended fantasy. It does not yet clearly prove that players can read those systems fast enough, connect them into a goal chain, and recover from failure with confidence.
 
-If the next playtest is weak, the right response is probably not more content. It is a focused pass on progression legibility, sulfur-loop communication, and recipe prioritization.
+If the next playtest is weak, the right response is probably not more content. It is a focused pass on progression legibility, expedition-zone differentiation, hazardous-resource communication, and recipe prioritization.

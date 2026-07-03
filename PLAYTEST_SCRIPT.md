@@ -1,8 +1,8 @@
 # Project Alchemy Playtest Script
 
-Target session length: 30 to 45 minutes
+Target session length: 40 to 55 minutes
 
-This script is for the current vertical slice in `main`. It is designed to test progression readability, station understanding, the sulfur run, and whether failure states teach the player anything useful.
+This script is for the current vertical slice in `main`. It is designed to test progression readability, station understanding, separate expedition-zone teaching, and whether failure states teach the player anything useful.
 
 ## Session Goal
 
@@ -16,17 +16,17 @@ Answer these two questions:
 Before the player starts:
 
 - Launch the current build from `MainMenu.tscn`.
-- Do not explain the furnace, chem bench, sulfur rules, or the `distillation_kit` unless the script explicitly calls for intervention.
+- Do not explain the furnace, chem bench, sulfur rules, sodium rules, mercury rules, or the `distillation_kit` unless the script explicitly calls for intervention.
 - Ask the player to think out loud.
-- Capture timestamps for confusion, death, first successful station use, first sulfur pickup, and first return from the sulfur biome.
+- Capture timestamps for confusion, death, first successful station use, first travel interaction, first sulfur pickup, first sodium or mercury pickup, and first successful return from a biome.
 
 ## Success Signals To Watch
 
-- The player identifies gathering, furnace use, chemistry crafting, and sulfur extraction as one connected loop.
+- The player identifies gathering, furnace use, chemistry crafting, travel, and hazardous return handling as one connected loop.
 - The player understands that the `Furnace` matters before the `ChemBench`.
-- The player recognizes sulfur as a special danger state.
-- The player understands that dropping sulfur is a meaningful response to pressure.
-- The player can explain why the `distillation_kit` matters.
+- The player recognizes sulfur, sodium, and mercury as different risk types rather than just different colors of loot.
+- The player understands that shelter and storage choices are part of chemistry progression.
+- The player notices that failed chemistry now tries to explain itself.
 
 ## Route Overview
 
@@ -112,12 +112,13 @@ Observe:
 - whether the player can infer which recipe matters first
 - whether recipe names imply purpose clearly enough
 - whether chemistry failure feels arbitrary or educational
+- whether the inline message and journal cue are noticed after a failed reaction
 
 Log:
 
 - first crafted chemistry output
-- whether the player can explain what `rust_bolt`, `distillation_kit`, or `sulfuric_bolt` is for
-- whether they connect the bench to sulfur progression on their own
+- whether the player can explain what `rust_bolt`, `distillation_kit`, `sulfuric_bolt`, or mercury-related outputs are for
+- whether they connect the bench to expedition progression on their own
 
 ### 28 to 38 Minutes: Sulfur Flats Run
 
@@ -126,8 +127,8 @@ Prompt:
 
 Target route:
 
-- enter the `Sulfur Flats`
-- observe the warning sign, remains, and environmental teaching
+- enter `Sulfur Flats`
+- observe the warning sign, note, and environmental teaching
 - collect sulfur
 - react to carrier-risk pressure
 - attempt to return alive with sulfur
@@ -138,6 +139,7 @@ Observe:
 - whether they understand that carrying sulfur is the danger state
 - whether they know dropping sulfur can cancel pressure
 - whether the return trip feels tense in a good way or only punitive
+- whether `AcidCrawler` pressure feels readable
 
 Log:
 
@@ -146,7 +148,33 @@ Log:
 - whether they survived the return trip
 - whether the sulfur loop felt legible enough to repeat
 
-### 38 to 45 Minutes: Failure, Recovery, and Debrief
+### 38 to 48 Minutes: Sodium Shoals Run
+
+Prompt:
+"Check the other travel destination and tell me what seems different about it."
+
+Target route:
+
+- enter `Sodium Shoals`
+- identify sodium and mercury as different resource cases
+- pick up at least one sodium or mercury deposit
+- return to the overworld with the resource if possible
+
+Observe:
+
+- whether the player understands that the shoals are not just a second sulfur map
+- whether sodium's dry-handling implication is legible
+- whether mercury reads as contaminated chemistry material rather than generic ore
+- whether the player notices that travel back preserves health and collected inventory
+
+Log:
+
+- first interpretation of what sodium is for
+- first interpretation of what mercury is for
+- whether the player successfully returned with either resource
+- whether the shoals loop felt distinct from sulfur
+
+### 48 to 55 Minutes: Failure, Recovery, and Debrief
 
 If the player dies:
 
@@ -157,21 +185,22 @@ If the player dies:
 If the player survives:
 
 - ask what they think the next major goal is
-- ask what recipe or system still feels unclear
+- ask what recipe, enemy, or resource still feels unclear
 
 Close with:
 
 1. "What did you believe the main goal of the game was?"
 2. "When did the furnace make sense to you?"
 3. "When did the chem bench make sense to you?"
-4. "Did you understand sulfur before or after you picked it up?"
+4. "Did `Sulfur Flats` and `Sodium Shoals` feel meaningfully different?"
 5. "Did the game clearly tell you why you died or failed?"
 6. "What felt most confusing or unfinished?"
 
 ## Intervention Rules
 
 - Do not explain controls unless the player is blocked by input discovery for more than about 60 seconds.
-- Do not explain the sulfur rule before the player encounters the sulfur biome.
+- Do not explain the sulfur rule before the player encounters `Sulfur Flats`.
+- Do not explain sodium or mercury before the player reaches `Sodium Shoals`.
 - Do not explain the `distillation_kit` unless the player has already seen sulfur and cannot form a hypothesis.
 - If the player hard-stalls, give one minimal nudge about immediate objective direction, then return to observation mode.
 
@@ -182,25 +211,28 @@ Discard the run as a progression read if:
 - the build crashes
 - the player cannot leave the first area due to a bug
 - inventory or station input stops responding
-- the sulfur route becomes unreachable due to generation or spawn failure
+- travel into either biome fails
+- carried inventory or health is not preserved correctly across travel
 
 ## Build Check Record
 
-- Date: 2026-06-19
+- Date: 2026-07-04
 - Headless Godot launch check: passed
+- Headless `World.tscn` load check: passed
 - Command: `"/Users/angrydiplomat/Downloads/Godot.app/Contents/MacOS/Godot" --headless --path /Users/angrydiplomat/project-alchemy --quit`
 - Result: exit code `0`, engine banner only, no startup errors emitted
 
 ## Hazard Audit Record
 
-Production-path audit on 2026-06-19 found:
+Production-path audit on 2026-07-04 found:
 
-- `MainMenu.tscn` only routes into `World.tscn`
-- `World.tscn` does not reference `scenes/dev` or `scripts/dev`
-- the old `TestHazard` scene and script were removed after the audit because they were not referenced anywhere in the production scene path
-- HUD debug exports exist in `scripts/HUD.gd`, but they default off and are not overridden in `scenes/UI/HUD.tscn`
+- `MainMenu.tscn` routes into `World.tscn`
+- the current production slice includes separate travel destinations for `Sulfur Flats` and `Sodium Shoals`
+- local and GitHub `main` were aligned at the time of this audit
+- weather, chemistry lesson messaging, and journal unread signaling are wired into the playable slice
+- no known placeholder debug hazard is intentionally wired into the production scene path
 
 Current conclusion:
 
-- no production-scene debug hazards are wired into the playable slice
-- no placeholder damage source is wired into the playable slice
+- the playable slice is valid for progression and expedition readability testing
+- the main remaining risk is design legibility, not obvious production-path debug contamination
