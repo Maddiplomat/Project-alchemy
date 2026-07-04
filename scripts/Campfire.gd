@@ -89,12 +89,16 @@ func to_world_save_entry() -> Dictionary:
 
 func restore_from_pickup(data: Dictionary) -> void:
 	if data.has(&"burn_time_remaining"):
-		burn_time_remaining = float(data[&"burn_time_remaining"])
+		burn_time_remaining = maxf(0.0, float(data[&"burn_time_remaining"]))
 	_refuel_wood_units_loaded = int(data.get(&"refuel_wood_units_loaded", 0))
 	_charcoal_progress_seconds = clampf(float(data.get(&"charcoal_progress_seconds", 0.0)), 0.0, CHARCOAL_CYCLE_SECONDS)
 	_pending_output_charcoal = maxi(int(data.get(&"pending_output_charcoal", 0)), 0)
-	# Re-light if there's still fuel; otherwise leave it out
-	is_lit = burn_time_remaining > 0.0
+	if data.has(&"is_lit"):
+		is_lit = bool(data[&"is_lit"])
+	else:
+		is_lit = burn_time_remaining > 0.0
+	if burn_time_remaining <= 0.0:
+		is_lit = false
 	_apply_lit_state()
 
 

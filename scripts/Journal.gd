@@ -68,6 +68,8 @@ func _wire_events() -> void:
 		ResearchObjectives.objective_completed.connect(_on_objectives_changed)
 		ResearchObjectives.objective_activated.connect(_on_objectives_changed)
 		ResearchObjectives.objective_progressed.connect(_on_objective_progressed)
+		if ResearchObjectives.has_signal("objectives_restored"):
+			ResearchObjectives.objectives_restored.connect(_on_objectives_restored)
 	if RecipeDatabase != null and RecipeDatabase.has_signal("recipe_unlocked"):
 		RecipeDatabase.recipe_unlocked.connect(_on_recipe_unlocked)
 
@@ -87,6 +89,11 @@ func _on_objectives_changed(_objective_id: StringName) -> void:
 
 
 func _on_objective_progressed(_objective_id: StringName, _current: int, _target: int) -> void:
+	if visible and tab_bar.current_tab == TAB_ACTIVE_RESEARCH:
+		_refresh()
+
+
+func _on_objectives_restored() -> void:
 	if visible and tab_bar.current_tab == TAB_ACTIVE_RESEARCH:
 		_refresh()
 

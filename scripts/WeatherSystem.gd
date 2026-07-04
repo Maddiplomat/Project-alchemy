@@ -24,6 +24,7 @@ const WEATHER_VISUALS_SCENE := preload("res://scenes/WeatherVisuals.tscn")
 const MIN_RAIN_EMISSION_HALF_WIDTH := 460.0
 const RAIN_WORLD_MARGIN := 96.0
 const RAIN_PARTICLE_FALL_SPEED := 520.0
+const RAIN_PARTICLES_PER_1000PX_WIDTH := 180.0
 
 var current_state: int = WeatherState.CLEAR
 
@@ -34,7 +35,7 @@ var _night_rain_bonus := 0.0
 var _next_state: int = WeatherState.CLEAR
 var _warning_lead_time := -1.0
 var _warning_active := false
-var _weather_visual_root: Node2D = null
+var _weather_visual_root: CanvasLayer = null
 var _rain_particles: GPUParticles2D = null
 
 
@@ -114,6 +115,36 @@ func has_rare_weather_unlocked() -> bool:
 
 func restore_rare_weather_unlock(unlocked: bool) -> void:
 	_rare_weather_unlocked = unlocked
+
+
+func capture_persistent_state() -> Dictionary:
+	_refresh_saved_unlock_state()
+	return {
+		"current_state": int(current_state),
+		"state_time_remaining": maxf(_state_time_remaining, 0.0),
+		"next_state": int(_next_state),
+		"warning_lead_time": _warning_lead_time,
+		"warning_active": _warning_active,
+		"rare_weather_unlocked": _rare_weather_unlocked,
+	}
+
+
+func restore_persistent_state(data: Dictionary) -> void:
+	if data.is_empty():
+		return
+	_rare_weather_unlocked = bool(data.get("rare_weather_unlocked", _rare_weather_unlocked))
+	current_state = clampi(int(data.get("current_state", WeatherState.CLEAR)), WeatherState.CLEAR, WeatherState.ELECTRICAL_STORM)
+	_state_time_remaining = maxf(float(data.get("state_time_remaining", _roll_state_duration(current_state))), 0.0)
+	_next_state = clampi(int(data.get("next_state", WeatherState.CLEAR)), WeatherState.CLEAR, WeatherState.ELECTRICAL_STORM)
+	_warning_lead_time = float(data.get("warning_lead_time", -1.0))
+	_warning_active = bool(data.get("warning_active", false))
+	if not _warning_active and _warning_lead_time < 0.0:
+		_warning_lead_time = -1.0
+	_apply_environmental_warnings()
+	_sync_weather_visuals()
+	weather_forecast_changed.emit(_next_state, _state_time_remaining)
+	if _warning_active:
+		weather_warning_started.emit(_next_state, _state_time_remaining)
 
 
 func _on_new_game_started() -> void:
@@ -330,50 +361,57 @@ func _ensure_weather_visuals() -> void:
 		_rain_particles = null
 
 	if _weather_visual_root != null and _rain_particles != null:
-		_layout_weather_visuals(current_scene)
+		_layout_weather_visuals()
 		return
 
-	_weather_visual_root = WEATHER_VISUALS_SCENE.instantiate() as Node2D
+	_weather_visual_root = WEATHER_VISUALS_SCENE.instantiate() as CanvasLayer
 	if _weather_visual_root == null:
 		return
 	current_scene.add_child(_weather_visual_root)
 	_rain_particles = _weather_visual_root.get_node_or_null("RainParticles") as GPUParticles2D
-	_layout_weather_visuals(current_scene)
+	if _rain_particles != null:
+		_rain_particles.local_coords = true
+		var process_material := _rain_particles.process_material as ParticleProcessMaterial
+		if process_material != null:
+			var duplicated_material := process_material.duplicate() as ParticleProcessMaterial
+			if duplicated_material != null:
+				duplicated_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+				_rain_particles.process_material = duplicated_material
+	_layout_weather_visuals()
 
 
 func _get_player() -> Node2D:
 	return GameManager.get_player()
 
 
-func _layout_weather_visuals(current_scene: Node) -> void:
+func _layout_weather_visuals() -> void:
 	if _weather_visual_root == null or _rain_particles == null:
 		return
-	var world_rect := _get_scene_world_rect(current_scene)
-	if world_rect.size.x <= 0.0 or world_rect.size.y <= 0.0:
+	var viewport_rect := get_viewport().get_visible_rect()
+	var viewport_size := viewport_rect.size
+	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		return
 
-	var emission_half_width := maxf((world_rect.size.x * 0.5) + RAIN_WORLD_MARGIN, MIN_RAIN_EMISSION_HALF_WIDTH)
-	_weather_visual_root.global_position = Vector2(
-		world_rect.position.x + world_rect.size.x * 0.5,
-		world_rect.position.y - RAIN_WORLD_MARGIN
-	)
+	var emission_half_width := maxf((viewport_size.x * 0.5) + RAIN_WORLD_MARGIN, MIN_RAIN_EMISSION_HALF_WIDTH)
+	_rain_particles.position = Vector2(viewport_size.x * 0.5, -RAIN_WORLD_MARGIN)
 
 	var process_material := _rain_particles.process_material as ParticleProcessMaterial
 	if process_material != null:
+		process_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 		process_material.emission_box_extents = Vector3(emission_half_width, 16.0, 0.0)
 
-	var required_lifetime := maxf(
-		_rain_particles.lifetime,
-		(world_rect.size.y + (RAIN_WORLD_MARGIN * 2.0)) / RAIN_PARTICLE_FALL_SPEED
+	var required_lifetime := maxf(1.1, (viewport_size.y + (RAIN_WORLD_MARGIN * 2.0)) / RAIN_PARTICLE_FALL_SPEED)
+	var target_emission_rate := maxf(
+		RAIN_PARTICLES_PER_1000PX_WIDTH * (viewport_size.x / 1000.0),
+		RAIN_PARTICLES_PER_1000PX_WIDTH
 	)
-	var emission_rate := float(_rain_particles.amount) / maxf(_rain_particles.lifetime, 0.01)
 	_rain_particles.lifetime = required_lifetime
-	_rain_particles.amount = maxi(100, int(ceili(emission_rate * required_lifetime)))
+	_rain_particles.amount = maxi(160, int(ceili(target_emission_rate * required_lifetime)))
 	_rain_particles.visibility_rect = Rect2(
-		Vector2(-emission_half_width - RAIN_WORLD_MARGIN, -RAIN_WORLD_MARGIN),
+		Vector2(-emission_half_width - RAIN_WORLD_MARGIN, -RAIN_WORLD_MARGIN * 2.0),
 		Vector2(
 			(emission_half_width + RAIN_WORLD_MARGIN) * 2.0,
-			world_rect.size.y + (RAIN_WORLD_MARGIN * 3.0)
+			viewport_size.y + (RAIN_WORLD_MARGIN * 4.0)
 		)
 	)
 
@@ -388,21 +426,3 @@ func _get_world_tile_coords(world_pos: Vector2) -> Variant:
 		return null
 
 	return ground_layer.local_to_map(ground_layer.to_local(world_pos))
-
-
-func _get_scene_world_rect(current_scene: Node) -> Rect2:
-	var ground_layer := current_scene.get_node_or_null("Ground") as TileMapLayer
-	if ground_layer == null:
-		return Rect2()
-
-	var used_rect := ground_layer.get_used_rect()
-	if used_rect.size.x <= 0 or used_rect.size.y <= 0:
-		return Rect2()
-
-	var tile_size := Vector2(16.0, 16.0)
-	if ground_layer.tile_set != null:
-		tile_size = Vector2(ground_layer.tile_set.tile_size)
-
-	var top_left := ground_layer.to_global(ground_layer.map_to_local(used_rect.position) - tile_size * 0.5)
-	var world_size := Vector2(float(used_rect.size.x), float(used_rect.size.y)) * tile_size
-	return Rect2(top_left, world_size)

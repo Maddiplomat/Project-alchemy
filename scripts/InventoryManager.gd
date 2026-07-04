@@ -475,6 +475,52 @@ func clear_inventory() -> void:
 	_mark_game_dirty()
 
 
+func restore_slots(slot_payload: Array, mark_dirty: bool = false) -> void:
+	items.clear()
+	volatile_risk_item_ids.clear()
+	_heat_sources.clear()
+	_set_sulfur_heat_risk_active(false)
+	_initialize_slots()
+	active_slot_index = clampi(active_slot_index, 0, MAX_SLOTS - 1)
+
+	for slot_index in range(mini(slot_payload.size(), MAX_SLOTS)):
+		var raw_item: Variant = slot_payload[slot_index]
+		if not (raw_item is Dictionary):
+			continue
+		var item_data := (raw_item as Dictionary).duplicate(true)
+		var item_id := StringName(str(item_data.get("id", item_data.get("item_id", NO_ITEM))))
+		var quantity := maxi(int(item_data.get("quantity", 0)), 0)
+		if item_id.is_empty() or quantity <= 0:
+			continue
+
+		item_data["id"] = item_id
+		item_data["item_id"] = item_id
+		var restored_item = _normalize_item_data(item_data, quantity)
+		restored_item.id = item_id
+		restored_item.item_id = item_id
+		restored_item.quantity = quantity
+		restored_item.purity = clampf(float(item_data.get("purity", restored_item.purity)), 0.0, 1.0)
+		restored_item.unit_weight = _get_stack_unit_weight(item_id, restored_item)
+		restored_item.weight = restored_item.unit_weight
+
+		slots[slot_index] = {
+			"item_id": item_id,
+			"quantity": quantity,
+			"purity": restored_item.purity,
+		}
+		items[item_id] = restored_item
+
+	_sync_weight_state()
+	_emit_weight_signals()
+	_recalculate_volatile_risk()
+	for slot_index in range(MAX_SLOTS):
+		inventory_changed.emit(slot_index)
+	active_slot_changed.emit(active_slot_index)
+	held_item_changed.emit(_get_active_item_id())
+	if mark_dirty:
+		_mark_game_dirty()
+
+
 func _initialize_slots() -> void:
 	slots.clear()
 	for _slot_index in range(MAX_SLOTS):

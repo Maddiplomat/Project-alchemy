@@ -218,6 +218,29 @@ func consume_input(slot_name: StringName, qty: int) -> int:
 	return consumed_qty
 
 
+func remove_fuel(qty: int) -> int:
+	if qty <= 0 or not _has_active_fuel():
+		return 0
+
+	var fuel_item_id: StringName = _fuel_slot_state.get(&"item_id", &"")
+	var unit_fuel_value := float(_fuel_slot_state.get(&"unit_fuel_value", 0.0))
+	if fuel_item_id.is_empty() or unit_fuel_value <= 0.0:
+		return 0
+
+	var available_units := maxi(int(ceili(_remaining_heat_potential / unit_fuel_value)), 0)
+	var removed_units := mini(qty, available_units)
+	if removed_units <= 0:
+		return 0
+
+	_remaining_heat_potential = maxf(0.0, _remaining_heat_potential - (unit_fuel_value * float(removed_units)))
+	_remaining_burn_time = maxf(0.0, _remaining_burn_time - (DEFAULT_FUEL_BURN_DURATION * float(removed_units)))
+	_fuel_slot_state[&"quantity"] = maxi(int(_fuel_slot_state.get(&"quantity", 0)) - removed_units, 0)
+	_sync_heat_state()
+	_sync_ui()
+	temp_changed.emit(current_temp)
+	return removed_units
+
+
 func reset_after_explosion() -> void:
 	_input_slots[&"input_a"] = {&"item_id": &"", &"quantity": 0}
 	_input_slots[&"input_b"] = {&"item_id": &"", &"quantity": 0}

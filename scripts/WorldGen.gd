@@ -555,6 +555,8 @@ func _get_tree_at_tile(coords: Vector2i) -> TreeResource:
 		var tree := child as TreeResource
 		if tree == null:
 			continue
+		if tree.is_queued_for_deletion():
+			continue
 		if tree.tile_coords == coords:
 			return tree
 	return null
@@ -1803,6 +1805,9 @@ func export_tree_state() -> Dictionary:
 
 
 func import_tree_state(active_tree_state: Array, pending_respawns: Array) -> void:
+	# Preserve freshly generated trees when older or invalid saves omit tree state.
+	if active_tree_state.is_empty() and pending_respawns.is_empty():
+		return
 	_tree_respawn_deadlines.clear()
 	_clear_generated_children(generated_tree_resources)
 	for entry in active_tree_state:
@@ -1941,7 +1946,7 @@ func _clear_generated_children(node: Node2D) -> void:
 	if node == null:
 		return
 	for child in node.get_children():
-		child.queue_free()
+		child.free()
 
 
 func _position_generated_child(node: Node2D) -> void:

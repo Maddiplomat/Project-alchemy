@@ -172,6 +172,10 @@ func _ready() -> void:
 		&"fuel": _build_slot_ref("FuelSlot"),
 		&"output": _build_slot_ref("OutputSlot"),
 	}
+	for slot_id: StringName in _slot_refs.keys():
+		var slot_visual: Control = _slot_refs[slot_id].get(&"visual")
+		if slot_visual != null and not slot_visual.gui_input.is_connected(_on_slot_gui_input.bind(slot_id)):
+			slot_visual.gui_input.connect(_on_slot_gui_input.bind(slot_id))
 
 	_apply_theme()
 	_reset_slots()
@@ -818,6 +822,56 @@ func _get_drop_slot_id(global_mouse_position: Vector2) -> StringName:
 			return slot_id
 
 	return &""
+
+
+func _on_slot_gui_input(event: InputEvent, slot_id: StringName) -> void:
+	if not _is_open or slot_id == &"output":
+		return
+	if not (event is InputEventMouseButton):
+		return
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event.pressed or not (mouse_event.button_index == MOUSE_BUTTON_LEFT or mouse_event.button_index == MOUSE_BUTTON_RIGHT):
+		return
+	_withdraw_slot_to_inventory(slot_id)
+	get_viewport().set_input_as_handled()
+
+
+func _withdraw_slot_to_inventory(slot_id: StringName) -> void:
+	if not is_instance_valid(_bound_furnace):
+		return
+
+	var slot_state: Dictionary = _bound_furnace.get_fuel_state() if slot_id == &"fuel" else _bound_furnace.get_input(slot_id)
+	var item_id := StringName(slot_state.get(&"item_id", &""))
+	var quantity := int(slot_state.get(&"quantity", 0))
+	if item_id.is_empty() or quantity <= 0:
+		return
+
+	var item_data := ElementDatabase.get_element(item_id)
+	if item_data.is_empty():
+		action_hint_label.text = "Cannot return %s from this slot." % _get_item_label(item_id)
+		return
+	if not InventoryManager.can_add_item(item_data, quantity):
+		action_hint_label.text = "Inventory full. Cannot remove %s x%d." % [_get_item_label(item_id), quantity]
+		return
+
+	var removed_qty := 0
+	if slot_id == &"fuel":
+		if _bound_furnace.has_method("remove_fuel"):
+			removed_qty = int(_bound_furnace.remove_fuel(quantity))
+	else:
+		removed_qty = int(_bound_furnace.consume_input(slot_id, quantity))
+	if removed_qty <= 0:
+		return
+
+	if not InventoryManager.add_item(item_data, removed_qty):
+		if slot_id == &"fuel":
+			_bound_furnace.add_fuel(item_id, removed_qty)
+		else:
+			_bound_furnace.set_input(slot_id, item_id, removed_qty)
+		action_hint_label.text = "Inventory full. Cannot remove %s x%d." % [_get_item_label(item_id), removed_qty]
+		return
+
+	action_hint_label.text = "Removed %s x%d." % [_get_item_label(item_id), removed_qty]
 
 
 func _can_accept_drop_to_slot(slot_id: StringName, item_id: StringName, qty: int) -> bool:

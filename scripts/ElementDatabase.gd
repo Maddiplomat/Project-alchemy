@@ -106,6 +106,21 @@ func get_scanned_elements() -> Array[StringName]:
 	return result
 
 
+func capture_persistent_state() -> Dictionary:
+	return {
+		"scanned_elements": get_scanned_elements(),
+	}
+
+
+func restore_persistent_state(data: Dictionary) -> void:
+	scanned_elements.clear()
+	for raw_element_id in data.get("scanned_elements", []):
+		var element_id := StringName(str(raw_element_id))
+		if not has_element(element_id):
+			continue
+		scanned_elements[element_id] = true
+
+
 func clear_scanned_elements() -> void:
 	scanned_elements.clear()
 

@@ -166,6 +166,12 @@ func to_world_save_entry() -> Dictionary:
 	return entry
 
 
+func restore_from_pickup(data: Dictionary) -> void:
+	is_open = bool(data.get(&"is_open", is_open))
+	_apply_door_state()
+	call_deferred("_refresh_adjacent_walls")
+
+
 func get_placed_tile_coords() -> Vector2i:
 	return placed_at
 

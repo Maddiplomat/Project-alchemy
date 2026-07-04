@@ -20,7 +20,7 @@ width = 2
 height = 14
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_rain"]
-emission_shape = 1
+emission_shape = 2
 emission_box_extents = Vector3(460, 16, 0)
 direction = Vector3(0, 1, 0)
 spread = 5.0
@@ -32,8 +32,8 @@ scale_max = 1.0
 color = Color(0.84, 0.92, 1, 0.86)
 color_ramp = SubResource("GradientTexture1D_rain_ramp")
 
-[node name="WeatherVisuals" type="Node2D"]
-z_index = 50
+[node name="WeatherVisuals" type="CanvasLayer"]
+layer = 50
 
 [node name="RainParticles" type="GPUParticles2D" parent="."]
 local_coords = false

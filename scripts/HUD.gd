@@ -85,6 +85,8 @@ func _ready() -> void:
 		ResearchObjectives.objective_completed.connect(_on_objectives_changed)
 		ResearchObjectives.objective_activated.connect(_on_objectives_changed)
 		ResearchObjectives.objective_progressed.connect(_on_objectives_progressed)
+		if ResearchObjectives.has_signal("objectives_restored"):
+			ResearchObjectives.objectives_restored.connect(_on_objectives_state_restored)
 	retry_button.pressed.connect(_on_retry_button_pressed)
 	quit_button.pressed.connect(_on_quit_button_pressed)
 	if has_node("/root/CarrierRiskSystem"):
@@ -155,6 +157,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
+	if event.is_action_pressed("manual_save"):
+		if GameManager.game_state != GameManager.GameState.PLAYING:
+			return
+		var save_result := GameManager.request_save(GameManager.SaveTrigger.MANUAL)
+		if bool(save_result.get(&"success", false)):
+			_queue_toast("Game saved to slot %d." % int(save_result.get(&"slot_id", GameManager.active_save_slot)))
+		else:
+			_queue_toast("Save failed: %s" % str(save_result.get(&"error", "Unknown error")))
+		get_viewport().set_input_as_handled()
+		return
+
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_O:
 		_toggle_objectives_panel()
 		get_viewport().set_input_as_handled()
@@ -219,6 +232,10 @@ func _refresh_day_time() -> void:
 
 
 func _on_objectives_changed(_objective_id: StringName) -> void:
+	_refresh_objectives()
+
+
+func _on_objectives_state_restored() -> void:
 	_refresh_objectives()
 
 

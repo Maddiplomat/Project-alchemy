@@ -43,6 +43,41 @@ func generate_seed() -> int:
 	return _current_seed
 
 
+func capture_persistent_state() -> Dictionary:
+	return {
+		"current_seed": _current_seed,
+		"scene_seeds": _scene_seeds.duplicate(true),
+		"scene_state_by_path": _scene_state_by_path.duplicate(true),
+	}
+
+
+func restore_persistent_state(data: Dictionary) -> void:
+	clear_persistent_state()
+	if data.is_empty():
+		return
+	_current_seed = int(data.get("current_seed", 0))
+	for raw_scene_path in (data.get("scene_seeds", {}) as Dictionary).keys():
+		var scene_path := str(raw_scene_path)
+		if scene_path.is_empty():
+			continue
+		_scene_seeds[scene_path] = int((data.get("scene_seeds", {}) as Dictionary).get(raw_scene_path, 0))
+	for raw_scene_path in (data.get("scene_state_by_path", {}) as Dictionary).keys():
+		var scene_path := str(raw_scene_path)
+		if scene_path.is_empty():
+			continue
+		var scene_state: Variant = (data.get("scene_state_by_path", {}) as Dictionary).get(raw_scene_path, {})
+		if scene_state is Dictionary:
+			_scene_state_by_path[scene_path] = (scene_state as Dictionary).duplicate(true)
+
+
+func clear_persistent_state() -> void:
+	_current_seed = 0
+	_scene_seeds.clear()
+	_scene_state_by_path.clear()
+	_pending_restore_state.clear()
+	_pending_travel_context.clear()
+
+
 func store_scene_state(scene_path: String, scene_state: Dictionary) -> void:
 	if scene_path.is_empty() or scene_state.is_empty():
 		return
@@ -96,6 +131,11 @@ func consume_pending_travel_context() -> Dictionary:
 	return context
 
 
+func queue_pending_restore_state(restore_state: Dictionary, travel_context: Dictionary = {}) -> void:
+	_pending_restore_state = restore_state.duplicate(true)
+	_pending_travel_context = travel_context.duplicate(true)
+
+
 func _compose_travel_restore_state(source_state: Dictionary, target_state: Dictionary, target_scene_path: String) -> Dictionary:
 	var merged := source_state.duplicate(true)
 	var player_state: Dictionary = (merged.get("player", {}) as Dictionary).duplicate(true)
@@ -131,7 +171,4 @@ func _compose_travel_restore_state(source_state: Dictionary, target_state: Dicti
 
 
 func _on_new_game_started() -> void:
-	_scene_state_by_path.clear()
-	_pending_restore_state.clear()
-	_pending_travel_context.clear()
-	_scene_seeds.clear()
+	clear_persistent_state()

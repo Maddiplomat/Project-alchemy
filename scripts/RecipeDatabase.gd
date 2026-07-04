@@ -45,6 +45,10 @@ func get_all_unlocked() -> Array[Dictionary]:
 	return unlocked_recipes
 
 
+func reset_runtime_state() -> void:
+	_load_recipes()
+
+
 func unlock_recipe(recipe_id: StringName) -> bool:
 	if not recipes.has(recipe_id):
 		return false

@@ -107,7 +107,7 @@ text = "Tab: open inventory"
 
 [node name="SelectKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1590047737]
 layout_mode = 2
-text = "1-5: select active item"
+text = "1-5: select active item   F6: save game"
 
 [node name="TooltipPanel" type="Panel" parent="." unique_id=391146286]
 visible = false

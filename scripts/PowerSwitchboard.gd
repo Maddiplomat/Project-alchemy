@@ -48,6 +48,20 @@ func set_consumer_enabled(consumer_id: StringName, enabled: bool) -> void:
 	switchboard_changed.emit()
 
 
+func capture_persistent_state() -> Dictionary:
+	return {
+		"consumer_enabled": _consumer_enabled.duplicate(true),
+	}
+
+
+func restore_persistent_state(data: Dictionary) -> void:
+	var restored_consumer_enabled := data.get("consumer_enabled", {}) as Dictionary
+	for consumer_id: StringName in CONSUMER_INFO.keys():
+		var restored_value: Variant = restored_consumer_enabled.get(consumer_id, restored_consumer_enabled.get(str(consumer_id), true))
+		_consumer_enabled[consumer_id] = bool(restored_value)
+	switchboard_changed.emit()
+
+
 func get_total_capacity_units_per_minute() -> float:
 	return DISTRIBUTION_CAPACITY_UNITS_PER_MINUTE
 

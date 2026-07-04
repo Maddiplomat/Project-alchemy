@@ -4,6 +4,7 @@ extends Node
 signal objective_completed(objective_id: StringName)
 signal objective_activated(objective_id: StringName)
 signal objective_progressed(objective_id: StringName, current: int, target: int)
+signal objectives_restored
 
 const STARTER_SCAN_TARGETS: Array[StringName] = [&"wood", &"stone", &"iron"]
 const FIRST_SMELT_OUTPUTS: Array[StringName] = [&"wrought_iron", &"steel", &"cast_iron"]
@@ -54,6 +55,81 @@ func get_all_objectives() -> Array[Dictionary]:
 	for objective_id: StringName in _objective_order:
 		result.append(get_objective(objective_id))
 	return result
+
+
+func sync_with_runtime_state() -> void:
+	if objectives.is_empty():
+		_seed_objectives()
+	var safety_counter := _objective_order.size()
+	while safety_counter > 0:
+		var active_objective := get_active_objective()
+		if active_objective.is_empty():
+			_activate_first_incomplete()
+			active_objective = get_active_objective()
+		if active_objective.is_empty():
+			break
+		var active_objective_id := StringName(active_objective.get(&"id", &""))
+		if active_objective_id.is_empty():
+			break
+		var completed_before := bool(objectives.get(active_objective_id, {}).get(&"completed", false))
+		_refresh_active_objective()
+		var completed_after := bool(objectives.get(active_objective_id, {}).get(&"completed", false))
+		if completed_before or not completed_after:
+			break
+		safety_counter -= 1
+	_activate_post_tutorial_repeatables()
+
+
+func reset_for_new_game() -> void:
+	_seed_objectives()
+	_defense_uptime_elapsed = 0.0
+	_activate_first_incomplete()
+	_activate_post_tutorial_repeatables()
+
+
+func capture_persistent_state() -> Dictionary:
+	var objective_states := {}
+	for objective_id: StringName in _objective_order:
+		var objective: Dictionary = objectives.get(objective_id, {})
+		if objective.is_empty():
+			continue
+		objective_states[String(objective_id)] = {
+			"completed": bool(objective.get(&"completed", false)),
+			"active": bool(objective.get(&"active", false)),
+			"progress": int(_progress.get(objective_id, 0)),
+		}
+	return {
+		"objective_states": objective_states,
+		"defense_uptime_elapsed": _defense_uptime_elapsed,
+	}
+
+
+func restore_persistent_state(data: Dictionary) -> void:
+	_seed_objectives()
+	_defense_uptime_elapsed = maxf(float(data.get("defense_uptime_elapsed", 0.0)), 0.0)
+	var objective_states := data.get("objective_states", {}) as Dictionary
+	var has_active_mainline := false
+	for objective_id: StringName in _objective_order:
+		var objective: Dictionary = objectives.get(objective_id, {})
+		if objective.is_empty():
+			continue
+		var saved_state := objective_states.get(String(objective_id), {}) as Dictionary
+		var is_completed := bool(saved_state.get("completed", false))
+		var is_active := bool(saved_state.get("active", false)) and not is_completed
+		objective[&"completed"] = is_completed
+		objective[&"active"] = is_active
+		objectives[objective_id] = objective
+		_progress[objective_id] = clampi(
+			int(saved_state.get("progress", 0)),
+			0,
+			maxi(int(objective.get(&"condition_count", 0)), 1)
+		)
+		if not bool(objective.get(&"repeatable", false)) and is_active:
+			has_active_mainline = true
+	if not has_active_mainline:
+		_activate_first_incomplete()
+	_activate_post_tutorial_repeatables()
+	objectives_restored.emit()
 
 
 func _connect_completion_hooks() -> void:

@@ -169,6 +169,38 @@ func get_all_discoveries() -> Array[StringName]:
 	return result
 
 
+func capture_persistent_state() -> Dictionary:
+	var seen_environment_entries: Array[StringName] = []
+	for entry_id: StringName in _seen_environment_entries.keys():
+		seen_environment_entries.append(entry_id)
+	seen_environment_entries.sort()
+	return {
+		"log_entries": log_entries.duplicate(true),
+		"seen_discoveries": get_all_discoveries(),
+		"seen_environment_entries": seen_environment_entries,
+	}
+
+
+func restore_persistent_state(data: Dictionary) -> void:
+	clear()
+	if data.is_empty():
+		return
+	for raw_entry_id in data.get("seen_discoveries", []):
+		_record_discovery(StringName(str(raw_entry_id)))
+	for raw_entry_id in data.get("seen_environment_entries", []):
+		var entry_id := StringName(str(raw_entry_id))
+		if entry_id.is_empty():
+			continue
+		_seen_environment_entries[entry_id] = true
+	log_entries.clear()
+	for raw_entry in data.get("log_entries", []):
+		if not (raw_entry is Dictionary):
+			continue
+		log_entries.append((raw_entry as Dictionary).duplicate(true))
+	if log_entries.size() > MAX_LOG_SIZE:
+		log_entries = log_entries.slice(log_entries.size() - MAX_LOG_SIZE, log_entries.size())
+
+
 func restore_discoveries(discoveries: Array) -> void:
 	_seen_outputs.clear()
 	_seen_discoveries.clear()
@@ -187,6 +219,8 @@ func clear() -> void:
 	_seen_outputs.clear()
 	_seen_discoveries.clear()
 	_seen_environment_entries.clear()
+	if ElementDatabase != null:
+		ElementDatabase.discovered_elements.clear()
 
 
 func log_environment(entry_id: StringName, title: String, notes: String, one_time: bool = true) -> bool:

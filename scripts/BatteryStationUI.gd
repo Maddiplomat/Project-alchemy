@@ -128,7 +128,7 @@ func _on_charge_changed(current: float, maximum: float) -> void:
 		_refresh_switchboard_panel()
 
 
-func _on_inventory_changed() -> void:
+func _on_inventory_changed(_slot_index: int = -1) -> void:
 	if _is_open:
 		_refresh_ui()
 

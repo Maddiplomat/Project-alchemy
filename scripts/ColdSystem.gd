@@ -47,6 +47,22 @@ func set_player_warmed(value: bool) -> void:
 	player_warmed_changed.emit(is_player_warmed)
 
 
+func capture_persistent_state() -> Dictionary:
+	return {
+		"cold_level": cold_level,
+		"is_player_warmed": is_player_warmed,
+		"cold_damage_timer": _cold_damage_timer,
+	}
+
+
+func restore_persistent_state(data: Dictionary) -> void:
+	if data.is_empty():
+		return
+	_cold_damage_timer = maxf(float(data.get("cold_damage_timer", 0.0)), 0.0)
+	set_player_warmed(bool(data.get("is_player_warmed", false)))
+	_set_cold_level(float(data.get("cold_level", 0.0)))
+
+
 func reset_state() -> void:
 	_cold_damage_timer = 0.0
 	set_player_warmed(false)
