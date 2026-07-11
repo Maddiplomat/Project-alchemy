@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://crjx5eh4x53i6"]
+
+[ext_resource type="Script" path="res://scripts/dev/PersistenceRegistryContractTest.gd" id="1_test"]
+
+[node name="PersistenceRegistryContractTest" type="Node"]
+script = ExtResource("1_test")

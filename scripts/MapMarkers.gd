@@ -15,6 +15,7 @@ var _bound_world: Node = null
 var _sulfur_marker_discovered := false
 var _sulfur_marker_position := Vector2.ZERO
 var _has_sulfur_marker_position := false
+var _refresh_timer: Timer = null
 
 
 func _ready() -> void:
@@ -25,16 +26,17 @@ func _ready() -> void:
 		GameManager.game_state_changed.connect(_on_game_state_changed)
 	if not get_tree().node_added.is_connected(_on_tree_node_added):
 		get_tree().node_added.connect(_on_tree_node_added)
+	_refresh_timer = Timer.new()
+	_refresh_timer.one_shot = false
+	_refresh_timer.wait_time = _get_refresh_interval()
+	_refresh_timer.timeout.connect(_on_refresh_timer_timeout)
+	add_child(_refresh_timer)
+	_refresh_timer.start()
 	call_deferred("_refresh_world_bindings")
 
 
 func _exit_tree() -> void:
 	EventBus.unregister_service(EventBus.SERVICE_MAP_MARKERS, self)
-
-
-func _process(_delta: float) -> void:
-	_refresh_world_bindings()
-	_update_sulfur_flats_marker()
 
 
 func get_markers() -> Array[Dictionary]:
@@ -220,6 +222,20 @@ func _refresh_sulfur_marker_for_world() -> void:
 		return
 	marker[&"world_position"] = world_position
 	_set_marker(SULFUR_FLATS_MARKER_ID, marker)
+
+
+func _on_refresh_timer_timeout() -> void:
+	if _refresh_timer != null:
+		_refresh_timer.wait_time = _get_refresh_interval()
+	_refresh_world_bindings()
+	_update_sulfur_flats_marker()
+	markers_changed.emit()
+
+
+func _get_refresh_interval() -> float:
+	if MobilePerformance != null and MobilePerformance.has_method("get_world_poll_interval"):
+		return float(MobilePerformance.get_world_poll_interval())
+	return 0.5
 
 
 func _on_mining_node_interacted(_amount: int, world_position: Vector2, marker_id: StringName, title: String) -> void:

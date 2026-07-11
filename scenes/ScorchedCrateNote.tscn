@@ -20,5 +20,5 @@ offset_left = -96.0
 offset_top = -52.0
 offset_right = 96.0
 offset_bottom = -16.0
-text = "Press E to read note"
+text = "Tap Interact to read note"
 horizontal_alignment = 1

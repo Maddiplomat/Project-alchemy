@@ -15,6 +15,7 @@ var _interact_locked_until_release := false
 
 
 func _ready() -> void:
+	add_to_group(&"touch_interactable")
 	object_type = _get_object_type()
 	save_bucket = SaveBucket.STORAGE
 	if container_id.is_empty():
@@ -149,7 +150,25 @@ func _get_container_title() -> String:
 
 
 func _get_prompt_text() -> String:
-	return "Press E to open Storage"
+	return "Tap Interact to open Storage" if MobileInputRouter.prefers_touch_controls() else "Press E to open Storage"
+
+
+func can_touch_interact(player: Node2D) -> bool:
+	return player != null and player == _player and _player_in_range and not _is_interacting
+
+
+func get_touch_interaction_prompt() -> String:
+	return "Open %s" % _get_container_title()
+
+
+func get_touch_interaction_world_position() -> Vector2:
+	return global_position + Vector2(0.0, -26.0)
+
+
+func perform_touch_interaction() -> void:
+	if not _player_in_range or _is_interacting:
+		return
+	open_ui()
 
 
 func _get_storage_filter_id() -> StringName:

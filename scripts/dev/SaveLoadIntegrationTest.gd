@@ -85,6 +85,8 @@ func _seed_world_runtime_state() -> void:
 	_assert(world != null, "Expected World scene to be active before seeding state.")
 	if world == null:
 		return
+	_assert(world.get_node_or_null("Furnace") == null, "Expected a new game world to start without an authored Furnace node.")
+	_assert(world.get_node_or_null("ChemBench") == null, "Expected a new game world to start without an authored ChemBench node.")
 	var player := GameManager.get_player()
 	_assert(player != null, "Expected the player to be registered in World.")
 	if player == null:

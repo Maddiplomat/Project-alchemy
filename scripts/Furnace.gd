@@ -58,6 +58,7 @@ var _input_slots: Dictionary[StringName, Dictionary] = {
 
 
 func _ready() -> void:
+	add_to_group(&"touch_interactable")
 	add_to_group(&"heat_source")
 	_unlit_texture = _build_placeholder_texture(false)
 	_lit_texture = _build_placeholder_texture(true)
@@ -385,8 +386,26 @@ func _configure_prompt_label() -> void:
 
 func _get_prompt_text() -> String:
 	if _purpose_hint_learned or InventoryManager.has_item(CHARCOAL_ITEM_ID, 1):
-		return "Press E to use Furnace"
-	return "Press E\nBurn fuel into charcoal"
+		return "Tap Interact to use Furnace" if MobileInputRouter.prefers_touch_controls() else "Press E to use Furnace"
+	return "Tap Interact\nBurn fuel into charcoal" if MobileInputRouter.prefers_touch_controls() else "Press E\nBurn fuel into charcoal"
+
+
+func can_touch_interact(player: Node2D) -> bool:
+	return player != null and player == _player and _player_in_range and not _is_interacting
+
+
+func get_touch_interaction_prompt() -> String:
+	return "Use Furnace"
+
+
+func get_touch_interaction_world_position() -> Vector2:
+	return global_position + Vector2(0.0, -28.0)
+
+
+func perform_touch_interaction() -> void:
+	if not _player_in_range or _is_interacting:
+		return
+	_start_interaction()
 
 
 func _ensure_ui() -> void:

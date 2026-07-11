@@ -24,5 +24,5 @@ shape = SubResource("RectangleShape2D_interaction")
 
 [node name="PromptLabel" type="Label" parent="."]
 visible = false
-text = "Press E to Open"
+text = "Tap Interact to open"
 horizontal_alignment = 1

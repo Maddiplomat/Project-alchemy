@@ -36,7 +36,7 @@ func _ready() -> void:
 	_network_disabled = _should_skip_network_startup()
 	push_runtime_log("info", "MCPRuntime starting (project=%s)" % _project_path)
 	if _network_disabled:
-		push_runtime_log("info", "MCPRuntime networking disabled for headless startup.")
+		push_runtime_log("info", "MCPRuntime networking disabled outside editor or during headless startup.")
 		set_process(false)
 		return
 	_attempt_connect()
@@ -85,7 +85,9 @@ func _attempt_connect() -> void:
 
 
 func _should_skip_network_startup() -> bool:
-	return DisplayServer.get_name() == "headless"
+	if DisplayServer.get_name() == "headless":
+		return true
+	return not OS.has_feature("editor")
 
 
 func _handle_message(json_string: String) -> void:

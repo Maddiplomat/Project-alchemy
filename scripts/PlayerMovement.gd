@@ -18,6 +18,7 @@ const SPRINT_SPEED_MULTIPLIER := 1.4
 
 signal drop_item(slot_index: int)
 signal input_paused_changed(is_paused: bool)
+signal combat_state_changed(cooldown_remaining: float, cooldown_duration: float, attack_label: String, weapon_type: StringName)
 
 @onready var melee_pivot: Node2D = $MeleePivot
 @onready var sword_arc_visual: Line2D = $MeleePivot/SwordArcVisual
@@ -32,8 +33,10 @@ var _step_timer := 0.0
 var _base_max_speed := 0.0
 var _input_paused := false
 var _attack_cooldown_remaining := 0.0
+var _last_attack_cooldown_duration := 0.0
 var _melee_swing_active := false
 var _melee_hit_targets: Dictionary[int, bool] = {}
+var _last_nonzero_aim_direction := Vector2.RIGHT
 
 var stamina: float = 100.0
 const STAMINA_MAX: float = 100.0
@@ -49,6 +52,9 @@ func _ready() -> void:
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	melee_hitbox.body_entered.connect(_on_melee_hitbox_body_entered)
 	_setup_melee_animation()
+	InventoryManager.inventory_changed.connect(_on_inventory_combat_state_changed.unbind(1))
+	InventoryManager.active_slot_changed.connect(_on_inventory_combat_state_changed.unbind(1))
+	_emit_combat_state_changed()
 
 
 func _exit_tree() -> void:
@@ -70,7 +76,7 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	if Input.is_action_pressed(&'sprint') and stamina > 0.0:
+	if Input.is_action_pressed(&"sprint") and stamina > 0.0:
 		_sprint_multiplier = SPRINT_SPEED_MULTIPLIER
 		stamina = maxf(0.0, stamina - STAMINA_DRAIN_RATE * delta)
 	else:
@@ -83,21 +89,18 @@ func _physics_process(delta: float) -> void:
 
 	_handle_sprint_risk()
 	_update_terrain_speed_multiplier()
-	var input_direction := Input.get_vector(
-		"move_left",
-		"move_right",
-		"move_up",
-		"move_down"
-	)
+	var input_direction := _get_movement_direction()
 	var current_max_speed := _base_max_speed * _speed_multiplier * _sprint_multiplier * _terrain_speed_multiplier
 
 	if input_direction != Vector2.ZERO and not _input_paused:
+		_last_nonzero_aim_direction = input_direction
 		velocity = velocity.move_toward(input_direction * current_max_speed, acceleration * delta)
 	else:
 		velocity = velocity.move_toward(Vector2.ZERO, friction * delta)
 		_step_timer = 0.0
 
 	move_and_slide()
+	_emit_combat_state_changed()
 
 
 func _handle_sprint_risk() -> void:
@@ -128,11 +131,11 @@ func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 
 
 func _spawn_inventory_pickup(item_data: Dictionary, world_position: Vector2, quantity: int) -> bool:
-	var current_scene := get_tree().current_scene
+	var current_scene: Node = get_tree().current_scene
 	if current_scene == null:
 		return false
 
-	var spawn_system := current_scene.get_node_or_null("ElementSpawnSystem")
+	var spawn_system: Node = current_scene.get_node_or_null("ElementSpawnSystem")
 	if spawn_system == null or not spawn_system.has_method("spawn_inventory_pickup"):
 		return false
 
@@ -140,7 +143,7 @@ func _spawn_inventory_pickup(item_data: Dictionary, world_position: Vector2, qua
 
 
 func _get_drop_spawn_position() -> Vector2:
-	var direction := global_position.direction_to(get_global_mouse_position())
+	var direction := _get_current_aim_direction()
 	if direction == Vector2.ZERO:
 		direction = Vector2.DOWN
 	return global_position + direction * WORLD_DROP_DISTANCE
@@ -148,7 +151,7 @@ func _get_drop_spawn_position() -> Vector2:
 
 func _update_terrain_speed_multiplier() -> void:
 	_terrain_speed_multiplier = 1.0
-	var current_scene := get_tree().current_scene
+	var current_scene: Node = get_tree().current_scene
 	if current_scene == null or not current_scene.has_method("get_movement_speed_multiplier_at_world_position"):
 		return
 	_terrain_speed_multiplier = float(current_scene.get_movement_speed_multiplier_at_world_position(global_position))
@@ -158,6 +161,8 @@ func pause_input() -> void:
 	_input_paused = true
 	_sprint_multiplier = 1.0
 	velocity = Vector2.ZERO
+	if MobileInputRouter != null:
+		MobileInputRouter.set_action_state(&"sprint", false)
 	input_paused_changed.emit(true)
 
 
@@ -174,10 +179,10 @@ func _use_held_weapon() -> void:
 	if _attack_cooldown_remaining > 0.0:
 		return
 
-	var held_item := InventoryManager.get_held_item()
+	var held_item: Dictionary = InventoryManager.get_held_item()
 	if held_item.is_empty():
 		return
-	var weapon_profile := _get_held_weapon_profile(held_item)
+	var weapon_profile: Dictionary = _get_held_weapon_profile(held_item)
 	var weapon_type := String(weapon_profile.get("weapon_type", ""))
 	match weapon_type:
 		"melee":
@@ -193,7 +198,7 @@ func _fire_ranged_weapon(weapon_profile: Dictionary) -> void:
 	if not InventoryManager.remove_item(held_item_id, 1):
 		return
 
-	var current_scene := get_tree().current_scene
+	var current_scene: Node = get_tree().current_scene
 	if current_scene == null:
 		InventoryManager.add_item({
 			&"id": held_item_id,
@@ -202,10 +207,10 @@ func _fire_ranged_weapon(weapon_profile: Dictionary) -> void:
 		}, 1)
 		return
 
-	var aim_target := get_global_mouse_position()
+	var aim_target := _get_aim_target()
 	var direction := global_position.direction_to(aim_target)
 	if direction == Vector2.ZERO:
-		direction = Vector2.RIGHT
+		direction = _last_nonzero_aim_direction if _last_nonzero_aim_direction != Vector2.ZERO else Vector2.RIGHT
 	var spawn_origin := global_position + direction * 10.0
 	var projectile_id := String(weapon_profile.get("projectile_id", ""))
 	match projectile_id:
@@ -218,13 +223,16 @@ func _fire_ranged_weapon(weapon_profile: Dictionary) -> void:
 			return
 
 	_attack_cooldown_remaining = maxf(0.0, float(weapon_profile.get("attack_cooldown", 0.0)))
+	_last_attack_cooldown_duration = _attack_cooldown_remaining
+	_emit_combat_state_changed()
 
 
 func _swing_melee_weapon(weapon_profile: Dictionary) -> void:
 	_attack_cooldown_remaining = maxf(STEEL_SWORD_COOLDOWN, float(weapon_profile.get("attack_cooldown", STEEL_SWORD_COOLDOWN)))
-	var aim_direction := global_position.direction_to(get_global_mouse_position())
+	_last_attack_cooldown_duration = _attack_cooldown_remaining
+	var aim_direction := _get_current_aim_direction()
 	if aim_direction == Vector2.ZERO:
-		aim_direction = Vector2.RIGHT
+		aim_direction = _last_nonzero_aim_direction if _last_nonzero_aim_direction != Vector2.ZERO else Vector2.RIGHT
 	melee_pivot.rotation = aim_direction.angle()
 	sword_arc_visual.visible = true
 	melee_hitbox.monitoring = true
@@ -275,7 +283,7 @@ func _apply_melee_hit_to_body(body: Node, weapon_profile: Dictionary) -> void:
 	if resolved_damage <= 0:
 		return
 
-	var health_system := body.get_node_or_null("HealthSystem")
+	var health_system: Node = body.get_node_or_null("HealthSystem")
 	if health_system == null:
 		health_system = body.find_child("HealthSystem", true, false)
 	if health_system != null and health_system.has_method("take_resolved_damage"):
@@ -371,3 +379,90 @@ func _get_immediate_melee_targets() -> Array:
 		if collider != null:
 			results.append(collider)
 	return results
+
+
+func get_attack_cooldown_remaining() -> float:
+	return _attack_cooldown_remaining
+
+
+func get_attack_cooldown_duration() -> float:
+	return _last_attack_cooldown_duration
+
+
+func get_touch_attack_label() -> String:
+	var weapon_profile: Dictionary = _get_held_weapon_profile(InventoryManager.get_held_item())
+	if weapon_profile.is_empty():
+		return "Use Hands"
+	return str(weapon_profile.get("display_name", "Attack"))
+
+
+func get_touch_weapon_type() -> StringName:
+	var weapon_profile: Dictionary = _get_held_weapon_profile(InventoryManager.get_held_item())
+	return StringName(str(weapon_profile.get("weapon_type", "utility")))
+
+
+func _on_inventory_combat_state_changed() -> void:
+	_emit_combat_state_changed()
+
+
+func _get_movement_direction() -> Vector2:
+	var input_direction := Input.get_vector(
+		"move_left",
+		"move_right",
+		"move_up",
+		"move_down"
+	)
+	if MobileInputRouter != null and MobileInputRouter.has_virtual_movement():
+		input_direction = MobileInputRouter.get_virtual_movement()
+	return input_direction.limit_length(1.0)
+
+
+func _get_current_aim_direction() -> Vector2:
+	var aim_target := _get_aim_target()
+	var aim_direction := global_position.direction_to(aim_target)
+	if aim_direction != Vector2.ZERO:
+		_last_nonzero_aim_direction = aim_direction
+		return aim_direction
+	return _last_nonzero_aim_direction
+
+
+func _get_aim_target() -> Vector2:
+	if MobileInputRouter != null and MobileInputRouter.has_touch_aim():
+		return _screen_to_world(MobileInputRouter.get_touch_aim_screen_position())
+	if MobileInputRouter != null and MobileInputRouter.is_touch_mode():
+		var auto_target: Variant = _find_nearest_enemy_position(132.0)
+		if auto_target != null:
+			return auto_target
+		if _last_nonzero_aim_direction != Vector2.ZERO:
+			return global_position + _last_nonzero_aim_direction * 96.0
+	return get_global_mouse_position()
+
+
+func _screen_to_world(screen_position: Vector2) -> Vector2:
+	return get_viewport().get_canvas_transform().affine_inverse() * screen_position
+
+
+func _find_nearest_enemy_position(max_distance: float) -> Variant:
+	var nearest_enemy: Node2D = null
+	var nearest_distance: float = max_distance
+	for enemy_node: Variant in get_tree().get_nodes_in_group(&"enemy"):
+		var enemy: Node2D = enemy_node as Node2D
+		if enemy == null:
+			continue
+		var distance := global_position.distance_to(enemy.global_position)
+		if distance > nearest_distance:
+			continue
+		nearest_distance = distance
+		nearest_enemy = enemy
+	if nearest_enemy == null:
+		return null
+	return nearest_enemy.global_position
+
+
+func _emit_combat_state_changed() -> void:
+	combat_state_changed.emit(
+		_attack_cooldown_remaining,
+		_last_attack_cooldown_duration,
+		get_touch_attack_label(),
+		get_touch_weapon_type()
+	)

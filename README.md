@@ -48,10 +48,29 @@ Rain is now an active base-readability system, not just a weather label.
 ## Chemistry And Discovery
 
 - Chem bench reactions can now surface authored `notes` immediately when a `danger` or `waste` outcome resolves, instead of relying on the player to open the journal first.
-- The HUD shows a small `New Entry [J]` indicator when new discovery log entries are added.
+- The HUD shows a small `New Entry` indicator when new discovery log entries are added.
 - Mercury content is integrated into element data, chem bench reactions, recipes, discovery log entries, and research objectives.
 
 ## Controls
+
+| Action | Input |
+| --- | --- |
+| Move | Drag the left movement pad |
+| Sprint | Tap the on-screen `Sprint` button to toggle it |
+| Interact / open stations / pick up | Tap `Interact` |
+| Inventory | Use the five-slot hotbar at the bottom of the screen |
+| Discovery journal | Tap the HUD `Journal` button |
+| Objectives | Tap the HUD `Objectives` button |
+| Scan | Tap the on-screen `Scan` button to toggle it |
+| Build mode | Tap the on-screen `Build` button |
+| Choose buildable | Tap a build card in the build palette |
+| Place buildable | Tap or drag the snapped preview, then tap `Confirm` |
+| Rotate selected buildable | Tap `Rotate` |
+| Cancel build mode | Tap `Cancel` |
+| Hotbar selection | Tap a hotbar slot |
+| Mine / attack / fire equipped projectile | Tap `Attack` |
+
+Desktop fallback inputs remain available:
 
 | Action | Input |
 | --- | --- |
@@ -60,10 +79,9 @@ Rain is now an active base-readability system, not just a weather label.
 | Interact / open stations / pick up | `E` |
 | Toggle inventory | `Tab` |
 | Toggle discovery journal | `J` |
+| Toggle objectives | `O` |
 | Scan | `Q` |
-| Campfire process | `R` |
 | Build mode | `B` |
-| Cycle buildable in build mode | `Tab` |
 | Rotate selected buildable | `R` |
 | Cancel build mode | `Esc` |
 | Place buildable | Left click |
@@ -96,6 +114,8 @@ godot --headless --path . --quit
 Development is currently happening on `main`. Keep `main` playable, land focused changes, and use the current `main` build for internal playtests. Generated macOS metadata such as `.DS_Store` should stay untracked.
 
 Primary gameplay scripts live in `scripts/`, playable scenes live in `scenes/`, and chemistry/resource definitions live under `data/`.
+
+Large-script split follow-ups are tracked in [docs/refactor-followups.md](docs/refactor-followups.md). Land the `FurnaceUI.gd` split pattern first, then apply the same approach to one script at a time.
 
 ## Playtest Focus
 

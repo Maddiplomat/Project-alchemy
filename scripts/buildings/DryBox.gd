@@ -15,7 +15,7 @@ func _get_container_title() -> String:
 
 
 func _get_prompt_text() -> String:
-	return "Press E to open Dry Box"
+	return "Tap Interact to open Dry Box" if MobileInputRouter.prefers_touch_controls() else "Press E to open Dry Box"
 
 
 func _get_storage_filter_id() -> StringName:

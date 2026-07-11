@@ -14,6 +14,7 @@ var _ui_instance: Node
 
 
 func _ready() -> void:
+	add_to_group(&"touch_interactable")
 	_build_visual_identity()
 	_configure_prompt_label()
 	_ensure_ui()
@@ -92,11 +93,14 @@ func _configure_prompt_label() -> void:
 	prompt_label.visible = false
 	
 	var key_hint := "E"
-	if InputMap.has_action("interact"):
-		var events := InputMap.action_get_events("interact")
-		if not events.is_empty():
-			key_hint = events[0].as_text()
-	prompt_label.text = "[%s] Battery Station" % key_hint
+	if MobileInputRouter.prefers_touch_controls():
+		prompt_label.text = "Tap Interact to use Battery Station"
+	else:
+		if InputMap.has_action("interact"):
+			var events := InputMap.action_get_events("interact")
+			if not events.is_empty():
+				key_hint = events[0].as_text()
+		prompt_label.text = "[%s] Battery Station" % key_hint
 
 
 func _ensure_ui() -> void:
@@ -154,3 +158,21 @@ func _build_placeholder_texture() -> Texture2D:
 		image.set_pixel(x, 23, Color(0.10, 0.14, 0.20, 1.0))
 
 	return ImageTexture.create_from_image(image)
+
+
+func can_touch_interact(player: Node2D) -> bool:
+	return player != null and player == _player and _player_in_range and not _is_interacting
+
+
+func get_touch_interaction_prompt() -> String:
+	return "Use Battery Station"
+
+
+func get_touch_interaction_world_position() -> Vector2:
+	return global_position + Vector2(0.0, -28.0)
+
+
+func perform_touch_interaction() -> void:
+	if not _player_in_range or _is_interacting:
+		return
+	_open_ui()

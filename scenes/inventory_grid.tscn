@@ -9,6 +9,90 @@ script = ExtResource("1_pkvtp")
 [node name="InventoryPanel" type="Panel" parent="." unique_id=582636693]
 custom_minimum_size = Vector2(392, 216)
 
+[node name="PhoneHotbar" type="PanelContainer" parent="." unique_id=139217450]
+offset_left = 44.0
+offset_top = 630.0
+offset_right = 496.0
+offset_bottom = 726.0
+mouse_filter = 1
+
+[node name="MarginContainer" type="MarginContainer" parent="PhoneHotbar" unique_id=18822117]
+layout_mode = 0
+offset_right = 452.0
+offset_bottom = 96.0
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="HotbarRow" type="HBoxContainer" parent="PhoneHotbar/MarginContainer" unique_id=746129134]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HotbarSlots" type="HBoxContainer" parent="PhoneHotbar/MarginContainer/HotbarRow" unique_id=1734561242]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="MobileActionPanel" type="PanelContainer" parent="." unique_id=893315421]
+visible = false
+offset_left = 470.0
+offset_top = 456.0
+offset_right = 788.0
+offset_bottom = 648.0
+
+[node name="MarginContainer" type="MarginContainer" parent="MobileActionPanel" unique_id=1317142874]
+layout_mode = 0
+offset_right = 318.0
+offset_bottom = 192.0
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MobileActionPanel/MarginContainer" unique_id=333900147]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SelectedItemLabel" type="Label" parent="MobileActionPanel/MarginContainer/VBoxContainer" unique_id=20454548]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Selected Item"
+
+[node name="ActionButtons" type="GridContainer" parent="MobileActionPanel/MarginContainer/VBoxContainer" unique_id=192900881]
+layout_mode = 2
+columns = 2
+
+[node name="UseButton" type="Button" parent="MobileActionPanel/MarginContainer/VBoxContainer/ActionButtons" unique_id=10339489]
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "Use"
+
+[node name="TransferButton" type="Button" parent="MobileActionPanel/MarginContainer/VBoxContainer/ActionButtons" unique_id=534567897]
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "Transfer"
+
+[node name="SplitButton" type="Button" parent="MobileActionPanel/MarginContainer/VBoxContainer/ActionButtons" unique_id=411152138]
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "Split"
+
+[node name="DropButton" type="Button" parent="MobileActionPanel/MarginContainer/VBoxContainer/ActionButtons" unique_id=1500841531]
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "Drop"
+
+[node name="DetailsButton" type="Button" parent="MobileActionPanel/MarginContainer/VBoxContainer" unique_id=1706862]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "Details"
+
+[node name="ActionHintLabel" type="Label" parent="MobileActionPanel/MarginContainer/VBoxContainer" unique_id=841813051]
+layout_mode = 2
+text = "Tap a slot to equip. Long-press for details. Drag to move."
+autowrap_mode = 3
+
 [node name="PanelContent" type="HBoxContainer" parent="InventoryPanel" unique_id=181028481]
 layout_mode = 0
 offset_left = 16.0
@@ -103,17 +187,84 @@ theme_override_constants/separation = 18
 
 [node name="InventoryKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1822337350]
 layout_mode = 2
-text = "Tab: open inventory"
+text = "Tap Inventory in the HUD."
 
 [node name="SelectKeybindLabel" type="Label" parent="InventoryPanel/KeybindStrip" unique_id=1590047737]
 layout_mode = 2
-text = "1-5: select active item   F6: save game"
+text = "Tap slots to equip. Long-press for details."
 
 [node name="TooltipPanel" type="Panel" parent="." unique_id=391146286]
 visible = false
 offset_right = 180.0
 offset_bottom = 96.0
 mouse_filter = 2
+
+[node name="QuantityModal" type="PanelContainer" parent="." unique_id=146049363]
+visible = false
+offset_left = 470.0
+offset_top = 272.0
+offset_right = 806.0
+offset_bottom = 464.0
+
+[node name="MarginContainer" type="MarginContainer" parent="QuantityModal" unique_id=1507569676]
+layout_mode = 0
+offset_right = 336.0
+offset_bottom = 192.0
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="QuantityModal/MarginContainer" unique_id=204032526]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="TitleLabel" type="Label" parent="QuantityModal/MarginContainer/VBoxContainer" unique_id=1018340288]
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "Adjust Quantity"
+
+[node name="SummaryLabel" type="Label" parent="QuantityModal/MarginContainer/VBoxContainer" unique_id=1235333521]
+layout_mode = 2
+text = "Choose how many items to move."
+autowrap_mode = 3
+
+[node name="StepperRow" type="HBoxContainer" parent="QuantityModal/MarginContainer/VBoxContainer" unique_id=158377667]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 10
+
+[node name="MinusButton" type="Button" parent="QuantityModal/MarginContainer/VBoxContainer/StepperRow" unique_id=1736379607]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
+text = "-"
+
+[node name="QuantityValueLabel" type="Label" parent="QuantityModal/MarginContainer/VBoxContainer/StepperRow" unique_id=1185518394]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "1"
+horizontal_alignment = 1
+
+[node name="PlusButton" type="Button" parent="QuantityModal/MarginContainer/VBoxContainer/StepperRow" unique_id=539516802]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
+text = "+"
+
+[node name="ModalButtons" type="HBoxContainer" parent="QuantityModal/MarginContainer/VBoxContainer" unique_id=19291235]
+layout_mode = 2
+alignment = 2
+theme_override_constants/separation = 10
+
+[node name="CancelButton" type="Button" parent="QuantityModal/MarginContainer/VBoxContainer/ModalButtons" unique_id=673536204]
+custom_minimum_size = Vector2(96, 44)
+layout_mode = 2
+text = "Cancel"
+
+[node name="ConfirmButton" type="Button" parent="QuantityModal/MarginContainer/VBoxContainer/ModalButtons" unique_id=330740115]
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+text = "Confirm"
 
 [node name="MarginContainer" type="MarginContainer" parent="TooltipPanel" unique_id=272547761]
 layout_mode = 0

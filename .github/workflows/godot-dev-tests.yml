@@ -1,0 +1,73 @@
+name: Godot Dev Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  dev-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.0
+          use-dotnet: false
+
+      - name: Prepare logs
+        run: mkdir -p .ci-logs
+
+      - name: Run save migration tests
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --scene res://scenes/dev/WorldSaveDataRoundTripTest.tscn \
+            2>&1 | tee .ci-logs/world-save-data-round-trip.log
+
+      - name: Run world save persistence tests
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --scene res://scenes/dev/SavePersistenceRegressionTest.tscn \
+            2>&1 | tee .ci-logs/save-persistence-regression.log
+
+      - name: Run persistence contract tests
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --scene res://scenes/dev/PersistenceRegistryContractTest.tscn \
+            2>&1 | tee .ci-logs/persistence-registry-contract.log
+
+      - name: Run MCP runtime guard tests
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --scene res://scenes/dev/MCPRuntimeGuardTest.tscn \
+            2>&1 | tee .ci-logs/mcp-runtime-guard.log
+
+      - name: Export Linux pack
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/linux
+          godot --headless --path . --export-pack "Linux" build/linux/project-alchemy.pck \
+            2>&1 | tee .ci-logs/export-linux-pack.log
+
+      - name: Verify exported package excludes MCP addon
+        shell: bash
+        run: |
+          set -o pipefail
+          bash scripts/dev/verify_export_excludes_mcp.sh .ci-logs/export-linux-pack.log \
+            2>&1 | tee .ci-logs/verify-export-excludes-mcp.log
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-dev-test-logs
+          path: .ci-logs/

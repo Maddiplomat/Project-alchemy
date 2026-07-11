@@ -323,7 +323,11 @@ func _refresh_repair_prompt() -> void:
 	if not _repair_prompt_label.visible:
 		return
 	if InventoryManager.has_item(REPAIR_ITEM_ID, REPAIR_ITEM_COUNT):
-		_repair_prompt_label.text = "[E] Repair Trap (Iron x1) %d/%d" % [durability, MAX_DURABILITY]
+		_repair_prompt_label.text = (
+			"Tap Interact to repair Trap (Iron x1) %d/%d" % [durability, MAX_DURABILITY]
+			if MobileInputRouter.prefers_touch_controls() else
+			"[E] Repair Trap (Iron x1) %d/%d" % [durability, MAX_DURABILITY]
+		)
 	else:
 		_repair_prompt_label.text = "Needs Iron x1 to repair %d/%d" % [durability, MAX_DURABILITY]
 

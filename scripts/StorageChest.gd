@@ -152,7 +152,7 @@ func _show_prompt(should_show: bool) -> void:
 	if prompt_label != null:
 		prompt_label.visible = should_show
 		if should_show:
-			prompt_label.text = "Press E to open Chest"
+			prompt_label.text = "Tap Interact to open Chest" if MobileInputRouter.prefers_touch_controls() else "Press E to open Chest"
 
 
 func _hide_prompt() -> void:

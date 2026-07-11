@@ -1,5 +1,7 @@
 extends PointLight2D
 
+static var _cached_textures: Dictionary = {}
+
 var _base_grid: Node = null
 var _power_switchboard: Node = null
 var _registered_with_defense := false
@@ -17,7 +19,7 @@ func _ready() -> void:
 	_bind_power_services()
 	if _base_grid == null:
 		energy = 0.0
-	set_process(true)
+	set_process(false)
 
 	_configure_light_texture()
 	if GameManager != null:
@@ -53,6 +55,7 @@ func disrupt(duration_seconds: float) -> void:
 		_disrupted_until_msec,
 		Time.get_ticks_msec() + int(maxf(duration_seconds, 0.0) * 1000.0)
 	)
+	set_process(true)
 	_refresh_power_state()
 
 
@@ -75,11 +78,15 @@ func _on_power_deactivated() -> void:
 func _refresh_power_state() -> void:
 	var should_show_light := _should_show_visual_light()
 	var should_enable_defense := _should_enable_defense_effect()
-	energy = active_energy if should_show_light else 0.0
+	var energy_scale := 1.0
+	if MobilePerformance != null and MobilePerformance.has_method("get_light_energy_scale"):
+		energy_scale = float(MobilePerformance.get_light_energy_scale())
+	energy = active_energy * energy_scale if should_show_light else 0.0
 	if should_enable_defense:
 		_register_with_defense()
 	else:
 		_unregister_with_defense()
+	set_process(_is_disrupted())
 
 
 func _should_show_visual_light() -> bool:
@@ -124,16 +131,22 @@ func _unregister_with_defense() -> void:
 
 
 func _configure_light_texture() -> void:
-	var gradient := Gradient.new()
-	gradient.add_point(0.0, light_color)
-	gradient.add_point(0.35, light_color_inner)
-	gradient.add_point(1.0, Color(0.0, 0.0, 0.0, 0.0))
-	var gradient_texture := GradientTexture2D.new()
-	gradient_texture.width = 256
-	gradient_texture.height = 256
-	gradient_texture.fill = GradientTexture2D.FILL_RADIAL
-	gradient_texture.gradient = gradient
-	texture = gradient_texture
+	var texture_size := 128
+	if MobilePerformance != null and MobilePerformance.has_method("get_light_texture_size"):
+		texture_size = int(MobilePerformance.get_light_texture_size())
+	var cache_key := "%d|%s|%s" % [texture_size, str(light_color), str(light_color_inner)]
+	if not _cached_textures.has(cache_key):
+		var gradient := Gradient.new()
+		gradient.add_point(0.0, light_color)
+		gradient.add_point(0.35, light_color_inner)
+		gradient.add_point(1.0, Color(0.0, 0.0, 0.0, 0.0))
+		var gradient_texture := GradientTexture2D.new()
+		gradient_texture.width = texture_size
+		gradient_texture.height = texture_size
+		gradient_texture.fill = GradientTexture2D.FILL_RADIAL
+		gradient_texture.gradient = gradient
+		_cached_textures[cache_key] = gradient_texture
+	texture = _cached_textures[cache_key]
 	offset = Vector2(0.0, -8.0)
 
 

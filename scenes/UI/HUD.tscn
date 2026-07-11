@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/HUD.gd" id="1_hud"]
 [ext_resource type="Script" path="res://scripts/MinimapOverlay.gd" id="2_minimap"]
+[ext_resource type="PackedScene" path="res://scenes/UI/MobileControls.tscn" id="3_mobile"]
 
 [node name="HUD" type="CanvasLayer"]
 layer = 10
@@ -29,6 +30,14 @@ offset_top = 8.0
 offset_right = -8.0
 offset_bottom = 72.0
 script = ExtResource("2_minimap")
+
+[node name="MinimapToggleButton" type="Button" parent="."]
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 44.0
+offset_bottom = 34.0
+z_index = 26
+text = "Map"
 
 [node name="CarrierRiskStrip" type="Panel" parent="."]
 visible = false
@@ -83,6 +92,28 @@ text = "Scanner upgraded"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="ContextInteractButton" type="Button" parent="."]
+visible = false
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 120.0
+offset_bottom = 44.0
+z_index = 26
+text = "Interact"
+
+[node name="ContextInteractLabel" type="Label" parent="."]
+visible = false
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 160.0
+offset_bottom = 22.0
+z_index = 26
+theme_override_font_sizes/font_size = 14
+theme_override_constants/outline_size = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "Use"
+
 [node name="ObjectivesPanel" type="Panel" parent="."]
 anchors_preset = 0
 offset_left = 16.0
@@ -105,10 +136,20 @@ offset_bottom = -8.0
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="TitleLabel" type="Label" parent="ObjectivesPanel/MarginContainer/VBoxContainer"]
+[node name="HeaderRow" type="HBoxContainer" parent="ObjectivesPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="TitleLabel" type="Label" parent="ObjectivesPanel/MarginContainer/VBoxContainer/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 16
 text = "Research Objectives"
+
+[node name="CollapseButton" type="Button" parent="ObjectivesPanel/MarginContainer/VBoxContainer/HeaderRow"]
+custom_minimum_size = Vector2(36, 28)
+layout_mode = 2
+text = "-"
 
 [node name="Objective1Label" type="Label" parent="ObjectivesPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
@@ -185,6 +226,216 @@ offset_left = -110.0
 offset_top = -88.0
 offset_right = 110.0
 offset_bottom = -24.0
+
+[node name="MobileControls" parent="." instance=ExtResource("3_mobile")]
+
+[node name="MobileTutorialOverlay" type="Control" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+mouse_filter = 1
+z_index = 28
+
+[node name="Tint" type="ColorRect" parent="MobileTutorialOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+mouse_filter = 0
+color = Color(0.03, 0.04, 0.05, 0.78)
+
+[node name="SkipTutorialButton" type="Button" parent="MobileTutorialOverlay"]
+custom_minimum_size = Vector2(124, 48)
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -148.0
+offset_top = 18.0
+offset_right = -18.0
+offset_bottom = 66.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 16
+text = "Start Playing"
+z_index = 1
+
+[node name="CenterContainer" type="CenterContainer" parent="MobileTutorialOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+
+[node name="MarginContainer" type="MarginContainer" parent="MobileTutorialOverlay/CenterContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="PanelContainer" type="PanelContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer"]
+custom_minimum_size = Vector2(360, 0)
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="TitleLabel" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Touch Controls"
+horizontal_alignment = 1
+
+[node name="SubtitleLabel" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Everything needed for survival is available on-screen. These buttons stay visible while you play."
+horizontal_alignment = 1
+
+[node name="MoveCard" type="PanelContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/MoveCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/MoveCard/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/MoveCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Move"
+
+[node name="Body" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/MoveCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Drag the left pad to move. Hold Sprint when you need speed."
+
+[node name="AttackCard" type="PanelContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/AttackCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/AttackCard/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/AttackCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Attack"
+
+[node name="Body" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/AttackCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Tap Attack on the right. The aim pad helps ranged shots."
+
+[node name="InventoryCard" type="PanelContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/InventoryCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/InventoryCard/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/InventoryCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Inventory And Journal"
+
+[node name="Body" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/InventoryCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Use the five-slot hotbar at the bottom to equip items. Use the top HUD buttons for Journal and Objectives. Long-press slots for details."
+
+[node name="CraftCard" type="PanelContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/CraftCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/CraftCard/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/CraftCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Crafting"
+
+[node name="Body" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/CraftCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Walk up to a station and tap Interact. Furnaces and ChemBenches open their own touch controls."
+
+[node name="BuildCard" type="PanelContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/BuildCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/BuildCard/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/BuildCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Build"
+
+[node name="Body" type="Label" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/BuildCard/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Tap Build, choose a card, drag the snapped preview into place, then use Rotate, Confirm, or Cancel."
+
+[node name="DismissButton" type="Button" parent="MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "Start Exploring"
 
 [node name="HBoxContainer" type="HBoxContainer" parent="HeldItemContainer"]
 layout_mode = 1

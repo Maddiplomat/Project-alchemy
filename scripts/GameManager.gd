@@ -1,5 +1,7 @@
 extends Node
 
+const WorldSaveDataScript = preload("res://scripts/WorldSaveData.gd")
+
 enum GameState { BOOT, LOGIN, MAIN_MENU, LOADING, PLAYING, PAUSED, GAME_OVER }
 enum GameplayPhase { SCAN, EXTRACT, COMBINE, STABILIZE, SURVIVE }
 enum SessionMode { OFFLINE, ONLINE }
@@ -10,6 +12,7 @@ const SAVE_DIRECTORY := "user://saves"
 const SAVE_FILE_TEMPLATE := "user://saves/slot_%d.json"
 const BACKUP_SAVE_FILE_TEMPLATE := "user://saves/slot_%d.bak.json"
 const LEGACY_SAVE_FILE_TEMPLATE := "user://saves/slot_%d.save"
+const PERSISTENCE_KEY := &"game_manager"
 
 signal game_state_changed(previous_state: GameState, new_state: GameState)
 signal gameplay_phase_changed(previous_phase: GameplayPhase, new_phase: GameplayPhase)
@@ -64,6 +67,7 @@ var is_paused: bool = false
 var active_environmental_warnings: Array[StringName] = []
 var scanner_tier: ScannerTier = ScannerTier.BASIC
 var post_tutorial_loop_active := false
+var tutorial_hint_flags: Dictionary[StringName, bool] = {}
 
 var _seconds_since_autosave_request: int = 0
 var _is_night: bool = false
@@ -89,6 +93,10 @@ func _notification(what: int) -> void:
 
 func is_night() -> bool:
 	return _is_night
+
+
+func get_persistence_key() -> StringName:
+	return PERSISTENCE_KEY
 
 
 func register_player(player_node: Node2D) -> void:
@@ -157,11 +165,33 @@ func _process(delta: float) -> void:
 			add_playtime(whole_seconds)
 
 
+func _input(event: InputEvent) -> void:
+	if not _is_manual_save_input(event):
+		return
+	if game_state != GameState.PLAYING:
+		return
+	request_save(SaveTrigger.MANUAL)
+	get_viewport().set_input_as_handled()
+
+
+func _is_manual_save_input(event: InputEvent) -> bool:
+	if event is InputEventKey:
+		var key_event := event as InputEventKey
+		if key_event.echo or not key_event.pressed:
+			return false
+		if key_event.keycode == KEY_F6 or key_event.physical_keycode == KEY_F6:
+			return true
+		if key_event.keycode == KEY_S and (key_event.meta_pressed or key_event.ctrl_pressed):
+			return true
+	return event.is_action_pressed("manual_save")
+
+
 func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -> void:
 	set_session_mode(mode)
 	set_active_save_slot(slot_id)
 	_automatic_saves_enabled = false
 	post_tutorial_loop_active = false
+	tutorial_hint_flags.clear()
 	if InventoryManager != null and InventoryManager.has_method("clear_inventory"):
 		InventoryManager.clear_inventory()
 	if DiscoveryLog != null and DiscoveryLog.has_method("clear"):
@@ -230,10 +260,10 @@ func has_save_data(slot_id: int = active_save_slot) -> bool:
 func get_save_metadata(slot_id: int = active_save_slot) -> Dictionary:
 	if not has_save_data(slot_id):
 		return {}
-	var save_data := _read_save_file(slot_id)
+	var save_data := _read_normalized_save_envelope(slot_id, true)
 	if save_data.is_empty():
 		return {}
-	return _extract_save_metadata(save_data)
+	return (save_data.get("metadata", {}) as Dictionary).duplicate(true)
 
 
 func has_any_save_data() -> bool:
@@ -508,6 +538,19 @@ func has_advanced_scanner() -> bool:
 	return scanner_tier == ScannerTier.ADVANCED
 
 
+func has_seen_tutorial_hint(hint_id: StringName) -> bool:
+	if hint_id.is_empty():
+		return false
+	return bool(tutorial_hint_flags.get(hint_id, false))
+
+
+func mark_tutorial_hint_seen(hint_id: StringName) -> void:
+	if hint_id.is_empty() or has_seen_tutorial_hint(hint_id):
+		return
+	tutorial_hint_flags[hint_id] = true
+	mark_dirty()
+
+
 func capture_persistent_state() -> Dictionary:
 	return {
 		"session_mode": int(session_mode),
@@ -517,6 +560,7 @@ func capture_persistent_state() -> Dictionary:
 		"playtime_seconds": playtime_seconds,
 		"scanner_tier": int(scanner_tier),
 		"post_tutorial_loop_active": post_tutorial_loop_active,
+		"tutorial_hint_flags": tutorial_hint_flags.duplicate(true),
 	}
 
 
@@ -530,6 +574,11 @@ func restore_persistent_state(data: Dictionary) -> void:
 	_is_night = _is_time_night(time_of_day)
 	playtime_seconds = maxi(int(data.get("playtime_seconds", 0)), 0)
 	post_tutorial_loop_active = bool(data.get("post_tutorial_loop_active", false))
+	tutorial_hint_flags.clear()
+	var raw_tutorial_flags: Variant = data.get("tutorial_hint_flags", {})
+	if raw_tutorial_flags is Dictionary:
+		for raw_hint_id: Variant in (raw_tutorial_flags as Dictionary).keys():
+			tutorial_hint_flags[StringName(str(raw_hint_id))] = bool(raw_tutorial_flags[raw_hint_id])
 	_set_scanner_tier_internal(int(data.get("scanner_tier", int(ScannerTier.BASIC))), false, false)
 	is_paused = false
 	get_tree().paused = false
@@ -637,7 +686,7 @@ func _on_save_requested(_trigger: SaveTrigger) -> void:
 			&"error_code": file_error_code,
 		})
 		return
-	file.store_string(JSON.stringify(_variant_to_json_value(save_data), "\t"))
+	file.store_string(_stringify_save_data_for_storage(save_data, "\t"))
 	file.close()
 	if _trigger == SaveTrigger.MANUAL:
 		_automatic_saves_enabled = true
@@ -654,13 +703,13 @@ func _on_save_requested(_trigger: SaveTrigger) -> void:
 
 
 func _load_game_from_slot(slot_id: int) -> void:
-	var raw_save_data := _read_save_file(slot_id)
-	var save_data := _extract_world_save_data(raw_save_data)
+	var normalized_save_data := _read_normalized_save_envelope(slot_id, true)
+	var save_data := _extract_world_save_data(normalized_save_data)
 	if save_data.is_empty():
 		push_warning("Save payload is invalid for slot %d" % slot_id)
 		set_game_state(GameState.MAIN_MENU)
 		return
-	var current_scene_path := _get_saved_scene_path(save_data)
+	var current_scene_path := str((normalized_save_data.get("metadata", {}) as Dictionary).get("current_scene_path", "res://scenes/World.tscn"))
 	var world_data := save_data.get("world", {}) as Dictionary
 	if WorldSystem != null and WorldSystem.has_method("set_seed_for_scene") and not world_data.is_empty():
 		var saved_seed := str(world_data.get("seed", ""))
@@ -730,8 +779,18 @@ func _read_json_save_file(path: String) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(raw_text)
 	if parsed == null:
 		return {}
-	var restored: Variant = _json_value_to_variant(parsed)
+	var restored: Variant = _decode_save_data_from_storage(parsed)
 	return restored as Dictionary if restored is Dictionary else {}
+
+
+func _read_normalized_save_envelope(slot_id: int, rewrite_if_needed: bool = false) -> Dictionary:
+	var raw_save_data := _read_save_file(slot_id)
+	if raw_save_data.is_empty():
+		return {}
+	var normalized_save_data := _normalize_save_envelope(raw_save_data)
+	if rewrite_if_needed and _save_envelope_requires_rewrite(raw_save_data, normalized_save_data):
+		_write_normalized_save_envelope(slot_id, normalized_save_data)
+	return normalized_save_data
 
 
 func _read_legacy_save_file(path: String) -> Dictionary:
@@ -743,156 +802,65 @@ func _read_legacy_save_file(path: String) -> Dictionary:
 	return payload as Dictionary if payload is Dictionary else {}
 
 
-func _extract_save_metadata(save_data: Dictionary) -> Dictionary:
-	var metadata := (save_data.get("metadata", {}) as Dictionary).duplicate(true)
-	if not metadata.is_empty():
-		return metadata
-	if save_data.has("current_scene_path"):
-		metadata["current_scene_path"] = str(save_data.get("current_scene_path", ""))
-	var game_manager_state := save_data.get("game_manager", {}) as Dictionary
-	if not game_manager_state.is_empty():
-		metadata["current_day"] = int(game_manager_state.get("current_day", 1))
-		if not metadata.has("current_scene_path"):
-			metadata["current_scene_path"] = str(game_manager_state.get("current_scene_path", ""))
-	var current_scene_state := save_data.get("current_scene_state", {}) as Dictionary
-	if not metadata.has("current_scene_path") and not current_scene_state.is_empty():
-		var current_scene_player_state := current_scene_state.get("player", {}) as Dictionary
-		metadata["current_scene_path"] = str(current_scene_player_state.get("active_path", ""))
-	var player_state := save_data.get("player", {}) as Dictionary
-	if not metadata.has("current_scene_path") and not player_state.is_empty():
-		metadata["current_scene_path"] = str(player_state.get("active_path", ""))
-	return metadata
-
-
 func _extract_world_save_data(save_data: Dictionary) -> Dictionary:
+	return _with_world_save_data_codec(func(world_save_data: Node) -> Dictionary:
+		if world_save_data == null or not world_save_data.has_method("build_restore_payload"):
+			return {}
+		return world_save_data.build_restore_payload(save_data)
+	)
+
+
+func _normalize_save_envelope(save_data: Dictionary) -> Dictionary:
 	if save_data.is_empty():
 		return {}
-	if _is_backend_save_envelope(save_data):
-		return _extract_restore_state_from_envelope(save_data)
-	var extracted := save_data.duplicate(true)
-	if extracted.has("world") or extracted.has("player") or extracted.has("base"):
-		if not extracted.has("world_system"):
-			extracted["world_system"] = _build_world_system_payload_from_flat_save(extracted)
-		return extracted
-	var current_scene_path := _get_saved_scene_path(extracted)
-	var world_system_data := save_data.get("world_system", {}) as Dictionary
-	var scene_state_by_path := world_system_data.get("scene_state_by_path", {}) as Dictionary
-	var restore_state := (scene_state_by_path.get(current_scene_path, {}) as Dictionary).duplicate(true)
-	if restore_state.is_empty():
-		return {}
-	var metadata := _extract_save_metadata(save_data)
-	if not metadata.is_empty():
-		restore_state["metadata"] = metadata
-	var game_manager_state := save_data.get("game_manager", {}) as Dictionary
-	if not game_manager_state.is_empty():
-		restore_state["game_manager"] = game_manager_state.duplicate(true)
-	var element_database_state := save_data.get("element_database", {}) as Dictionary
-	if not element_database_state.is_empty():
-		restore_state["element_database"] = element_database_state.duplicate(true)
-	var discovery_log_state := save_data.get("discovery_log", {}) as Dictionary
-	if not discovery_log_state.is_empty():
-		restore_state["discovery_log"] = discovery_log_state.duplicate(true)
-	var research_objectives_state := save_data.get("research_objectives", {}) as Dictionary
-	if not research_objectives_state.is_empty():
-		restore_state["research_objectives"] = research_objectives_state.duplicate(true)
-	if not world_system_data.is_empty():
-		restore_state["world_system"] = world_system_data.duplicate(true)
-	var power_switchboard_state := save_data.get("power_switchboard", {}) as Dictionary
-	if not power_switchboard_state.is_empty():
-		restore_state["power_switchboard"] = power_switchboard_state.duplicate(true)
-	var weather_system_state := save_data.get("weather_system", {}) as Dictionary
-	if not weather_system_state.is_empty():
-		restore_state["weather_system"] = weather_system_state.duplicate(true)
-	var cold_system_state := save_data.get("cold_system", {}) as Dictionary
-	if not cold_system_state.is_empty():
-		restore_state["cold_system"] = cold_system_state.duplicate(true)
-	return restore_state
+	return _with_world_save_data_codec(func(world_save_data: Node) -> Dictionary:
+		if world_save_data == null or not world_save_data.has_method("normalize_save_envelope"):
+			return {}
+		return world_save_data.normalize_save_envelope(save_data)
+	)
 
 
-func _build_world_system_payload_from_flat_save(save_data: Dictionary) -> Dictionary:
-	var current_scene_path := _get_saved_scene_path(save_data)
-	var world_seed := str((save_data.get("world", {}) as Dictionary).get("seed", ""))
-	var current_seed := int(world_seed) if not world_seed.is_empty() else 0
-	var scene_seeds := {}
-	var scene_state_by_path := {}
-	if not current_scene_path.is_empty():
-		if current_seed != 0:
-			scene_seeds[current_scene_path] = current_seed
-		scene_state_by_path[current_scene_path] = _build_scene_restore_state_from_save(save_data)
-	return {
-		"current_seed": current_seed,
-		"scene_seeds": scene_seeds,
-		"scene_state_by_path": scene_state_by_path,
-	}
+func _save_envelope_requires_rewrite(raw_save_data: Dictionary, normalized_save_data: Dictionary) -> bool:
+	if raw_save_data.is_empty() or normalized_save_data.is_empty():
+		return false
+	return _stringify_save_data_for_storage(raw_save_data) != _stringify_save_data_for_storage(normalized_save_data)
 
 
-func _build_scene_restore_state_from_save(save_data: Dictionary) -> Dictionary:
-	var scene_state := {}
-	for key in ["world", "player", "base", "resources", "progression"]:
-		var value: Variant = save_data.get(key, {})
-		if value is Dictionary and not (value as Dictionary).is_empty():
-			scene_state[key] = (value as Dictionary).duplicate(true)
-	var discoveries: Variant = save_data.get("discoveries", [])
-	if discoveries is Array and not (discoveries as Array).is_empty():
-		scene_state["discoveries"] = (discoveries as Array).duplicate(true)
-	return scene_state
+func _write_normalized_save_envelope(slot_id: int, normalized_save_data: Dictionary) -> void:
+	var save_path := _get_save_file_path(slot_id)
+	var file := FileAccess.open(save_path, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(_stringify_save_data_for_storage(normalized_save_data, "\t"))
+	file.close()
 
 
-func _extract_restore_state_from_envelope(save_data: Dictionary) -> Dictionary:
-	var restore_state := _extract_current_scene_state_from_envelope(save_data)
-	if restore_state.is_empty():
-		return {}
-	var metadata := _extract_save_metadata(save_data)
-	if not metadata.is_empty():
-		restore_state["metadata"] = metadata
-	restore_state["version"] = int(save_data.get("version", 0))
-	var game_manager_state := save_data.get("game_manager", {}) as Dictionary
-	if not game_manager_state.is_empty():
-		restore_state["game_manager"] = game_manager_state.duplicate(true)
-	var world_system_data := save_data.get("world_system", {}) as Dictionary
-	if not world_system_data.is_empty():
-		restore_state["world_system"] = world_system_data.duplicate(true)
-	var global_systems := save_data.get("global_systems", {}) as Dictionary
-	for key in global_systems.keys():
-		var state: Variant = global_systems[key]
-		if state is Dictionary and not (state as Dictionary).is_empty():
-			restore_state[str(key)] = (state as Dictionary).duplicate(true)
-	return restore_state
+func _with_world_save_data_codec(callback: Callable) -> Variant:
+	var world_save_data: Node = EventBus.get_world_save_data()
+	var owns_temporary_world_save_data := false
+	if world_save_data == null:
+		world_save_data = WorldSaveDataScript.new()
+		owns_temporary_world_save_data = true
+	var result: Variant = callback.call(world_save_data)
+	if owns_temporary_world_save_data and is_instance_valid(world_save_data):
+		world_save_data.free()
+	return result
 
 
-func _extract_current_scene_state_from_envelope(save_data: Dictionary) -> Dictionary:
-	var current_scene_state := (save_data.get("current_scene_state", {}) as Dictionary).duplicate(true)
-	if not current_scene_state.is_empty():
-		return current_scene_state
-	var current_scene_path := _get_saved_scene_path(save_data)
-	var world_system_data := save_data.get("world_system", {}) as Dictionary
-	var scene_state_by_path := world_system_data.get("scene_state_by_path", {}) as Dictionary
-	if not current_scene_path.is_empty():
-		return (scene_state_by_path.get(current_scene_path, {}) as Dictionary).duplicate(true)
-	for scene_state in scene_state_by_path.values():
-		if scene_state is Dictionary:
-			return (scene_state as Dictionary).duplicate(true)
-	return {}
+func _stringify_save_data_for_storage(save_data: Dictionary, indent: String = "") -> String:
+	return str(_with_world_save_data_codec(func(world_save_data: Node) -> String:
+		if world_save_data != null and world_save_data.has_method("stringify_save_data"):
+			return String(world_save_data.stringify_save_data(save_data, indent))
+		return JSON.stringify(_variant_to_json_value(save_data), indent)
+	))
 
 
-func _is_backend_save_envelope(save_data: Dictionary) -> bool:
-	return save_data.has("current_scene_state") or save_data.has("global_systems")
-
-
-func _get_saved_scene_path(save_data: Dictionary) -> String:
-	var metadata := _extract_save_metadata(save_data)
-	var current_scene_path := str(metadata.get("current_scene_path", ""))
-	if current_scene_path.is_empty():
-		var current_scene_state := save_data.get("current_scene_state", {}) as Dictionary
-		if not current_scene_state.is_empty():
-			var current_scene_player_state := current_scene_state.get("player", {}) as Dictionary
-			current_scene_path = str(current_scene_player_state.get("active_path", ""))
-	if current_scene_path.is_empty():
-		var player_state := save_data.get("player", {}) as Dictionary
-		current_scene_path = str(player_state.get("active_path", ""))
-	if current_scene_path.is_empty():
-		return "res://scenes/World.tscn"
-	return current_scene_path
+func _decode_save_data_from_storage(value: Variant) -> Variant:
+	return _with_world_save_data_codec(func(world_save_data: Node) -> Variant:
+		if world_save_data != null and world_save_data.has_method("decode_storage_value"):
+			return world_save_data.decode_storage_value(value)
+		return _json_value_to_variant(value)
+	)
 
 
 func _variant_to_json_value(value: Variant) -> Variant:

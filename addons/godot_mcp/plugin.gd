@@ -5,9 +5,10 @@ extends EditorPlugin
 
 const MCPClientScript = preload("res://addons/godot_mcp/mcp_client.gd")
 const ToolExecutorScript = preload("res://addons/godot_mcp/tool_executor.gd")
+const DebugLog = preload("res://scripts/DebugLog.gd")
 
 const MCP_RUNTIME_AUTOLOAD_NAME := "MCPRuntime"
-const MCP_RUNTIME_AUTOLOAD_PATH := "res://addons/godot_mcp/runtime/mcp_runtime.gd"
+const MCP_RUNTIME_AUTOLOAD_PATH := "res://scripts/MCPRuntime.gd"
 
 var _mcp_client: Node  # MCPClient
 var _tool_executor: Node  # ToolExecutor
@@ -18,7 +19,10 @@ var _saw_agent_activity := false
 var _runtime_connected := false
 
 func _enter_tree() -> void:
-	print("[Godot MCP] Plugin loading...")
+	DebugLog.info("[Godot MCP] Plugin loading...")
+	if DisplayServer.get_name() == "headless":
+		DebugLog.info("[Godot MCP] Headless editor detected; skipping MCP editor client startup.")
+		return
 
 	# Create MCP client
 	_mcp_client = MCPClientScript.new()
@@ -46,7 +50,7 @@ func _enter_tree() -> void:
 	# Start connection
 	_mcp_client.connect_to_server()
 
-	print("[Godot MCP] Plugin loaded - connecting to MCP server...")
+	DebugLog.info("[Godot MCP] Plugin loaded; connecting to MCP server...")
 
 func _enable_plugin() -> void:
 	# _enable_plugin() runs once when the user toggles the plugin ON in
@@ -59,7 +63,7 @@ func _disable_plugin() -> void:
 	_unregister_runtime_autoload()
 
 func _exit_tree() -> void:
-	print("[Godot MCP] Plugin unloading...")
+	DebugLog.info("[Godot MCP] Plugin unloading...")
 
 	if _mcp_client:
 		_mcp_client.disconnect_from_server()
@@ -72,7 +76,7 @@ func _exit_tree() -> void:
 		remove_control_from_container(EditorPlugin.CONTAINER_TOOLBAR, _status_label)
 		_status_label.queue_free()
 
-	print("[Godot MCP] Plugin unloaded")
+	DebugLog.info("[Godot MCP] Plugin unloaded")
 
 func _register_runtime_autoload() -> void:
 	if not FileAccess.file_exists(MCP_RUNTIME_AUTOLOAD_PATH):
@@ -80,7 +84,7 @@ func _register_runtime_autoload() -> void:
 		return
 	# add_autoload_singleton is idempotent for the same name+path.
 	add_autoload_singleton(MCP_RUNTIME_AUTOLOAD_NAME, MCP_RUNTIME_AUTOLOAD_PATH)
-	print("[Godot MCP] Registered autoload '%s' -> %s" % [MCP_RUNTIME_AUTOLOAD_NAME, MCP_RUNTIME_AUTOLOAD_PATH])
+	DebugLog.info("[Godot MCP] Registered autoload '%s' -> %s" % [MCP_RUNTIME_AUTOLOAD_NAME, MCP_RUNTIME_AUTOLOAD_PATH])
 
 func _unregister_runtime_autoload() -> void:
 	# Only remove if the autoload is ours; don't stomp a user's same-named
@@ -90,10 +94,10 @@ func _unregister_runtime_autoload() -> void:
 		return
 	var current_path := str(ProjectSettings.get_setting(key, ""))
 	if current_path.lstrip("*") != MCP_RUNTIME_AUTOLOAD_PATH:
-		print("[Godot MCP] Autoload '%s' points to %s; leaving it alone." % [MCP_RUNTIME_AUTOLOAD_NAME, current_path])
+		DebugLog.info("[Godot MCP] Autoload '%s' points to %s; leaving it alone." % [MCP_RUNTIME_AUTOLOAD_NAME, current_path])
 		return
 	remove_autoload_singleton(MCP_RUNTIME_AUTOLOAD_NAME)
-	print("[Godot MCP] Unregistered autoload '%s'" % MCP_RUNTIME_AUTOLOAD_NAME)
+	DebugLog.info("[Godot MCP] Unregistered autoload '%s'" % MCP_RUNTIME_AUTOLOAD_NAME)
 
 func _on_runtime_status_changed(connected: bool) -> void:
 	_runtime_connected = connected
@@ -108,12 +112,12 @@ func _setup_status_indicator() -> void:
 	add_control_to_container(EditorPlugin.CONTAINER_TOOLBAR, _status_label)
 
 func _on_connected() -> void:
-	print("[Godot MCP] Connected to MCP server")
+	DebugLog.info("[Godot MCP] Connected to MCP server")
 	_server_connected = true
 	_refresh_status_label()
 
 func _on_disconnected() -> void:
-	print("[Godot MCP] Disconnected from MCP server")
+	DebugLog.info("[Godot MCP] Disconnected from MCP server")
 	_server_connected = false
 	_agent_count = 0
 	_saw_agent_activity = false
@@ -149,7 +153,7 @@ func _on_tool_requested(request_id: String, tool_name: String, args: Dictionary)
 	so we MUST await it here. For non-coroutine tools the await returns
 	immediately with the Dictionary, so there is no overhead for the common
 	case."""
-	print("[Godot MCP] Executing tool: ", tool_name)
+	DebugLog.info("[Godot MCP] Executing tool: %s" % tool_name)
 	_saw_agent_activity = true
 	_refresh_status_label()
 

@@ -28,5 +28,5 @@ offset_left = -76.0
 offset_top = -46.0
 offset_right = 76.0
 offset_bottom = -8.0
-text = "Press E to use Furnace"
+text = "Tap Interact to use Furnace"
 horizontal_alignment = 1

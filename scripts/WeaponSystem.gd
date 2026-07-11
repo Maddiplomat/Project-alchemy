@@ -1,6 +1,8 @@
 class_name WeaponSystem
 extends Node
 
+const DebugLog = preload("res://scripts/DebugLog.gd")
+
 ## WeaponSystem
 ## Holds equipped weapon state and interacts with DamageCalculator.
 
@@ -8,15 +10,15 @@ var equipped_weapon: Dictionary = {}
 
 func equip_weapon(weapon_data: Dictionary) -> void:
 	equipped_weapon = weapon_data
-	print("Equipped weapon: ", equipped_weapon.get("display_name", "Unknown"))
+	DebugLog.info("Equipped weapon: %s" % equipped_weapon.get("display_name", "Unknown"))
 
 func unequip_weapon() -> void:
 	equipped_weapon.clear()
-	print("Weapon unequipped")
+	DebugLog.info("Weapon unequipped")
 
 func fire(target: Node) -> void:
 	if equipped_weapon.is_empty():
-		print("No weapon equipped!")
+		DebugLog.info("No weapon equipped")
 		return
 	
 	# Assuming a DamageCalculator autoload or class will be implemented later
@@ -24,4 +26,7 @@ func fire(target: Node) -> void:
 		# DamageCalculator.calculate_and_apply(equipped_weapon, target)
 		pass
 	else:
-		print("Fired weapon: ", equipped_weapon.get("display_name", "Unknown"), " at ", target.name)
+		DebugLog.info(
+			"Fired weapon: %s at %s"
+			% [equipped_weapon.get("display_name", "Unknown"), target.name]
+		)

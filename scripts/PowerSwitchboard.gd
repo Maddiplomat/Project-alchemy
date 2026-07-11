@@ -10,6 +10,7 @@ const CONSUMER_CHEM_BENCH_BOOST := &"chem_bench_boost"
 const DISTRIBUTION_CAPACITY_UNITS_PER_MINUTE := 4.0
 const FURNACE_BOOST_DRAIN_UNITS_PER_MINUTE := 1.5
 const CHEM_BENCH_BOOST_DRAIN_UNITS_PER_MINUTE := 1.0
+const PERSISTENCE_KEY := &"power_switchboard"
 
 const CONSUMER_INFO := {
 	CONSUMER_PERIMETER_LIGHTS: {&"label": "Perimeter Lights"},
@@ -35,6 +36,10 @@ func is_consumer_enabled(consumer_id: StringName) -> bool:
 	if not _consumer_enabled.has(consumer_id):
 		return true
 	return bool(_consumer_enabled[consumer_id])
+
+
+func get_persistence_key() -> StringName:
+	return PERSISTENCE_KEY
 
 
 func set_consumer_enabled(consumer_id: StringName, enabled: bool) -> void:

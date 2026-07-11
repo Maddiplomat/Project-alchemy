@@ -1,6 +1,9 @@
 extends Node
 # Autoload: WorldSystem
 
+const PERSISTENCE_KEY := &"world_system"
+const TRAVEL_CONTEXT_KEY := &"__travel_context"
+
 var _current_seed: int = 0
 var _scene_seeds: Dictionary[String, int] = {}
 var _scene_state_by_path: Dictionary[String, Dictionary] = {}
@@ -16,6 +19,10 @@ func _ready() -> void:
 
 func get_seed() -> int:
 	return _current_seed
+
+
+func get_persistence_key() -> StringName:
+	return PERSISTENCE_KEY
 
 
 func set_seed(value: int) -> void:
@@ -106,16 +113,21 @@ func travel_to_scene(target_scene_path: String, entry_point_id: StringName = &""
 	var world_save_data := EventBus.get_world_save_data()
 	if world_save_data == null or not world_save_data.has_method("capture_runtime_state"):
 		return false
-	var source_state: Dictionary = world_save_data.capture_runtime_state()
+	var source_envelope: Dictionary = world_save_data.capture_runtime_state()
+	var source_state: Dictionary = (source_envelope.get("current_scene_state", {}) as Dictionary).duplicate(true)
+	if source_state.is_empty():
+		return false
 	store_scene_state(current_scene_path, source_state)
 
 	var target_state := get_scene_state(target_scene_path)
-	_pending_restore_state = _compose_travel_restore_state(source_state, target_state, target_scene_path)
-	_pending_travel_context = {
+	var travel_context := {
 		&"target_scene_path": target_scene_path,
 		&"entry_point_id": entry_point_id,
 		&"use_entry_point": target_state.is_empty(),
 	}
+	_pending_restore_state = _compose_travel_restore_state(source_state, target_state, target_scene_path)
+	_pending_restore_state[String(TRAVEL_CONTEXT_KEY)] = travel_context.duplicate(true)
+	_pending_travel_context = travel_context
 	return tree.change_scene_to_file(target_scene_path) == OK
 
 
@@ -133,7 +145,13 @@ func consume_pending_travel_context() -> Dictionary:
 
 func queue_pending_restore_state(restore_state: Dictionary, travel_context: Dictionary = {}) -> void:
 	_pending_restore_state = restore_state.duplicate(true)
+	if not travel_context.is_empty():
+		_pending_restore_state[String(TRAVEL_CONTEXT_KEY)] = travel_context.duplicate(true)
 	_pending_travel_context = travel_context.duplicate(true)
+
+
+func has_pending_restore_state() -> bool:
+	return not _pending_restore_state.is_empty() or not _pending_travel_context.is_empty()
 
 
 func _compose_travel_restore_state(source_state: Dictionary, target_state: Dictionary, target_scene_path: String) -> Dictionary:
@@ -171,4 +189,6 @@ func _compose_travel_restore_state(source_state: Dictionary, target_state: Dicti
 
 
 func _on_new_game_started() -> void:
+	if has_pending_restore_state():
+		return
 	clear_persistent_state()

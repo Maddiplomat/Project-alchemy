@@ -15,6 +15,7 @@ const DRY_BOX_ACCESS_ENTRY_ID := &"dry_box_access"
 const SODIUM_HANDLING_ENTRY_ID := &"sodium_handling"
 const MERCURY_HANDLING_ENTRY_ID := &"mercury_handling"
 const BASE_POWER_ONLINE_ENTRY_ID := &"base_power_online"
+const PERSISTENCE_KEY := &"research_objectives"
 
 var objectives: Dictionary[StringName, Dictionary] = {}
 
@@ -85,6 +86,10 @@ func reset_for_new_game() -> void:
 	_defense_uptime_elapsed = 0.0
 	_activate_first_incomplete()
 	_activate_post_tutorial_repeatables()
+
+
+func get_persistence_key() -> StringName:
+	return PERSISTENCE_KEY
 
 
 func capture_persistent_state() -> Dictionary:
@@ -170,6 +175,18 @@ func _seed_objectives() -> void:
 		&"condition_count": 3,
 		&"reward_type": "unlock_recipe",
 		&"reward_target": &"charcoal",
+		&"completed": false,
+		&"active": false,
+	})
+	_add_objective({
+		&"id": &"build_furnace",
+		&"title": "Build a Furnace",
+		&"hint": "Place a furnace at base before you start charcoal and smelting work.",
+		&"condition_type": "build",
+		&"condition_target": &"furnace",
+		&"condition_count": 1,
+		&"reward_type": "",
+		&"reward_target": &"",
 		&"completed": false,
 		&"active": false,
 	})
@@ -486,6 +503,9 @@ func _refresh_active_objective() -> void:
 		&"scan_starters":
 			if _get_scan_progress() >= int(objective.get(&"condition_count", 0)):
 				_complete_objective(objective_id)
+		&"build_furnace":
+			if _has_placed_buildable(&"furnace"):
+				_complete_objective(objective_id)
 		&"make_charcoal":
 			if InventoryManager != null and InventoryManager.get_stack(&"charcoal").quantity >= 1:
 				_complete_objective(objective_id)
@@ -631,6 +651,10 @@ func _on_inventory_changed(_slot_index: int) -> void:
 
 func _on_buildable_placed(buildable_id: StringName) -> void:
 	match buildable_id:
+		&"furnace":
+			if _is_active_objective(&"build_furnace"):
+				_progress[&"build_furnace"] = 1
+				_complete_objective(&"build_furnace")
 		&"chem_bench":
 			if _is_active_objective(&"build_chem_bench"):
 				_progress[&"build_chem_bench"] = 1

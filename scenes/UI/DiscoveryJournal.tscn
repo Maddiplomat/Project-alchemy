@@ -45,7 +45,7 @@ text = "Discovery Journal"
 
 [node name="SubtitleLabel" type="Label" parent="MarginContainer/Content/TitleRow"]
 layout_mode = 2
-text = "Press J to close. Field notes save per entry."
+text = "Use Close or Journal to dismiss. Field notes save per entry."
 
 [node name="FilterRow" type="HBoxContainer" parent="MarginContainer/Content"]
 layout_mode = 2

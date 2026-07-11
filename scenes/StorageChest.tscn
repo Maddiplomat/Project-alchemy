@@ -36,7 +36,7 @@ shape = SubResource("RectangleShape2D_interaction")
 
 [node name="PromptLabel" type="Label" parent="."]
 visible = false
-text = "Press E to open Chest"
+text = "Tap Interact to open Chest"
 horizontal_alignment = 1
 
 [node name="PointLight2D" type="PointLight2D" parent="."]

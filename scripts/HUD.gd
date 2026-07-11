@@ -11,9 +11,14 @@ const NIGHT_DEFENSE_TOAST_SECONDS := 2.2
 @onready var carrier_risk_strip: Panel = $CarrierRiskStrip
 @onready var carrier_risk_warning_label: Label = $CarrierRiskStrip/VBoxContainer/WarningLabel
 @onready var carrier_risk_hint_label: Label = $CarrierRiskStrip/VBoxContainer/HintLabel
+@onready var minimap_placeholder: Control = $MinimapPlaceholder
+@onready var minimap_toggle_button: Button = $MinimapToggleButton
 @onready var scanner_upgrade_label: Label = $ScannerUpgradeLabel
+@onready var context_interact_button: Button = $ContextInteractButton
+@onready var context_interact_label: Label = $ContextInteractLabel
 @onready var objectives_panel: Panel = $ObjectivesPanel
-@onready var objective_title_label: Label = $ObjectivesPanel/MarginContainer/VBoxContainer/TitleLabel
+@onready var objectives_collapse_button: Button = $ObjectivesPanel/MarginContainer/VBoxContainer/HeaderRow/CollapseButton
+@onready var objective_title_label: Label = $ObjectivesPanel/MarginContainer/VBoxContainer/HeaderRow/TitleLabel
 @onready var objective_1_label: Label = $ObjectivesPanel/MarginContainer/VBoxContainer/Objective1Label
 @onready var objective_2_label: Label = $ObjectivesPanel/MarginContainer/VBoxContainer/Objective2Label
 @onready var objective_3_label: Label = $ObjectivesPanel/MarginContainer/VBoxContainer/Objective3Label
@@ -21,8 +26,14 @@ const NIGHT_DEFENSE_TOAST_SECONDS := 2.2
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var health_label: Label = $HealthBar/HealthLabel
 @onready var weight_label: Label = $WeightLabel
+@onready var held_item_container: Panel = $HeldItemContainer
 @onready var held_item_icon: TextureRect = $HeldItemContainer/HBoxContainer/ActiveItemIcon
 @onready var held_item_label: Label = $HeldItemContainer/HBoxContainer/ActiveItemLabel
+@onready var mobile_controls: Control = $MobileControls
+@onready var mobile_tutorial_overlay: Control = $MobileTutorialOverlay
+@onready var mobile_tutorial_tint: ColorRect = $MobileTutorialOverlay/Tint
+@onready var mobile_tutorial_dismiss_button: Button = $MobileTutorialOverlay/CenterContainer/MarginContainer/PanelContainer/MarginContainer/VBoxContainer/DismissButton
+@onready var mobile_tutorial_skip_button: Button = $MobileTutorialOverlay/SkipTutorialButton
 @onready var carry_vignette: ColorRect = $CarryVignette
 @onready var death_overlay: Panel = $DeathOverlay
 @onready var death_cause_label: Label = $DeathOverlay/CenterContainer/DialogPanel/VBoxContainer/CauseLabel
@@ -37,6 +48,18 @@ const CARRIER_VIGNETTE_PULSE_SPEED := 5.5
 const CARRIER_VIGNETTE_URGENT_SPEED := 9.0
 const OBJECTIVES_PANEL_DEFAULT_TOP := 44.0
 const OBJECTIVES_PANEL_DEFAULT_BOTTOM := 166.0
+const TOUCH_HUD_MARGIN := 14.0
+const TOUCH_MINIMAP_COLLAPSED_SIZE := 64.0
+const TOUCH_MINIMAP_EXPANDED_SIZE := 108.0
+const TOUCH_BOTTOM_CONTROL_CLEARANCE := 236.0
+const TOUCH_SIDE_CARD_WIDTH := 168.0
+const MOBILE_TUTORIAL_AUTO_DISMISS_SECONDS := 4.0
+const MOBILE_HINT_FIRST_RUN := &"mobile_first_run_overlay"
+const MOBILE_HINT_MOVEMENT := &"mobile_movement"
+const MOBILE_HINT_ATTACK := &"mobile_attack"
+const MOBILE_HINT_INVENTORY := &"mobile_inventory"
+const MOBILE_HINT_CRAFTING := &"mobile_crafting"
+const MOBILE_HINT_BUILDING := &"mobile_building"
 
 @export var debug_seed_journal_entries := 0
 @export var debug_open_journal_on_ready := false
@@ -71,6 +94,11 @@ var _weather_day_label: Label = null
 var _weather_player: Node2D = null
 var _journal_update_indicator: Label = null
 var _journal_has_unread_entries := false
+var _current_touch_interactable: Node2D = null
+var _objectives_collapsed := false
+var _minimap_collapsed := false
+var _player_combat_source: Node = null
+var _hud_poll_elapsed := 0.0
 
 func _ready() -> void:
 	GameManager.player_health_changed.connect(_update_health)
@@ -89,6 +117,22 @@ func _ready() -> void:
 			ResearchObjectives.objectives_restored.connect(_on_objectives_state_restored)
 	retry_button.pressed.connect(_on_retry_button_pressed)
 	quit_button.pressed.connect(_on_quit_button_pressed)
+	context_interact_button.pressed.connect(_on_context_interact_button_pressed)
+	objectives_collapse_button.pressed.connect(_toggle_objectives_collapsed)
+	minimap_toggle_button.pressed.connect(_toggle_minimap_collapsed)
+	if mobile_tutorial_dismiss_button != null:
+		mobile_tutorial_dismiss_button.pressed.connect(_dismiss_mobile_tutorial_overlay)
+	if mobile_tutorial_skip_button != null:
+		mobile_tutorial_skip_button.pressed.connect(_dismiss_mobile_tutorial_overlay)
+	if mobile_tutorial_tint != null:
+		mobile_tutorial_tint.gui_input.connect(_on_mobile_tutorial_tint_gui_input)
+	get_viewport().size_changed.connect(_apply_hud_layout)
+	GameManager.player_registered.connect(_on_player_registered)
+	GameManager.player_unregistered.connect(_on_player_unregistered)
+	if MobileInputRouter != null and MobileInputRouter.has_signal("input_mode_changed"):
+		MobileInputRouter.input_mode_changed.connect(_on_input_mode_changed)
+	if BuildSystem != null and BuildSystem.has_signal("build_mode_changed"):
+		BuildSystem.build_mode_changed.connect(_on_build_mode_changed)
 	if has_node("/root/CarrierRiskSystem"):
 		CarrierRiskSystem.carrier_risk_warning.connect(_on_carrier_risk_warning)
 		CarrierRiskSystem.carrier_risk_cleared.connect(_on_carrier_risk_cleared)
@@ -129,6 +173,14 @@ func _ready() -> void:
 
 	_setup_toast_notification()
 	GameManager.environmental_warning_changed.connect(_on_environmental_warning_changed)
+	GameManager.save_completed.connect(_on_save_completed)
+	_objectives_collapsed = MobileInputRouter != null and MobileInputRouter.prefers_touch_controls()
+	_minimap_collapsed = MobileInputRouter != null and MobileInputRouter.prefers_touch_controls()
+	_bind_player_combat_source(GameManager.get_player())
+	if mobile_tutorial_overlay != null:
+		mobile_tutorial_overlay.visible = false
+	_apply_hud_layout()
+	call_deferred("_show_first_run_mobile_overlay_if_needed")
 
 
 func _process(delta: float) -> void:
@@ -137,7 +189,13 @@ func _process(delta: float) -> void:
 			CARRIER_VIGNETTE_URGENT_SPEED if _active_carrier_risk_seconds <= 1 else CARRIER_VIGNETTE_PULSE_SPEED
 		)
 		_update_carry_vignette()
+	_hud_poll_elapsed += maxf(delta, 0.0)
+	if _hud_poll_elapsed < _get_hud_poll_interval():
+		return
+	_hud_poll_elapsed = 0.0
 	_update_weather_strip()
+	_update_touch_interaction_prompt()
+	_maybe_show_station_tutorial()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -157,18 +215,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
-	if event.is_action_pressed("manual_save"):
-		if GameManager.game_state != GameManager.GameState.PLAYING:
-			return
-		var save_result := GameManager.request_save(GameManager.SaveTrigger.MANUAL)
-		if bool(save_result.get(&"success", false)):
-			_queue_toast("Game saved to slot %d." % int(save_result.get(&"slot_id", GameManager.active_save_slot)))
-		else:
-			_queue_toast("Save failed: %s" % str(save_result.get(&"error", "Unknown error")))
-		get_viewport().set_input_as_handled()
+	if event.is_action_pressed("toggle_inventory"):
+		_maybe_show_inventory_tutorial()
 		return
 
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_O:
+	if event.is_action_pressed(&"toggle_objectives_panel") or (
+		event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_O
+	):
 		_toggle_objectives_panel()
 		get_viewport().set_input_as_handled()
 
@@ -177,6 +230,157 @@ func _toggle_objectives_panel() -> void:
 	_objectives_panel_visible = not _objectives_panel_visible
 	if objectives_panel != null:
 		objectives_panel.visible = _objectives_panel_visible
+	_apply_hud_layout()
+
+
+func _toggle_objectives_collapsed() -> void:
+	_objectives_collapsed = not _objectives_collapsed
+	_refresh_objectives()
+	_apply_hud_layout()
+
+
+func _toggle_minimap_collapsed() -> void:
+	_minimap_collapsed = not _minimap_collapsed
+	_apply_hud_layout()
+
+
+func _update_touch_interaction_prompt() -> void:
+	if context_interact_button == null or context_interact_label == null:
+		return
+	if not _should_show_touch_interaction_prompt():
+		_hide_touch_interaction_prompt()
+		return
+
+	var player := GameManager.get_player() as Node2D
+	if player == null:
+		_hide_touch_interaction_prompt()
+		return
+
+	var interactable := _find_touch_interactable(player)
+	if interactable == null:
+		_hide_touch_interaction_prompt()
+		return
+
+	_current_touch_interactable = interactable
+	var prompt_text := "Interact"
+	if interactable.has_method("get_touch_interaction_prompt"):
+		prompt_text = str(interactable.call("get_touch_interaction_prompt"))
+	if prompt_text.is_empty():
+		prompt_text = "Interact"
+
+	var world_position := interactable.global_position
+	if interactable.has_method("get_touch_interaction_world_position"):
+		world_position = interactable.call("get_touch_interaction_world_position")
+	var screen_position := _world_to_screen(world_position)
+	var viewport_rect := get_viewport().get_visible_rect()
+	var safe_insets := _get_safe_insets(viewport_rect.size)
+	var inset_left := float(safe_insets.get(&"left", 0.0))
+	var inset_top := float(safe_insets.get(&"top", 0.0))
+	var inset_right := float(safe_insets.get(&"right", 0.0))
+	var inset_bottom := float(safe_insets.get(&"bottom", 0.0))
+	screen_position.x = clampf(
+		screen_position.x,
+		88.0 + inset_left,
+		viewport_rect.size.x - 88.0 - inset_right
+	)
+	screen_position.y = clampf(
+		screen_position.y - 54.0,
+		72.0 + inset_top,
+		viewport_rect.size.y - 164.0 - inset_bottom
+	)
+
+	context_interact_button.visible = true
+	context_interact_label.visible = true
+	context_interact_button.text = "Interact"
+	context_interact_button.global_position = screen_position - Vector2(context_interact_button.size.x * 0.5, 0.0)
+	context_interact_label.text = prompt_text
+	context_interact_label.global_position = screen_position - Vector2(context_interact_label.size.x * 0.5, 26.0)
+
+
+func _hide_touch_interaction_prompt() -> void:
+	_current_touch_interactable = null
+	if context_interact_button != null:
+		context_interact_button.visible = false
+	if context_interact_label != null:
+		context_interact_label.visible = false
+
+
+func _should_show_touch_interaction_prompt() -> bool:
+	if not MobileInputRouter.prefers_touch_controls():
+		return false
+	if _journal_open or death_overlay.visible:
+		return false
+	return true
+
+
+func _find_touch_interactable(player: Node2D) -> Node2D:
+	var best_node: Node2D = null
+	var best_distance := INF
+	for node in get_tree().get_nodes_in_group(&"touch_interactable"):
+		var interactable := node as Node2D
+		if interactable == null or not is_instance_valid(interactable):
+			continue
+		if not interactable.has_method("can_touch_interact"):
+			continue
+		if not bool(interactable.call("can_touch_interact", player)):
+			continue
+		var distance := player.global_position.distance_to(interactable.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best_node = interactable
+	return best_node
+
+
+func _world_to_screen(world_position: Vector2) -> Vector2:
+	return get_viewport().get_canvas_transform() * world_position
+
+
+func _on_context_interact_button_pressed() -> void:
+	if _current_touch_interactable == null or not is_instance_valid(_current_touch_interactable):
+		return
+	if _current_touch_interactable.has_method("perform_touch_interaction"):
+		_current_touch_interactable.call("perform_touch_interaction")
+		return
+	MobileInputRouter.tap_action(&"interact")
+
+
+func _on_input_mode_changed(_mode: StringName) -> void:
+	_apply_hud_layout()
+	_refresh_journal_indicator_copy()
+	_show_first_run_mobile_overlay_if_needed()
+
+
+func _on_player_registered(player_node: Node2D) -> void:
+	_bind_player_combat_source(player_node)
+
+
+func _on_player_unregistered(player_node: Node2D) -> void:
+	if _player_combat_source == player_node:
+		_bind_player_combat_source(null)
+
+
+func _bind_player_combat_source(player_node: Node) -> void:
+	if _player_combat_source != null and is_instance_valid(_player_combat_source):
+		var previous_callback := Callable(self, "_on_player_combat_state_changed")
+		if _player_combat_source.has_signal("combat_state_changed") and _player_combat_source.combat_state_changed.is_connected(previous_callback):
+			_player_combat_source.combat_state_changed.disconnect(previous_callback)
+	_player_combat_source = player_node
+	if _player_combat_source != null and _player_combat_source.has_signal("combat_state_changed"):
+		_player_combat_source.combat_state_changed.connect(_on_player_combat_state_changed)
+
+
+func _on_player_combat_state_changed(_cooldown_remaining: float, _cooldown_duration: float, attack_label: String, _weapon_type: StringName) -> void:
+	if not _prefers_touch_hud() or GameManager.has_seen_tutorial_hint(MOBILE_HINT_ATTACK):
+		return
+	if attack_label == "Use Hands":
+		return
+	_queue_mobile_tutorial(MOBILE_HINT_ATTACK, "Attack: tap the right Attack button. The aim pad can steer ranged shots, and melee follows your facing.")
+
+
+func _on_build_mode_changed(active: bool) -> void:
+	if not active or not _prefers_touch_hud():
+		return
+	_queue_mobile_tutorial(MOBILE_HINT_BUILDING, "Building: tap Build, pick a card, drag to adjust the snapped preview, then use Rotate, Confirm, or Cancel.")
 
 func _update_health(current_health: int, max_health: int) -> void:
 	health_bar.max_value = max_health
@@ -214,6 +418,15 @@ func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 		var alpha_ratio := inverse_lerp(CARRY_VIGNETTE_START_RATIO, CARRY_VIGNETTE_END_RATIO, minf(capacity_ratio, CARRY_VIGNETTE_END_RATIO))
 		_weight_vignette_alpha = alpha_ratio * CARRY_VIGNETTE_MAX_ALPHA
 	_update_carry_vignette()
+
+
+func _on_save_completed(result: Dictionary) -> void:
+	if int(result.get(&"trigger", -1)) != GameManager.SaveTrigger.MANUAL:
+		return
+	if bool(result.get(&"success", false)):
+		_queue_toast("Game saved to slot %d." % int(result.get(&"slot_id", GameManager.active_save_slot)))
+		return
+	_queue_toast("Save failed: %s" % str(result.get(&"error", "Unknown error")))
 
 
 func _on_day_changed(_day: int) -> void:
@@ -264,6 +477,207 @@ func _refresh_objectives() -> void:
 	objective_2_label.text = lines[1] if lines.size() > 1 else ""
 	objective_3_label.text = lines[2] if lines.size() > 2 else ""
 	objectives_panel.visible = _objectives_panel_visible
+	if _objectives_collapsed:
+		objective_title_label.text = "Objectives (%d)" % lines.size()
+	_refresh_objectives_collapse_state()
+
+
+func _refresh_objectives_collapse_state() -> void:
+	var show_body := not _objectives_collapsed
+	objective_1_label.visible = show_body
+	objective_2_label.visible = show_body
+	objective_3_label.visible = show_body
+	objectives_collapse_button.text = "+" if _objectives_collapsed else "-"
+
+
+func _apply_hud_layout() -> void:
+	var viewport_size := get_viewport().get_visible_rect().size
+	var touch_mode := MobileInputRouter != null and MobileInputRouter.prefers_touch_controls()
+	if touch_mode:
+		_apply_touch_hud_layout(viewport_size)
+	else:
+		_apply_desktop_hud_layout()
+
+
+func _apply_touch_hud_layout(viewport_size: Vector2) -> void:
+	var safe_insets := _get_safe_insets(viewport_size)
+	var inset_left := float(safe_insets.get(&"left", 0.0))
+	var inset_top := float(safe_insets.get(&"top", 0.0))
+	var inset_right := float(safe_insets.get(&"right", 0.0))
+	var inset_bottom := float(safe_insets.get(&"bottom", 0.0))
+	var left := inset_left + TOUCH_HUD_MARGIN
+	var top := inset_top + TOUCH_HUD_MARGIN
+	var right := viewport_size.x - inset_right - TOUCH_HUD_MARGIN
+	var bottom := viewport_size.y - inset_bottom - TOUCH_HUD_MARGIN
+
+	var minimap_size := TOUCH_MINIMAP_COLLAPSED_SIZE if _minimap_collapsed else TOUCH_MINIMAP_EXPANDED_SIZE
+	minimap_placeholder.anchor_left = 0.0
+	minimap_placeholder.anchor_top = 0.0
+	minimap_placeholder.anchor_right = 0.0
+	minimap_placeholder.anchor_bottom = 0.0
+	minimap_placeholder.offset_left = right - minimap_size
+	minimap_placeholder.offset_top = top
+	minimap_placeholder.offset_right = right
+	minimap_placeholder.offset_bottom = top + minimap_size
+	minimap_toggle_button.visible = true
+	minimap_toggle_button.position = Vector2(right - 42.0, top + 4.0)
+	minimap_toggle_button.size = Vector2(42.0, 28.0)
+	minimap_toggle_button.text = "+" if _minimap_collapsed else "-"
+
+	objectives_panel.anchor_left = 0.0
+	objectives_panel.anchor_top = 0.0
+	objectives_panel.anchor_right = 0.0
+	objectives_panel.anchor_bottom = 0.0
+	objectives_panel.offset_left = left
+	objectives_panel.offset_top = top
+	objectives_panel.offset_right = left + minf(286.0, viewport_size.x * 0.52)
+	objectives_panel.offset_bottom = top + (52.0 if _objectives_collapsed else 146.0)
+	objectives_panel.visible = _objectives_panel_visible
+	_refresh_objectives_collapse_state()
+
+	var header_bottom := top + 50.0
+	day_time_label.visible = true
+	day_time_label.anchor_left = 0.0
+	day_time_label.anchor_top = 0.0
+	day_time_label.anchor_right = 0.0
+	day_time_label.anchor_bottom = 0.0
+	day_time_label.offset_left = (viewport_size.x - 180.0) * 0.5
+	day_time_label.offset_top = header_bottom
+	day_time_label.offset_right = day_time_label.offset_left + 180.0
+	day_time_label.offset_bottom = header_bottom + 28.0
+	day_time_label.add_theme_font_size_override("font_size", 16)
+
+	if _weather_strip != null:
+		_weather_strip.position = Vector2((viewport_size.x - _weather_strip.size.x) * 0.5, header_bottom + 24.0)
+
+	if carrier_risk_strip != null:
+		carrier_risk_strip.position = Vector2((viewport_size.x - carrier_risk_strip.size.x) * 0.5, header_bottom + 24.0)
+
+	health_bar.anchor_left = 0.0
+	health_bar.anchor_top = 0.0
+	health_bar.anchor_right = 0.0
+	health_bar.anchor_bottom = 0.0
+	health_bar.offset_left = left
+	health_bar.offset_top = bottom - TOUCH_BOTTOM_CONTROL_CLEARANCE
+	health_bar.offset_right = left + 150.0
+	health_bar.offset_bottom = health_bar.offset_top + 24.0
+	health_label.add_theme_font_size_override("font_size", 13)
+	weight_label.anchor_left = 0.0
+	weight_label.anchor_top = 0.0
+	weight_label.anchor_right = 0.0
+	weight_label.anchor_bottom = 0.0
+	weight_label.offset_left = left
+	weight_label.offset_top = health_bar.offset_top + 30.0
+	weight_label.offset_right = left + 156.0
+	weight_label.offset_bottom = weight_label.offset_top + 24.0
+	weight_label.add_theme_font_size_override("font_size", 14)
+
+	held_item_container.anchor_left = 0.0
+	held_item_container.anchor_top = 0.0
+	held_item_container.anchor_right = 0.0
+	held_item_container.anchor_bottom = 0.0
+	held_item_container.offset_left = right - TOUCH_SIDE_CARD_WIDTH
+	held_item_container.offset_top = top + minimap_size + 12.0
+	held_item_container.offset_right = right
+	held_item_container.offset_bottom = held_item_container.offset_top + 54.0
+	held_item_label.add_theme_font_size_override("font_size", 14)
+
+	if _journal_update_indicator != null:
+		_journal_update_indicator.anchor_left = 0.0
+		_journal_update_indicator.anchor_top = 0.0
+		_journal_update_indicator.anchor_right = 0.0
+		_journal_update_indicator.anchor_bottom = 0.0
+		_journal_update_indicator.offset_left = held_item_container.position.x - 8.0
+		_journal_update_indicator.offset_top = held_item_container.position.y + held_item_container.size.y + 8.0
+		_journal_update_indicator.offset_right = held_item_container.position.x + held_item_container.size.x
+		_journal_update_indicator.offset_bottom = _journal_update_indicator.offset_top + 22.0
+		_journal_update_indicator.text = _get_journal_indicator_text()
+
+	if _night_defense_strip != null:
+		_night_defense_strip.position = Vector2(left, top + objectives_panel.size.y + 8.0)
+
+
+func _apply_desktop_hud_layout() -> void:
+	minimap_placeholder.anchor_left = 1.0
+	minimap_placeholder.anchor_top = 0.0
+	minimap_placeholder.anchor_right = 1.0
+	minimap_placeholder.anchor_bottom = 0.0
+	minimap_placeholder.offset_left = -72.0
+	minimap_placeholder.offset_top = 8.0
+	minimap_placeholder.offset_right = -8.0
+	minimap_placeholder.offset_bottom = 72.0
+	minimap_toggle_button.visible = false
+
+	objectives_panel.anchor_left = 0.0
+	objectives_panel.anchor_top = 0.0
+	objectives_panel.anchor_right = 0.0
+	objectives_panel.anchor_bottom = 0.0
+	objectives_panel.offset_left = 16.0
+	objectives_panel.offset_top = 44.0
+	objectives_panel.offset_right = 292.0
+	objectives_panel.offset_bottom = 166.0
+	objectives_panel.visible = _objectives_panel_visible
+	_objectives_collapsed = false
+	_refresh_objectives_collapse_state()
+
+	day_time_label.anchor_left = 0.5
+	day_time_label.anchor_top = 0.0
+	day_time_label.anchor_right = 0.5
+	day_time_label.anchor_bottom = 0.0
+	day_time_label.visible = _weather_strip == null
+	day_time_label.offset_left = -90.0
+	day_time_label.offset_top = 18.0
+	day_time_label.offset_right = 90.0
+	day_time_label.offset_bottom = 42.0
+	day_time_label.add_theme_font_size_override("font_size", 18)
+	health_bar.anchor_left = 0.0
+	health_bar.anchor_top = 1.0
+	health_bar.anchor_right = 0.0
+	health_bar.anchor_bottom = 1.0
+	health_bar.offset_left = 24.0
+	health_bar.offset_top = -52.0
+	health_bar.offset_right = 124.0
+	health_bar.offset_bottom = -24.0
+	weight_label.anchor_left = 0.0
+	weight_label.anchor_top = 1.0
+	weight_label.anchor_right = 0.0
+	weight_label.anchor_bottom = 1.0
+	weight_label.offset_left = 136.0
+	weight_label.offset_top = -52.0
+	weight_label.offset_right = 292.0
+	weight_label.offset_bottom = -24.0
+	held_item_container.anchor_left = 0.5
+	held_item_container.anchor_top = 1.0
+	held_item_container.anchor_right = 0.5
+	held_item_container.anchor_bottom = 1.0
+	held_item_container.offset_left = -110.0
+	held_item_container.offset_top = -88.0
+	held_item_container.offset_right = 110.0
+	held_item_container.offset_bottom = -24.0
+	if _journal_update_indicator != null:
+		_journal_update_indicator.anchor_left = 1.0
+		_journal_update_indicator.anchor_right = 1.0
+		_journal_update_indicator.offset_left = -180.0
+		_journal_update_indicator.offset_top = 46.0
+		_journal_update_indicator.offset_right = -20.0
+		_journal_update_indicator.offset_bottom = 72.0
+		_journal_update_indicator.text = _get_journal_indicator_text()
+
+
+func _get_safe_insets(viewport_size: Vector2) -> Dictionary:
+	var safe_rect := Rect2(Vector2.ZERO, viewport_size)
+	if DisplayServer.has_method("get_display_safe_area"):
+		var safe_area: Variant = DisplayServer.get_display_safe_area()
+		if safe_area is Rect2i:
+			safe_rect = Rect2(safe_area.position, safe_area.size)
+		elif safe_area is Rect2:
+			safe_rect = safe_area
+	return {
+		&"left": maxf(0.0, safe_rect.position.x),
+		&"top": maxf(0.0, safe_rect.position.y),
+		&"right": maxf(0.0, viewport_size.x - safe_rect.end.x),
+		&"bottom": maxf(0.0, viewport_size.y - safe_rect.end.y),
+	}
 
 
 func _format_objective_progress(objective: Dictionary) -> String:
@@ -530,7 +944,7 @@ func _setup_journal_update_indicator() -> void:
 	_journal_update_indicator = Label.new()
 	_journal_update_indicator.name = "JournalUpdateIndicator"
 	_journal_update_indicator.visible = false
-	_journal_update_indicator.text = "New Entry [J]"
+	_journal_update_indicator.text = _get_journal_indicator_text()
 	_journal_update_indicator.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_journal_update_indicator.add_theme_font_size_override("font_size", 14)
 	_journal_update_indicator.add_theme_color_override("font_color", Color(0.98, 0.86, 0.42, 1.0))
@@ -567,6 +981,7 @@ func _open_journal() -> void:
 	_journal_open = true
 	_set_journal_update_indicator(false)
 	_journal_panel.show_panel()
+	_refresh_journal_indicator_copy()
 
 
 func _close_journal() -> void:
@@ -576,6 +991,7 @@ func _close_journal() -> void:
 	_journal_open = false
 	_journal_panel.hide_panel()
 	_resume_player_input()
+	_refresh_journal_indicator_copy()
 
 
 func _on_discovery_entry_added(_entry: Dictionary) -> void:
@@ -588,6 +1004,16 @@ func _set_journal_update_indicator(active: bool) -> void:
 	_journal_has_unread_entries = active
 	if _journal_update_indicator != null:
 		_journal_update_indicator.visible = active
+		_journal_update_indicator.text = _get_journal_indicator_text()
+
+
+func _refresh_journal_indicator_copy() -> void:
+	if _journal_update_indicator != null:
+		_journal_update_indicator.text = _get_journal_indicator_text()
+
+
+func _get_journal_indicator_text() -> String:
+	return "New Entry" if _prefers_touch_hud() else "New Entry [J]"
 
 
 func _pause_player_input() -> void:
@@ -968,6 +1394,62 @@ func _on_objectives_progressed(_objective_id: StringName, _current: int, _target
 func _queue_toast(message: String) -> void:
 	_toast_queue.append(message)
 	_play_next_toast()
+
+
+func _prefers_touch_hud() -> bool:
+	return MobileInputRouter != null and MobileInputRouter.prefers_touch_controls()
+
+
+func _get_hud_poll_interval() -> float:
+	if MobilePerformance != null and MobilePerformance.has_method("get_hud_poll_interval"):
+		return float(MobilePerformance.get_hud_poll_interval())
+	return 0.12
+
+
+func _queue_mobile_tutorial(hint_id: StringName, message: String) -> void:
+	if not _prefers_touch_hud() or GameManager.has_seen_tutorial_hint(hint_id):
+		return
+	GameManager.mark_tutorial_hint_seen(hint_id)
+	_queue_toast(message)
+
+
+func _show_first_run_mobile_overlay_if_needed() -> void:
+	if not _prefers_touch_hud():
+		return
+	if mobile_tutorial_overlay == null or GameManager.has_seen_tutorial_hint(MOBILE_HINT_FIRST_RUN):
+		return
+	mobile_tutorial_overlay.visible = true
+	GameManager.mark_tutorial_hint_seen(MOBILE_HINT_FIRST_RUN)
+	get_tree().create_timer(MOBILE_TUTORIAL_AUTO_DISMISS_SECONDS).timeout.connect(_dismiss_mobile_tutorial_overlay)
+
+
+func _dismiss_mobile_tutorial_overlay() -> void:
+	if mobile_tutorial_overlay != null:
+		mobile_tutorial_overlay.visible = false
+	_queue_mobile_tutorial(MOBILE_HINT_MOVEMENT, "Movement: drag the left pad to move. Tap Sprint when you need speed and have stamina to spare.")
+
+
+func _on_mobile_tutorial_tint_gui_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch and event.pressed:
+		_dismiss_mobile_tutorial_overlay()
+	elif event is InputEventMouseButton and event.pressed:
+		_dismiss_mobile_tutorial_overlay()
+
+
+func _maybe_show_inventory_tutorial() -> void:
+	if not _prefers_touch_hud():
+		return
+	_queue_mobile_tutorial(MOBILE_HINT_INVENTORY, "Inventory: use the five-slot hotbar at the bottom, tap a slot to equip, long-press for details, and drag stacks to move them.")
+
+
+func _maybe_show_station_tutorial() -> void:
+	if not _prefers_touch_hud() or _current_touch_interactable == null or not is_instance_valid(_current_touch_interactable):
+		return
+	var prompt_text := ""
+	if _current_touch_interactable.has_method("get_touch_interaction_prompt"):
+		prompt_text = str(_current_touch_interactable.call("get_touch_interaction_prompt"))
+	if prompt_text.findn("Furnace") != -1 or prompt_text.findn("ChemBench") != -1:
+		_queue_mobile_tutorial(MOBILE_HINT_CRAFTING, "Crafting: walk up to a station and tap Interact. Furnaces handle heat work, and the ChemBench handles recipes and kits.")
 
 func _play_next_toast() -> void:
 	if _is_toast_playing or _toast_queue.is_empty():

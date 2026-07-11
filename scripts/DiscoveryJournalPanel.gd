@@ -1,5 +1,7 @@
 extends Panel
 
+const DebugLog = preload("res://scripts/DebugLog.gd")
+
 signal close_requested
 
 const FILTER_ALL := "all"
@@ -57,7 +59,7 @@ func debug_report_layout() -> void:
 	var content_height := entries_list.size.y
 	var viewport_height := scroll_container.size.y
 	var requires_scroll := content_height > viewport_height
-	print(
+	DebugLog.info(
 		"[DiscoveryJournal] entries=%d viewport_height=%.1f content_height=%.1f requires_scroll=%s overflow_ok=%s"
 		% [
 			entries_list.get_child_count(),
@@ -101,7 +103,11 @@ func _refresh_entries() -> void:
 		entries_list.add_child(_build_entry_card(entry))
 
 	title_label.text = "Discovery Journal"
-	subtitle_label.text = "Press J to close."
+	subtitle_label.text = (
+		"Use Close or Journal to dismiss."
+		if MobileInputRouter != null and MobileInputRouter.prefers_touch_controls() else
+		"Press J to close."
+	)
 	footer_label.text = (
 		"%d entries shown" % filtered_count
 		if filtered_count > 0 else

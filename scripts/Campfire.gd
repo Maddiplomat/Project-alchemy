@@ -342,15 +342,21 @@ func _configure_light() -> void:
 	gradient.add_point(0.35, Color(1.0, 0.54, 0.18, 0.55))
 	gradient.add_point(1.0, Color(0.0, 0.0, 0.0, 0.0))
 	var texture := GradientTexture2D.new()
-	texture.width = 256
-	texture.height = 256
+	var texture_size := 128
+	if MobilePerformance != null and MobilePerformance.has_method("get_light_texture_size"):
+		texture_size = int(MobilePerformance.get_light_texture_size())
+	texture.width = texture_size
+	texture.height = texture_size
 	texture.fill = GradientTexture2D.FILL_RADIAL
 	texture.fill_from = Vector2(0.5, 0.5)
 	texture.fill_to = Vector2(1.0, 0.5)
 	texture.gradient = gradient
 	point_light.texture = texture
 	point_light.texture_scale = LIGHT_TEXTURE_SCALE
-	point_light.energy = LIGHT_ENERGY_LIT if is_lit else LIGHT_ENERGY_UNLIT
+	var energy_scale := 1.0
+	if MobilePerformance != null and MobilePerformance.has_method("get_light_energy_scale"):
+		energy_scale = float(MobilePerformance.get_light_energy_scale())
+	point_light.energy = LIGHT_ENERGY_LIT * energy_scale if is_lit else LIGHT_ENERGY_UNLIT
 	point_light.offset = Vector2(0.0, -8.0)
 
 
@@ -389,7 +395,10 @@ func _configure_particles() -> void:
 	process_material.color_ramp = _build_particle_gradient()
 	flame_particles.process_material = process_material
 	flame_particles.texture = _build_particle_texture()
-	flame_particles.amount = 20
+	var particle_scale := 1.0
+	if MobilePerformance != null and MobilePerformance.has_method("get_particle_amount_scale"):
+		particle_scale = float(MobilePerformance.get_particle_amount_scale())
+	flame_particles.amount = maxi(8, int(round(20.0 * particle_scale)))
 	flame_particles.lifetime = 0.8
 	flame_particles.emitting = is_lit
 	flame_particles.position = Vector2(0.0, -10.0)
@@ -449,12 +458,20 @@ func _show_prompt(should_show: bool) -> void:
 		return
 	if is_lit:
 		var has_wood := InventoryManager.has_item(REFUEL_COST_ITEM_ID, REFUEL_COST_QUANTITY)
-		var refuel_line := "[E] Refuel (%s)" % ("Wood x2" if has_wood else "Need Wood x2")
-		prompt_label.text = "%s\n[F] Extinguish\n[G] Pick up" % refuel_line
+		var refuel_line := (
+			"Tap Interact to refuel (%s)" % ("Wood x2" if has_wood else "Need Wood x2")
+			if MobileInputRouter.prefers_touch_controls() else
+			"[E] Refuel (%s)" % ("Wood x2" if has_wood else "Need Wood x2")
+		)
+		prompt_label.text = refuel_line if MobileInputRouter.prefers_touch_controls() else "%s\n[F] Extinguish\n[G] Pick up" % refuel_line
 	else:
 		var has_wood := InventoryManager.has_item(REFUEL_COST_ITEM_ID, RELIGHT_COST_QUANTITY)
-		var relight_line := "[E] Relight" if has_wood else "[E] Relight (Need Wood x2)"
-		prompt_label.text = "Campfire Out\n%s\n[G] Pick up" % relight_line
+		var relight_line := (
+			"Tap Interact to relight" if has_wood else "Tap Interact to relight (Need Wood x2)"
+			if MobileInputRouter.prefers_touch_controls() else
+			("[E] Relight" if has_wood else "[E] Relight (Need Wood x2)")
+		)
+		prompt_label.text = "Campfire Out\n%s" % relight_line if MobileInputRouter.prefers_touch_controls() else "Campfire Out\n%s\n[G] Pick up" % relight_line
 	if _charcoal_status_seconds > 0.0 and not _charcoal_status_text.is_empty():
 		prompt_label.text = "%s\n%s" % [prompt_label.text, _charcoal_status_text]
 

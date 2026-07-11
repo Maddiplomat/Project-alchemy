@@ -148,12 +148,17 @@ func _show_prompt(should_show: bool, override_text: String = "") -> void:
 	if not override_text.is_empty():
 		prompt_label.text = override_text
 		return
-	prompt_label.text = "Press E to %s" % ("Close" if is_open else "Open")
+	prompt_label.text = _get_prompt_text()
 
 
 func _hide_prompt() -> void:
 	if prompt_label != null:
 		prompt_label.visible = false
+
+
+func _get_prompt_text() -> String:
+	var action_text := "Close" if is_open else "Open"
+	return "Tap Interact to %s" % action_text if MobileInputRouter.prefers_touch_controls() else "Press E to %s" % action_text
 
 
 func _get_player() -> CharacterBody2D:

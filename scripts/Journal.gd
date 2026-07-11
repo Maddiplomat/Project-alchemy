@@ -7,9 +7,11 @@ const TAB_ACTIVE_RESEARCH := 1
 const TAB_HAZARDS := 2
 const TAB_RECIPES := 3
 
-@onready var title_label: Label = $MarginContainer/Root/TitleRow/TitleLabel
-@onready var subtitle_label: Label = $MarginContainer/Root/TitleRow/SubtitleLabel
+@onready var title_label: Label = $MarginContainer/Root/HeaderRow/TitleRow/TitleLabel
+@onready var subtitle_label: Label = $MarginContainer/Root/HeaderRow/TitleRow/SubtitleLabel
+@onready var close_button: Button = $MarginContainer/Root/HeaderRow/CloseButton
 @onready var tab_bar: TabBar = $MarginContainer/Root/TabBar
+@onready var split_container: BoxContainer = $MarginContainer/Root/Content/Split
 @onready var entry_list: ItemList = $MarginContainer/Root/Content/Split/ListFrame/ListMargin/EntryList
 @onready var detail_title_label: Label = $MarginContainer/Root/Content/Split/DetailFrame/DetailMargin/DetailContent/DetailTitleLabel
 @onready var unlock_chain_label: Label = $MarginContainer/Root/Content/Split/DetailFrame/DetailMargin/DetailContent/UnlockChainLabel
@@ -18,16 +20,21 @@ const TAB_RECIPES := 3
 @onready var scanner_clue_label: Label = $MarginContainer/Root/Content/Split/DetailFrame/DetailMargin/DetailContent/ScannerClueLabel
 
 var _entries: Array[Dictionary] = []
+var _touch_layout_applied := false
 
 
 func _ready() -> void:
 	_configure_tabs()
 	_wire_events()
+	get_viewport().size_changed.connect(_apply_layout)
+	close_button.pressed.connect(func() -> void: close_requested.emit())
+	_apply_layout()
 	_refresh()
 
 
 func show_panel() -> void:
 	visible = true
+	_apply_layout()
 	_refresh()
 	entry_list.grab_focus()
 
@@ -105,10 +112,66 @@ func _on_recipe_unlocked(_recipe_id: StringName) -> void:
 
 func _refresh() -> void:
 	title_label.text = "Field Journal"
-	subtitle_label.text = "Press J to close. Track discoveries, research, hazards, and recipes."
+	subtitle_label.text = "Track discoveries, research, hazards, and recipes. Use Close or Journal to dismiss."
 	_entries = _build_entries_for_tab(tab_bar.current_tab)
 	_refresh_list()
 	_refresh_detail(0 if not _entries.is_empty() else -1)
+
+
+func _apply_layout() -> void:
+	var viewport_size := get_viewport().get_visible_rect().size
+	var touch_mode := MobileInputRouter != null and MobileInputRouter.prefers_touch_controls()
+	var safe_insets := _get_safe_insets(viewport_size)
+	var inset_left := float(safe_insets.get(&"left", 0.0))
+	var inset_top := float(safe_insets.get(&"top", 0.0))
+	var inset_right := float(safe_insets.get(&"right", 0.0))
+	var inset_bottom := float(safe_insets.get(&"bottom", 0.0))
+	if touch_mode:
+		var width := viewport_size.x - inset_left - inset_right - 20.0
+		var height := viewport_size.y - inset_top - inset_bottom - 20.0
+		anchor_left = 0.0
+		anchor_top = 0.0
+		anchor_right = 0.0
+		anchor_bottom = 0.0
+		offset_left = inset_left + 10.0
+		offset_top = inset_top + 10.0
+		offset_right = offset_left + maxf(320.0, width)
+		offset_bottom = offset_top + maxf(420.0, height)
+		split_container.vertical = true
+		tab_bar.clip_tabs = true
+		close_button.visible = true
+		_touch_layout_applied = true
+		return
+
+	if _touch_layout_applied:
+		anchor_left = 0.5
+		anchor_top = 0.5
+		anchor_right = 0.5
+		anchor_bottom = 0.5
+	offset_left = -420.0
+	offset_top = -250.0
+	offset_right = 420.0
+	offset_bottom = 250.0
+	split_container.vertical = false
+	tab_bar.clip_tabs = false
+	close_button.visible = true
+	_touch_layout_applied = false
+
+
+func _get_safe_insets(viewport_size: Vector2) -> Dictionary:
+	var safe_rect := Rect2(Vector2.ZERO, viewport_size)
+	if DisplayServer.has_method("get_display_safe_area"):
+		var safe_area: Variant = DisplayServer.get_display_safe_area()
+		if safe_area is Rect2i:
+			safe_rect = Rect2(safe_area.position, safe_area.size)
+		elif safe_area is Rect2:
+			safe_rect = safe_area
+	return {
+		&"left": maxf(0.0, safe_rect.position.x),
+		&"top": maxf(0.0, safe_rect.position.y),
+		&"right": maxf(0.0, viewport_size.x - safe_rect.end.x),
+		&"bottom": maxf(0.0, viewport_size.y - safe_rect.end.y),
+	}
 
 
 func _refresh_list() -> void:

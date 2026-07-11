@@ -5,7 +5,7 @@ const PANEL_EDGE := Color(0.56, 0.39, 0.21, 1.0)
 const PANEL_TEXT := Color(0.94, 0.88, 0.77, 1.0)
 const PANEL_SUBTEXT := Color(0.78, 0.70, 0.59, 1.0)
 
-@export var prompt_text := "Press E to read note"
+@export var prompt_text := "Tap Interact to read note"
 @export var note_title := "Scorched Supply Crate"
 @export_multiline var note_text := "Left the sulfur in my pack. Got low on health near the vents. Never made it back."
 @export var discovery_entry_id: StringName = &"sulfur_flats_carrier_warning"
@@ -22,9 +22,10 @@ var _note_visible := false
 
 
 func _ready() -> void:
+	add_to_group(&"touch_interactable")
 	sprite.texture = _build_texture()
 	sprite.z_index = 18
-	prompt_label.text = prompt_text
+	prompt_label.text = _get_runtime_prompt_text()
 	prompt_label.visible = false
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
@@ -190,11 +191,16 @@ func _ensure_note_overlay() -> void:
 	layout.add_child(body_label)
 
 	var footer_label := Label.new()
-	footer_label.text = "Press E or Esc to close"
+	footer_label.text = "Tap Close to dismiss"
 	footer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	footer_label.add_theme_font_size_override("font_size", 14)
 	footer_label.add_theme_color_override("font_color", PANEL_SUBTEXT)
 	layout.add_child(footer_label)
+
+	var close_button := Button.new()
+	close_button.text = "Close"
+	close_button.pressed.connect(_close_note)
+	layout.add_child(close_button)
 
 	ui_parent.add_child(overlay)
 	_note_overlay = overlay
@@ -242,3 +248,27 @@ func _build_texture() -> Texture2D:
 	image.set_pixel(21, 16, scorch)
 
 	return ImageTexture.create_from_image(image)
+
+
+func can_touch_interact(player: Node2D) -> bool:
+	return player != null and player == _player_in_range and not _note_visible
+
+
+func get_touch_interaction_prompt() -> String:
+	return "Read Note"
+
+
+func get_touch_interaction_world_position() -> Vector2:
+	return global_position + Vector2(0.0, -22.0)
+
+
+func perform_touch_interaction() -> void:
+	if _player_in_range == null or _note_visible:
+		return
+	_open_note()
+
+
+func _get_runtime_prompt_text() -> String:
+	if MobileInputRouter.prefers_touch_controls():
+		return "Tap Interact to read"
+	return prompt_text

@@ -6,64 +6,234 @@
 layer = 11
 script = ExtResource("1_storage_ui")
 
-[node name="StoragePanel" type="Panel" parent="."]
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Backdrop" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.44)
+
+[node name="StoragePanel" type="PanelContainer" parent="Root"]
 visible = false
-offset_left = 220.0
-offset_top = 110.0
-offset_right = 1060.0
-offset_bottom = 610.0
+custom_minimum_size = Vector2(680, 720)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="PanelContent" type="HBoxContainer" parent="StoragePanel"]
-layout_mode = 0
-offset_left = 18.0
-offset_top = 18.0
-offset_right = 822.0
-offset_bottom = 426.0
-theme_override_constants/separation = 24
+[node name="MarginContainer" type="MarginContainer" parent="Root/StoragePanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
 
-[node name="PlayerColumn" type="VBoxContainer" parent="StoragePanel/PanelContent"]
-custom_minimum_size = Vector2(350, 0)
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/StoragePanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="HeaderRow" type="HBoxContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="Root/StoragePanel/MarginContainer/VBoxContainer/HeaderRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Storage"
+
+[node name="HeaderSpacer" type="Control" parent="Root/StoragePanel/MarginContainer/VBoxContainer/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CloseButton" type="Button" parent="Root/StoragePanel/MarginContainer/VBoxContainer/HeaderRow"]
+custom_minimum_size = Vector2(120, 52)
+layout_mode = 2
+text = "Close"
+
+[node name="InfoLabel" type="Label" parent="Root/StoragePanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Tap a stack to select it, drag to move it, or use the transfer buttons below."
+autowrap_mode = 3
+
+[node name="PanelContent" type="VBoxContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="PlayerColumn" type="VBoxContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer/PanelContent"]
+custom_minimum_size = Vector2(0, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 10
 
-[node name="PlayerTitle" type="Label" parent="StoragePanel/PanelContent/PlayerColumn"]
+[node name="PlayerTitle" type="Label" parent="Root/StoragePanel/MarginContainer/VBoxContainer/PanelContent/PlayerColumn"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 20
 text = "Player Inventory"
 
-[node name="PlayerGrid" type="GridContainer" parent="StoragePanel/PanelContent/PlayerColumn"]
-custom_minimum_size = Vector2(280, 320)
+[node name="PlayerGrid" type="GridContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer/PanelContent/PlayerColumn"]
+custom_minimum_size = Vector2(0, 180)
 layout_mode = 2
-columns = 4
+columns = 5
 
-[node name="WeightLabel" type="Label" parent="StoragePanel/PanelContent/PlayerColumn"]
+[node name="WeightLabel" type="Label" parent="Root/StoragePanel/MarginContainer/VBoxContainer/PanelContent/PlayerColumn"]
 layout_mode = 2
 text = "0.0 / 20.0 kg"
 
-[node name="ChestColumn" type="VBoxContainer" parent="StoragePanel/PanelContent"]
-custom_minimum_size = Vector2(350, 0)
+[node name="ChestColumn" type="VBoxContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer/PanelContent"]
+custom_minimum_size = Vector2(0, 0)
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_constants/separation = 10
 
-[node name="ChestTitle" type="Label" parent="StoragePanel/PanelContent/ChestColumn"]
+[node name="ChestTitle" type="Label" parent="Root/StoragePanel/MarginContainer/VBoxContainer/PanelContent/ChestColumn"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 20
 text = "Chest"
 
-[node name="ChestGrid" type="GridContainer" parent="StoragePanel/PanelContent/ChestColumn"]
-custom_minimum_size = Vector2(280, 320)
+[node name="ChestGrid" type="GridContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer/PanelContent/ChestColumn"]
+custom_minimum_size = Vector2(0, 320)
 layout_mode = 2
-columns = 4
+size_flags_vertical = 3
+columns = 5
 
-[node name="Footer" type="HBoxContainer" parent="StoragePanel"]
-layout_mode = 0
-offset_left = 18.0
-offset_top = 452.0
-offset_right = 822.0
-offset_bottom = 482.0
-
-[node name="HintLabel" type="Label" parent="StoragePanel/Footer"]
+[node name="ActionPanel" type="PanelContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
-text = "Drag between player and chest."
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer/ActionPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer/ActionPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SelectionLabel" type="Label" parent="Root/StoragePanel/MarginContainer/VBoxContainer/ActionPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "No stack selected"
+autowrap_mode = 3
+
+[node name="ActionButtons" type="GridContainer" parent="Root/StoragePanel/MarginContainer/VBoxContainer/ActionPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+columns = 2
+
+[node name="MoveToChestButton" type="Button" parent="Root/StoragePanel/MarginContainer/VBoxContainer/ActionPanel/MarginContainer/VBoxContainer/ActionButtons"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "Move To Chest"
+
+[node name="MoveToPackButton" type="Button" parent="Root/StoragePanel/MarginContainer/VBoxContainer/ActionPanel/MarginContainer/VBoxContainer/ActionButtons"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "Move To Pack"
+
+[node name="TransferAllButton" type="Button" parent="Root/StoragePanel/MarginContainer/VBoxContainer/ActionPanel/MarginContainer/VBoxContainer/ActionButtons"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "Transfer All"
+
+[node name="SplitButton" type="Button" parent="Root/StoragePanel/MarginContainer/VBoxContainer/ActionPanel/MarginContainer/VBoxContainer/ActionButtons"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "Choose Qty"
+
+[node name="ActionHintLabel" type="Label" parent="Root/StoragePanel/MarginContainer/VBoxContainer/ActionPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Tap one side, then use a visible action. Drag still works."
+autowrap_mode = 3
+
+[node name="QuantityModal" type="PanelContainer" parent="Root"]
+visible = false
+custom_minimum_size = Vector2(320, 200)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = -100.0
+offset_right = 160.0
+offset_bottom = 100.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/QuantityModal"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Root/QuantityModal/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="QuantityTitleLabel" type="Label" parent="Root/QuantityModal/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Choose Quantity"
+
+[node name="QuantitySummaryLabel" type="Label" parent="Root/QuantityModal/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "How many items should move?"
+autowrap_mode = 3
+
+[node name="StepperRow" type="HBoxContainer" parent="Root/QuantityModal/MarginContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 10
+
+[node name="MinusButton" type="Button" parent="Root/QuantityModal/MarginContainer/VBoxContainer/StepperRow"]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
+text = "-"
+
+[node name="QuantityValueLabel" type="Label" parent="Root/QuantityModal/MarginContainer/VBoxContainer/StepperRow"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "1"
+horizontal_alignment = 1
+
+[node name="PlusButton" type="Button" parent="Root/QuantityModal/MarginContainer/VBoxContainer/StepperRow"]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
+text = "+"
+
+[node name="ModalButtons" type="HBoxContainer" parent="Root/QuantityModal/MarginContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 2
+theme_override_constants/separation = 10
+
+[node name="CancelButton" type="Button" parent="Root/QuantityModal/MarginContainer/VBoxContainer/ModalButtons"]
+custom_minimum_size = Vector2(96, 44)
+layout_mode = 2
+text = "Cancel"
+
+[node name="ConfirmButton" type="Button" parent="Root/QuantityModal/MarginContainer/VBoxContainer/ModalButtons"]
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+text = "Transfer"

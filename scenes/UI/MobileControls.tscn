@@ -1,0 +1,222 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/MobileControls.gd" id="1_mobile"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxMovePadBase"]
+bg_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 90
+corner_radius_top_right = 90
+corner_radius_bottom_right = 90
+corner_radius_bottom_left = 90
+anti_aliasing = true
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxMoveStick"]
+bg_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 32
+corner_radius_top_right = 32
+corner_radius_bottom_right = 32
+corner_radius_bottom_left = 32
+anti_aliasing = true
+
+[node name="MobileControls" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+mouse_filter = 2
+script = ExtResource("1_mobile")
+
+[node name="MovePad" type="Control" parent="."]
+anchors_preset = 3
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -264.0
+offset_right = 264.0
+offset_bottom = -24.0
+mouse_filter = 1
+
+[node name="Base" type="Panel" parent="MovePad"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -90.0
+offset_top = -90.0
+offset_right = 90.0
+offset_bottom = 90.0
+modulate = Color(1, 1, 1, 0.45)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxMovePadBase")
+
+[node name="Stick" type="Panel" parent="MovePad"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+modulate = Color(1, 1, 1, 0.9)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxMoveStick")
+
+[node name="Label" type="Label" parent="MovePad"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -68.0
+offset_top = 98.0
+offset_right = 68.0
+offset_bottom = 122.0
+mouse_filter = 2
+text = "Move"
+horizontal_alignment = 1
+
+[node name="AimPad" type="Control" parent="."]
+anchors_preset = 9
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -252.0
+offset_top = -206.0
+offset_right = -52.0
+offset_bottom = -24.0
+mouse_filter = 1
+
+[node name="Base" type="Panel" parent="AimPad"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -84.0
+offset_top = -84.0
+offset_right = 84.0
+offset_bottom = 84.0
+modulate = Color(0.72, 0.82, 0.94, 0.18)
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="AimPad"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -76.0
+offset_top = -12.0
+offset_right = 76.0
+offset_bottom = 12.0
+mouse_filter = 2
+text = "Aim / Place"
+horizontal_alignment = 1
+
+[node name="ButtonsTop" type="HBoxContainer" parent="."]
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -192.0
+offset_top = 16.0
+offset_right = 192.0
+offset_bottom = 56.0
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="JournalButton" type="Button" parent="ButtonsTop"]
+custom_minimum_size = Vector2(88, 40)
+layout_mode = 2
+text = "Journal"
+
+[node name="ObjectivesButton" type="Button" parent="ButtonsTop"]
+custom_minimum_size = Vector2(104, 40)
+layout_mode = 2
+text = "Objectives"
+
+[node name="ButtonsRight" type="VBoxContainer" parent="."]
+anchors_preset = 9
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -132.0
+offset_top = -176.0
+offset_right = -24.0
+offset_bottom = 116.0
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="AttackButton" type="Button" parent="ButtonsRight"]
+custom_minimum_size = Vector2(108, 52)
+layout_mode = 2
+text = "Attack"
+
+[node name="AttackStatusLabel" type="Label" parent="ButtonsRight"]
+custom_minimum_size = Vector2(108, 36)
+layout_mode = 2
+autowrap_mode = 3
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "Use Hands | Utility ready"
+
+[node name="AttackCooldownBar" type="ProgressBar" parent="ButtonsRight"]
+custom_minimum_size = Vector2(108, 14)
+layout_mode = 2
+show_percentage = false
+max_value = 100.0
+value = 0.0
+
+[node name="ScanButton" type="Button" parent="ButtonsRight"]
+custom_minimum_size = Vector2(108, 52)
+layout_mode = 2
+toggle_mode = true
+text = "Scan"
+
+[node name="InteractButton" type="Button" parent="ButtonsRight"]
+custom_minimum_size = Vector2(108, 52)
+layout_mode = 2
+text = "Interact"
+
+[node name="SprintButton" type="Button" parent="ButtonsRight"]
+custom_minimum_size = Vector2(108, 52)
+layout_mode = 2
+toggle_mode = true
+text = "Sprint"
+
+[node name="BuildButton" type="Button" parent="ButtonsRight"]
+custom_minimum_size = Vector2(108, 52)
+layout_mode = 2
+text = "Build"
+
+[node name="BuildButtons" type="HBoxContainer" parent="."]
+anchors_preset = 3
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 224.0
+offset_top = -84.0
+offset_right = 508.0
+offset_bottom = -24.0
+theme_override_constants/separation = 8
+
+[node name="ConfirmButton" type="Button" parent="BuildButtons"]
+custom_minimum_size = Vector2(88, 52)
+layout_mode = 2
+text = "Confirm"
+
+[node name="CancelButton" type="Button" parent="BuildButtons"]
+custom_minimum_size = Vector2(88, 52)
+layout_mode = 2
+text = "Cancel"
+
+[node name="RotateButton" type="Button" parent="BuildButtons"]
+custom_minimum_size = Vector2(88, 52)
+layout_mode = 2
+text = "Rotate"

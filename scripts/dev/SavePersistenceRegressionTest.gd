@@ -118,7 +118,8 @@ func _run_world_snapshot_regression() -> void:
 		"Expected serialized switchboard state to preserve the furnace boost toggle."
 	)
 
-	var extracted_full := GameManager._extract_world_save_data(serialized)
+	var normalized_full: Dictionary = _world_save_data.normalize_save_envelope(serialized)
+	var extracted_full: Dictionary = _world_save_data.build_restore_payload(normalized_full)
 	_assert(not extracted_full.is_empty(), "Expected full-save payload extraction to succeed.")
 	_assert(extracted_full.has("world_system"), "Expected extracted full-save payload to retain world_system state.")
 	_assert(extracted_full.has("power_switchboard"), "Expected extracted full-save payload to retain switchboard state.")
@@ -138,13 +139,18 @@ func _run_world_snapshot_regression() -> void:
 	legacy_payload["resources"] = (sodium_scene_state.get("resources", {}) as Dictionary).duplicate(true)
 	legacy_payload["discoveries"] = (sodium_scene_state.get("discoveries", []) as Array).duplicate(true)
 	legacy_payload["progression"] = (sodium_scene_state.get("progression", {}) as Dictionary).duplicate(true)
-	var extracted_legacy := GameManager._extract_world_save_data(legacy_payload)
+	var normalized_legacy: Dictionary = _world_save_data.normalize_save_envelope(legacy_payload)
+	var extracted_legacy: Dictionary = _world_save_data.build_restore_payload(normalized_legacy)
 	var legacy_world_system := extracted_legacy.get("world_system", {}) as Dictionary
 	var legacy_scene_state_by_path := legacy_world_system.get("scene_state_by_path", {}) as Dictionary
 	_assert(not extracted_legacy.is_empty(), "Expected flat-save payload extraction to succeed.")
 	_assert(
 		_scene_states_match(sodium_scene_state, legacy_scene_state_by_path.get(SODIUM_SHOALS_SCENE_PATH, {})),
 		"Expected flat-save payload extraction to synthesize the active scene snapshot."
+	)
+	_assert(
+		_normalized_key_set(normalized_full) == _normalized_key_set(normalized_legacy),
+		"Expected normalized legacy payload to use the same top-level envelope shape as the current envelope."
 	)
 
 	_power_switchboard.set_consumer_enabled(_power_switchboard.CONSUMER_TRAP_NETWORK, true)
@@ -349,6 +355,14 @@ func _extract_scene_state_from_restore_payload(save_data: Dictionary) -> Diction
 		"discoveries": (save_data.get("discoveries", []) as Array).duplicate(true),
 		"progression": (save_data.get("progression", {}) as Dictionary).duplicate(true),
 	}
+
+
+func _normalized_key_set(save_data: Dictionary) -> Array[String]:
+	var keys: Array[String] = []
+	for key in save_data.keys():
+		keys.append(str(key))
+	keys.sort()
+	return keys
 
 
 func _assert(condition: bool, message: String) -> void:

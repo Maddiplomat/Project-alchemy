@@ -29,7 +29,7 @@ offset_left = -24.0
 offset_top = -22.0
 offset_right = 24.0
 offset_bottom = -6.0
-text = "Press E"
+text = "Tap Interact"
 horizontal_alignment = 1
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=146369253]

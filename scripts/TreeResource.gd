@@ -46,7 +46,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	_player = _resolve_player()
 	health_bar_bg.visible = _should_show_prompt()
-	if health_bar_bg.visible and Input.is_action_just_pressed("fire_projectile") and _is_mouse_over_tree():
+	if health_bar_bg.visible and Input.is_action_just_pressed("fire_projectile") and _can_consume_attack_input():
 		_harvest()
 
 
@@ -181,6 +181,12 @@ func _get_health_bar_color(ratio: float) -> Color:
 
 func _is_mouse_over_tree() -> bool:
 	return global_position.distance_to(get_global_mouse_position()) <= CLICK_TARGET_RADIUS
+
+
+func _can_consume_attack_input() -> bool:
+	if MobileInputRouter != null and MobileInputRouter.is_touch_mode():
+		return _is_preferred_interaction_target()
+	return _is_mouse_over_tree()
 
 
 func _build_visuals() -> void:

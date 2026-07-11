@@ -5,7 +5,7 @@ const PANEL_EDGE := Color(0.60, 0.72, 0.84, 1.0)
 const PANEL_TEXT := Color(0.93, 0.95, 0.97, 1.0)
 const PANEL_SUBTEXT := Color(0.72, 0.80, 0.87, 1.0)
 
-@export var prompt_text := "Press E to travel"
+@export var prompt_text := "Tap Interact to travel"
 @export var trail_name := "Trailhead"
 @export_multiline var travel_blurb := "This route leaves the base behind. Pack for the return trip before committing."
 @export var target_scene_path := ""
@@ -20,10 +20,11 @@ var _overlay_visible := false
 
 
 func _ready() -> void:
+	add_to_group(&"touch_interactable")
 	sprite.texture = _build_sign_texture()
 	sprite.z_index = 20
 	prompt_label.z_index = 21
-	prompt_label.text = prompt_text
+	prompt_label.text = _get_runtime_prompt_text()
 	prompt_label.visible = false
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
@@ -172,11 +173,26 @@ func _ensure_overlay() -> void:
 	layout.add_child(body_label)
 
 	var footer_label := Label.new()
-	footer_label.text = "Press E to depart. Press Esc to stay."
+	footer_label.text = "Tap Travel to depart. Tap Stay to cancel."
 	footer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	footer_label.add_theme_font_size_override("font_size", 14)
 	footer_label.add_theme_color_override("font_color", PANEL_SUBTEXT)
 	layout.add_child(footer_label)
+
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	actions.add_theme_constant_override("separation", 12)
+	layout.add_child(actions)
+
+	var stay_button := Button.new()
+	stay_button.text = "Stay"
+	stay_button.pressed.connect(_close_overlay)
+	actions.add_child(stay_button)
+
+	var travel_button := Button.new()
+	travel_button.text = "Travel"
+	travel_button.pressed.connect(_confirm_travel)
+	actions.add_child(travel_button)
 
 	ui_parent.add_child(overlay)
 	_overlay = overlay
@@ -209,3 +225,27 @@ func _mark_input_handled() -> void:
 	var viewport := get_viewport()
 	if viewport != null:
 		viewport.set_input_as_handled()
+
+
+func can_touch_interact(player: Node2D) -> bool:
+	return player != null and player == _player_in_range and not _overlay_visible
+
+
+func get_touch_interaction_prompt() -> String:
+	return "Travel" if String(trail_name).findn("Return") == -1 else "Return"
+
+
+func get_touch_interaction_world_position() -> Vector2:
+	return global_position + Vector2(0.0, -26.0)
+
+
+func perform_touch_interaction() -> void:
+	if _player_in_range == null or _overlay_visible:
+		return
+	_open_overlay()
+
+
+func _get_runtime_prompt_text() -> String:
+	if MobileInputRouter.prefers_touch_controls():
+		return "Tap Interact to travel" if String(prompt_text).findn("return") == -1 else "Tap Interact to return"
+	return prompt_text

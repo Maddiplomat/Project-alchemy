@@ -73,6 +73,48 @@ func restore_runtime_state(data: Dictionary) -> void:
 	deserialize(data)
 
 
+func normalize_save_envelope(data: Dictionary) -> Dictionary:
+	if data.is_empty():
+		return {}
+	return _migrate_save_data(data)
+
+
+func encode_storage_value(value: Variant) -> Variant:
+	return _variant_to_json_value(value)
+
+
+func decode_storage_value(value: Variant) -> Variant:
+	return _json_value_to_variant(value)
+
+
+func stringify_save_data(save_data: Dictionary, indent: String = "") -> String:
+	return JSON.stringify(encode_storage_value(save_data), indent)
+
+
+func build_restore_payload(data: Dictionary) -> Dictionary:
+	if data.is_empty():
+		return {}
+	var normalized_data := normalize_save_envelope(data)
+	if normalized_data.is_empty():
+		return {}
+	return _normalize_restore_payload(normalized_data)
+
+
+func get_saved_scene_path(data: Dictionary) -> String:
+	if data.is_empty():
+		return "res://scenes/World.tscn"
+	var normalized_data := normalize_save_envelope(data)
+	var metadata := normalized_data.get("metadata", {}) as Dictionary
+	return str(metadata.get("current_scene_path", "res://scenes/World.tscn"))
+
+
+func extract_save_metadata(data: Dictionary) -> Dictionary:
+	if data.is_empty():
+		return {}
+	var normalized_data := normalize_save_envelope(data)
+	return (normalized_data.get("metadata", {}) as Dictionary).duplicate(true)
+
+
 func restore_pending_travel_state() -> void:
 	var world_system := get_node_or_null("/root/WorldSystem")
 	if world_system == null or not world_system.has_method("consume_pending_restore_state"):
@@ -80,18 +122,21 @@ func restore_pending_travel_state() -> void:
 	var restore_state: Dictionary = world_system.consume_pending_restore_state()
 	if restore_state.is_empty():
 		return
+	var travel_context: Dictionary = (restore_state.get("__travel_context", {}) as Dictionary).duplicate(true)
+	restore_state.erase("__travel_context")
 	deserialize(restore_state)
 
-	var travel_context: Dictionary = {}
-	if world_system.has_method("consume_pending_travel_context"):
+	if travel_context.is_empty() and world_system.has_method("consume_pending_travel_context"):
 		travel_context = world_system.consume_pending_travel_context()
 	var should_use_entry_point := bool(travel_context.get(&"use_entry_point", false))
 	var should_save_after_restore := not bool(travel_context.get(&"skip_post_restore_save", false))
 	var entry_point_id := StringName(travel_context.get(&"entry_point_id", &""))
 	if should_use_entry_point and not entry_point_id.is_empty():
-		var current_scene := get_tree().current_scene
-		if current_scene != null and current_scene.has_method("move_player_to_travel_entry"):
-			current_scene.call("move_player_to_travel_entry", entry_point_id)
+		var scene_root := get_parent()
+		if scene_root == null:
+			scene_root = get_tree().current_scene
+		if scene_root != null and scene_root.has_method("move_player_to_travel_entry"):
+			scene_root.call("move_player_to_travel_entry", entry_point_id)
 	if ResearchObjectives != null and ResearchObjectives.has_method("sync_with_runtime_state"):
 		ResearchObjectives.sync_with_runtime_state()
 	if GameManager != null and GameManager.has_method("finish_load_game"):
@@ -105,19 +150,15 @@ func serialize() -> Dictionary:
 	_store_current_scene_state()
 	var current_scene_state := _build_scene_restore_state()
 	var current_scene_path := _get_current_scene_path()
+	var persistence_sections := _capture_persistent_sections()
 	var data := {
 		"version": SAVE_STATE_VERSION,
 		"metadata": _build_save_metadata(current_scene_path),
-		"game_manager": {},
-		"world_system": {},
+		"game_manager": (persistence_sections.get("game_manager", {}) as Dictionary).duplicate(true),
+		"world_system": (persistence_sections.get("world_system", {}) as Dictionary).duplicate(true),
 		"current_scene_state": current_scene_state.duplicate(true),
-		"global_systems": _build_global_system_state(),
+		"global_systems": (persistence_sections.get("global_systems", {}) as Dictionary).duplicate(true),
 	}
-	if GameManager != null and GameManager.has_method("capture_persistent_state"):
-		data["game_manager"] = GameManager.capture_persistent_state()
-	var world_system := get_node_or_null("/root/WorldSystem") if is_inside_tree() else null
-	if world_system != null and world_system.has_method("capture_persistent_state"):
-		data["world_system"] = world_system.capture_persistent_state()
 	_attach_integrity_checksum(data)
 	return data
 
@@ -132,31 +173,13 @@ func deserialize(data: Dictionary) -> void:
 	data = _normalize_restore_payload(normalized_data)
 	var restored_discovery_log := false
 	if is_inside_tree():
-		var world_system = get_node_or_null("/root/WorldSystem")
-		if world_system != null and data.has("world_system") and world_system.has_method("restore_persistent_state"):
-			world_system.restore_persistent_state((data.get("world_system", {}) as Dictionary).duplicate(true))
-		var gm = get_node_or_null("/root/GameManager")
-		if gm != null and data.has("game_manager") and gm.has_method("restore_persistent_state"):
-			gm.restore_persistent_state((data.get("game_manager", {}) as Dictionary).duplicate(true))
-		if ElementDatabase != null and data.has("element_database") and ElementDatabase.has_method("restore_persistent_state"):
-			ElementDatabase.restore_persistent_state((data.get("element_database", {}) as Dictionary).duplicate(true))
 		var discovery_log = get_node_or_null("/root/DiscoveryLog")
-		if discovery_log != null and data.has("discovery_log") and discovery_log.has_method("restore_persistent_state"):
-			discovery_log.restore_persistent_state((data.get("discovery_log", {}) as Dictionary).duplicate(true))
+		if PersistenceRegistry != null and PersistenceRegistry.has_method("restore_flattened_state"):
+			PersistenceRegistry.restore_flattened_state(data)
+		if discovery_log != null and data.has("discovery_log"):
 			restored_discovery_log = true
 			if discovery_log.has_method("get_all_discoveries"):
 				discoveries = discovery_log.get_all_discoveries().duplicate(true)
-		var research_objectives = get_node_or_null("/root/ResearchObjectives")
-		if research_objectives != null and data.has("research_objectives") and research_objectives.has_method("restore_persistent_state"):
-			research_objectives.restore_persistent_state((data.get("research_objectives", {}) as Dictionary).duplicate(true))
-		var power_switchboard := EventBus.get_power_switchboard()
-		if power_switchboard != null and data.has("power_switchboard") and power_switchboard.has_method("restore_persistent_state"):
-			power_switchboard.restore_persistent_state((data.get("power_switchboard", {}) as Dictionary).duplicate(true))
-		if WeatherSystem != null and data.has("weather_system") and WeatherSystem.has_method("restore_persistent_state"):
-			WeatherSystem.restore_persistent_state((data.get("weather_system", {}) as Dictionary).duplicate(true))
-		var cold_system := EventBus.get_cold_system()
-		if cold_system != null and data.has("cold_system") and cold_system.has_method("restore_persistent_state"):
-			cold_system.restore_persistent_state((data.get("cold_system", {}) as Dictionary).duplicate(true))
 
 	if data.has("world"):
 		var world_data: Dictionary = data["world"]
@@ -269,7 +292,7 @@ func _migrate_save_data(data: Dictionary) -> Dictionary:
 		_attach_integrity_checksum(empty_envelope)
 		return empty_envelope
 	if _is_backend_save_envelope(data):
-		_verify_integrity_checksum(data)
+		var integrity_valid := _verify_integrity_checksum(data, false)
 		var migrated_envelope := _ensure_envelope_defaults(data.duplicate(true))
 		var data_version := int(migrated_envelope.get("version", SAVE_STATE_VERSION))
 		if data_version <= 0:
@@ -284,6 +307,8 @@ func _migrate_save_data(data: Dictionary) -> Dictionary:
 		var metadata := (migrated_envelope.get("metadata", {}) as Dictionary).duplicate(true)
 		if str(metadata.get("migration_status", "")).is_empty():
 			metadata["migration_status"] = "current"
+		if not integrity_valid and str(metadata.get("migration_status", "")) == "current":
+			metadata["migration_status"] = "checksum_repaired"
 		migrated_envelope["metadata"] = metadata
 		_attach_integrity_checksum(migrated_envelope)
 		return migrated_envelope
@@ -418,13 +443,14 @@ func _build_scene_restore_state() -> Dictionary:
 
 
 func _build_empty_envelope() -> Dictionary:
+	var persistence_sections := _build_empty_persistence_sections()
 	return {
 		"version": SAVE_STATE_VERSION,
 		"metadata": _build_save_metadata(""),
-		"game_manager": {},
-		"world_system": {},
+		"game_manager": (persistence_sections.get("game_manager", {}) as Dictionary).duplicate(true),
+		"world_system": (persistence_sections.get("world_system", {}) as Dictionary).duplicate(true),
 		"current_scene_state": {},
-		"global_systems": _build_global_system_state(false),
+		"global_systems": (persistence_sections.get("global_systems", {}) as Dictionary).duplicate(true),
 	}
 
 
@@ -441,34 +467,26 @@ func _build_save_metadata(current_scene_path: String, migration_status: String =
 	return metadata
 
 
-func _build_global_system_state(capture_runtime: bool = true) -> Dictionary:
-	var global_systems := {
-		"element_database": {},
-		"discovery_log": {},
-		"research_objectives": {},
-		"power_switchboard": {},
-		"weather_system": {},
-		"cold_system": {},
+func _capture_persistent_sections() -> Dictionary:
+	if PersistenceRegistry != null and PersistenceRegistry.has_method("capture_persistent_sections"):
+		return PersistenceRegistry.capture_persistent_sections()
+	return _build_empty_persistence_sections()
+
+
+func _build_empty_persistence_sections() -> Dictionary:
+	if PersistenceRegistry != null and PersistenceRegistry.has_method("build_empty_sections"):
+		return PersistenceRegistry.build_empty_sections()
+	return {
+		"game_manager": {},
+		"world_system": {},
+		"global_systems": {},
 	}
-	if not capture_runtime:
-		return global_systems
-	if ElementDatabase != null and ElementDatabase.has_method("capture_persistent_state"):
-		global_systems["element_database"] = ElementDatabase.capture_persistent_state()
-	var discovery_log := get_node_or_null("/root/DiscoveryLog") if is_inside_tree() else null
-	if discovery_log != null and discovery_log.has_method("capture_persistent_state"):
-		global_systems["discovery_log"] = discovery_log.capture_persistent_state()
-	var research_objectives := get_node_or_null("/root/ResearchObjectives") if is_inside_tree() else null
-	if research_objectives != null and research_objectives.has_method("capture_persistent_state"):
-		global_systems["research_objectives"] = research_objectives.capture_persistent_state()
-	var power_switchboard := EventBus.get_power_switchboard() if is_inside_tree() else null
-	if power_switchboard != null and power_switchboard.has_method("capture_persistent_state"):
-		global_systems["power_switchboard"] = power_switchboard.capture_persistent_state()
-	if WeatherSystem != null and WeatherSystem.has_method("capture_persistent_state"):
-		global_systems["weather_system"] = WeatherSystem.capture_persistent_state()
-	var cold_system := EventBus.get_cold_system() if is_inside_tree() else null
-	if cold_system != null and cold_system.has_method("capture_persistent_state"):
-		global_systems["cold_system"] = cold_system.capture_persistent_state()
-	return global_systems
+
+
+func _build_persistence_sections_from_flat_save(flat_save: Dictionary) -> Dictionary:
+	if PersistenceRegistry != null and PersistenceRegistry.has_method("build_sections_from_flat_save"):
+		return PersistenceRegistry.build_sections_from_flat_save(flat_save)
+	return _build_empty_persistence_sections()
 
 
 func _build_envelope_from_flat_save(flat_save: Dictionary, migration_status: String) -> Dictionary:
@@ -476,22 +494,15 @@ func _build_envelope_from_flat_save(flat_save: Dictionary, migration_status: Str
 	var source_metadata := (flat_save.get("metadata", {}) as Dictionary).duplicate(true)
 	var envelope := _build_empty_envelope()
 	envelope["metadata"] = _build_save_metadata(current_scene_path, migration_status, source_metadata)
-	var game_manager_state := flat_save.get("game_manager", {}) as Dictionary
-	if not game_manager_state.is_empty():
-		envelope["game_manager"] = game_manager_state.duplicate(true)
-	var world_system_state := flat_save.get("world_system", {}) as Dictionary
+	var persistence_sections := _build_persistence_sections_from_flat_save(flat_save)
+	envelope["game_manager"] = (persistence_sections.get("game_manager", {}) as Dictionary).duplicate(true)
+	var world_system_state := persistence_sections.get("world_system", {}) as Dictionary
 	if world_system_state.is_empty():
 		world_system_state = _build_world_system_payload_from_flat_save(flat_save)
 	envelope["world_system"] = world_system_state.duplicate(true)
 	envelope["current_scene_state"] = _build_scene_restore_state_from_save(flat_save)
-	envelope["global_systems"] = {
-		"element_database": (flat_save.get("element_database", {}) as Dictionary).duplicate(true),
-		"discovery_log": (flat_save.get("discovery_log", {}) as Dictionary).duplicate(true),
-		"research_objectives": (flat_save.get("research_objectives", {}) as Dictionary).duplicate(true),
-		"power_switchboard": (flat_save.get("power_switchboard", {}) as Dictionary).duplicate(true),
-		"weather_system": (flat_save.get("weather_system", {}) as Dictionary).duplicate(true),
-		"cold_system": (flat_save.get("cold_system", {}) as Dictionary).duplicate(true),
-	}
+	envelope["global_systems"] = (persistence_sections.get("global_systems", {}) as Dictionary).duplicate(true)
+	envelope["current_scene_state"] = _extract_current_scene_state_from_envelope(envelope)
 	return envelope
 
 
@@ -510,15 +521,17 @@ func _ensure_envelope_defaults(save_data: Dictionary) -> Dictionary:
 		envelope["world_system"] = {}
 	if not envelope.has("current_scene_state") or not (envelope.get("current_scene_state", {}) is Dictionary):
 		envelope["current_scene_state"] = {}
+	var default_persistence_sections := _build_empty_persistence_sections()
 	if not envelope.has("global_systems") or not (envelope.get("global_systems", {}) is Dictionary):
-		envelope["global_systems"] = _build_global_system_state(false)
+		envelope["global_systems"] = (default_persistence_sections.get("global_systems", {}) as Dictionary).duplicate(true)
 	else:
-		var global_systems := _build_global_system_state(false)
+		var global_systems := (default_persistence_sections.get("global_systems", {}) as Dictionary).duplicate(true)
 		var existing_global_systems := envelope.get("global_systems", {}) as Dictionary
 		for key in global_systems.keys():
 			if existing_global_systems.has(key) and existing_global_systems[key] is Dictionary:
 				global_systems[key] = (existing_global_systems[key] as Dictionary).duplicate(true)
 		envelope["global_systems"] = global_systems
+	envelope["current_scene_state"] = _extract_current_scene_state_from_envelope(envelope)
 	return envelope
 
 
@@ -614,7 +627,7 @@ func _attach_integrity_checksum(save_data: Dictionary) -> void:
 	save_data["metadata"] = metadata
 
 
-func _verify_integrity_checksum(save_data: Dictionary) -> bool:
+func _verify_integrity_checksum(save_data: Dictionary, emit_warning: bool = true) -> bool:
 	var metadata := save_data.get("metadata", {}) as Dictionary
 	var integrity := metadata.get("integrity", {}) as Dictionary
 	if integrity.is_empty():
@@ -625,7 +638,8 @@ func _verify_integrity_checksum(save_data: Dictionary) -> bool:
 	var actual_checksum := _compute_integrity_checksum(save_data)
 	if expected_checksum == actual_checksum:
 		return true
-	push_warning("Save payload checksum mismatch. Expected %s, computed %s." % [expected_checksum, actual_checksum])
+	if emit_warning:
+		push_warning("Save payload checksum mismatch. Expected %s, computed %s." % [expected_checksum, actual_checksum])
 	return false
 
 
@@ -688,6 +702,38 @@ func _variant_to_json_value(value: Variant) -> Variant:
 				"__type": "VariantString",
 				"value": var_to_str(value),
 			}
+
+
+func _json_value_to_variant(value: Variant) -> Variant:
+	if value is Array:
+		var restored_array: Array = []
+		for item in value:
+			restored_array.append(_json_value_to_variant(item))
+		return restored_array
+	if not (value is Dictionary):
+		return value
+	var value_dict := value as Dictionary
+	var type_name := str(value_dict.get("__type", ""))
+	match type_name:
+		"StringName":
+			return StringName(str(value_dict.get("value", "")))
+		"Vector2":
+			return Vector2(
+				float(value_dict.get("x", 0.0)),
+				float(value_dict.get("y", 0.0))
+			)
+		"Vector2i":
+			return Vector2i(
+				int(value_dict.get("x", 0)),
+				int(value_dict.get("y", 0))
+			)
+		"VariantString":
+			return str_to_var(str(value_dict.get("value", "")))
+		_:
+			var restored_dict := {}
+			for raw_key in value_dict.keys():
+				restored_dict[raw_key] = _json_value_to_variant(value_dict[raw_key])
+			return restored_dict
 
 
 func _coerce_dictionary_array(raw_value: Variant) -> Array[Dictionary]:

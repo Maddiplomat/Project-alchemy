@@ -1,6 +1,7 @@
 extends Node
 
 signal buildable_placed(buildable_id: StringName)
+signal build_mode_changed(active: bool)
 
 const BUILD_MENU_SCENE := preload("res://scenes/UI/BuildMenuPanel.tscn")
 const SHELTER_PREVIEW_SCENE := preload("res://scenes/UI/ShelterPreview.tscn")
@@ -9,6 +10,7 @@ const GHOST_VALID_COLOR := Color(0.36, 0.92, 0.48, 0.6)
 const GHOST_INVALID_COLOR := Color(0.92, 0.28, 0.24, 0.6)
 const PLACED_OBJECT_GROUP := &"placed_objects"
 const SHELTER_COVER_RADIUS_TILES := 1
+const ALL_CATEGORY_ID := &"all"
 
 @export var selected_prefab: PackedScene
 @export var selected_buildable_id: StringName = &"wall"
@@ -26,9 +28,13 @@ var _selected_rotation_degrees := 0.0
 var _last_tile_coords := Vector2i.ZERO
 var _last_world_position := Vector2.ZERO
 var _last_placement_valid := false
+var _last_can_confirm := false
+var _last_placement_reason := ""
 var _pending_restore_payload: Dictionary = {}
 var _shelter_preview = null
 var _dynamic_build_hint := ""
+var _selected_category_id: StringName = ALL_CATEGORY_ID
+var _buildable_icon_cache: Dictionary = {}
 
 
 func _ready() -> void:
@@ -40,10 +46,19 @@ func _ready() -> void:
 	if EventBus != null and EventBus.has_signal("discovery_entry_added"):
 		EventBus.discovery_entry_added.connect(func(_entry: Dictionary) -> void: _refresh_build_menu())
 	_select_prefab_by_index(_selected_prefab_index)
+	set_process(false)
 	_set_build_mode(false)
 
 
 func _input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"toggle_build_mode"):
+		if build_mode:
+			_exit_build_mode()
+		else:
+			_enter_build_mode()
+		get_viewport().set_input_as_handled()
+		return
+
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key_event := event as InputEventKey
 		if key_event.physical_keycode == KEY_B:
@@ -75,12 +90,44 @@ func _input(event: InputEvent) -> void:
 	if not build_mode:
 		return
 
+	if event is InputEventScreenTouch:
+		var touch_event := event as InputEventScreenTouch
+		if _is_pointer_over_build_menu(touch_event.position):
+			return
+		MobileInputRouter.set_touch_pointer_screen_position(touch_event.position, true)
+		get_viewport().set_input_as_handled()
+		return
+
+	if event is InputEventScreenDrag:
+		var drag_event := event as InputEventScreenDrag
+		if _is_pointer_over_build_menu(drag_event.position):
+			return
+		MobileInputRouter.set_touch_pointer_screen_position(drag_event.position, true)
+		get_viewport().set_input_as_handled()
+		return
+
+	if event.is_action_pressed(&"build_cancel"):
+		_exit_build_mode()
+		get_viewport().set_input_as_handled()
+		return
+
+	if event.is_action_pressed(&"build_rotate"):
+		_rotate_selected_prefab()
+		get_viewport().set_input_as_handled()
+		return
+
+	if event.is_action_pressed(&"build_confirm"):
+		if _last_can_confirm:
+			_confirm_selected_placement()
+		get_viewport().set_input_as_handled()
+		return
+
 	if event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
 		if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
-			if _is_pointer_over_build_menu():
+			if _is_pointer_over_build_menu(mouse_event.position):
 				return
-			if _last_placement_valid:
+			if _last_can_confirm:
 				_confirm_selected_placement()
 			get_viewport().set_input_as_handled()
 
@@ -137,6 +184,7 @@ func _enter_build_mode() -> void:
 	if _get_build_context().is_empty():
 		return
 	_set_build_mode(true)
+	_prime_touch_pointer()
 	_update_build_preview(_get_build_context())
 
 
@@ -146,8 +194,12 @@ func _exit_build_mode() -> void:
 
 func _set_build_mode(enabled: bool) -> void:
 	build_mode = enabled
+	build_mode_changed.emit(build_mode)
+	set_process(enabled)
 	if not enabled:
 		_last_placement_valid = false
+		_last_can_confirm = false
+		_last_placement_reason = ""
 		_dynamic_build_hint = ""
 		if is_instance_valid(_ghost):
 			_ghost.visible = false
@@ -181,6 +233,7 @@ func _select_prefab_by_index(index: int) -> void:
 	_selected_prefab_index = posmod(index, _buildable_ids.size())
 	selected_buildable_id = _buildable_ids[_selected_prefab_index]
 	selected_prefab = _get_selected_buildable_prefab()
+	_selected_category_id = _get_buildable_category_id(selected_buildable_id)
 	if not _is_selected_buildable_rotatable():
 		_selected_rotation_degrees = 0.0
 	_cache_prefab_preview_data()
@@ -216,6 +269,8 @@ func _ensure_prefab_configuration() -> void:
 
 	_selected_prefab_index = maxi(_buildable_ids.find(selected_buildable_id), 0)
 	selected_prefab = _get_selected_buildable_prefab()
+	if _selected_category_id == &"":
+		_selected_category_id = _get_buildable_category_id(selected_buildable_id)
 
 
 func _get_build_context() -> Dictionary:
@@ -240,13 +295,16 @@ func _update_build_preview(context: Dictionary) -> void:
 		return
 
 	var ground := context.get(&"ground") as TileMapLayer
-	var mouse_world := ground.get_global_mouse_position()
-	var tile_coords := ground.local_to_map(ground.to_local(mouse_world))
+	var pointer_world := _get_pointer_world_position(ground)
+	var tile_coords := ground.local_to_map(ground.to_local(pointer_world))
 	var snapped_world_position := ground.to_global(ground.map_to_local(tile_coords))
 
 	_last_tile_coords = tile_coords
 	_last_world_position = snapped_world_position
-	_last_placement_valid = _is_valid_placement(context, tile_coords, snapped_world_position)
+	var placement_state := _evaluate_placement(context, tile_coords, snapped_world_position)
+	_last_placement_valid = bool(placement_state.get(&"valid", false))
+	_last_placement_reason = str(placement_state.get(&"reason", ""))
+	_last_can_confirm = _last_placement_valid and _can_afford_cost(_get_selected_buildable_cost())
 
 	_ghost.global_position = snapped_world_position
 	_ghost.rotation_degrees = _selected_rotation_degrees
@@ -254,38 +312,47 @@ func _update_build_preview(context: Dictionary) -> void:
 	_ghost.visible = true
 	_update_shelter_preview(context, tile_coords, _last_placement_valid)
 	_update_dynamic_build_hint(context, tile_coords)
+	_refresh_build_menu()
 
 
-func _is_valid_placement(context: Dictionary, tile_coords: Vector2i, world_position: Vector2) -> bool:
+func _get_pointer_world_position(ground: TileMapLayer) -> Vector2:
+	if ground == null:
+		return Vector2.ZERO
+	if MobileInputRouter != null and MobileInputRouter.has_touch_pointer():
+		return ground.get_viewport().get_canvas_transform().affine_inverse() * MobileInputRouter.get_touch_pointer_screen_position()
+	return ground.get_global_mouse_position()
+
+
+func _evaluate_placement(context: Dictionary, tile_coords: Vector2i, world_position: Vector2) -> Dictionary:
 	if selected_prefab == null:
-		return false
+		return {&"valid": false, &"reason": "Choose a buildable card first."}
 
 	var ground := context.get(&"ground") as TileMapLayer
 	var objects := context.get(&"objects") as TileMapLayer
 	var scene_root := context.get(&"scene") as Node2D
 	var is_overlay := _selected_buildable_is_overlay()
 	if ground == null:
-		return false
+		return {&"valid": false, &"reason": "Build mode needs a ground tilemap."}
 
 	for occupied_offset: Vector2i in _get_selected_buildable_occupied_offsets():
 		var occupied_tile := tile_coords + occupied_offset
 		if ground.get_cell_source_id(occupied_tile) == -1:
-			return false
+			return {&"valid": false, &"reason": "Move onto solid buildable ground."}
 		if objects != null and objects.get_cell_source_id(occupied_tile) != -1:
-			return false
+			return {&"valid": false, &"reason": "Clear the terrain tile before placing here."}
 		if not is_overlay and _has_placed_object_at_tile(context.get(&"scene") as Node, occupied_tile):
-			return false
+			return {&"valid": false, &"reason": "Another structure already occupies this space."}
 		if is_overlay and _has_anchor_object_at_tile(context.get(&"scene") as Node, occupied_tile, selected_buildable_id):
-			return false
+			return {&"valid": false, &"reason": "That anchor already has this overlay."}
 		
 	if selected_buildable_id == &"shelter_roof" and not _has_shelter_roof_support(context.get(&"scene") as Node, tile_coords):
-		return false
+		return {&"valid": false, &"reason": "Need 2 adjacent walls or doors for roof support."}
 
 	if is_overlay:
-		return true
+		return {&"valid": true, &"reason": ""}
 
 	if _placement_shape == null:
-		return false
+		return {&"valid": false, &"reason": "Preview collision is missing for this buildable."}
 
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = _placement_shape
@@ -295,18 +362,18 @@ func _is_valid_placement(context: Dictionary, tile_coords: Vector2i, world_posit
 	query.collision_mask = 1
 
 	if scene_root == null:
-		return false
+		return {&"valid": false, &"reason": "Build scene root is unavailable."}
 	var world_2d: World2D = scene_root.get_world_2d()
 	if world_2d == null:
-		return false
+		return {&"valid": false, &"reason": "Physics world is unavailable."}
 
 	for hit in world_2d.direct_space_state.intersect_shape(query, 16):
 		var collider := hit.get("collider") as Node
 		if collider == null or collider == ground:
 			continue
-		return false
+		return {&"valid": false, &"reason": "Blocked by nearby collision."}
 
-	return true
+	return {&"valid": true, &"reason": ""}
 
 
 func export_to_world_save_data(world_save_data) -> void:
@@ -355,13 +422,15 @@ func _has_placed_object_at_tile(scene_root: Node, tile_coords: Vector2i) -> bool
 	if scene_root == null:
 		return false
 
-	for node in get_tree().get_nodes_in_group(PLACED_OBJECT_GROUP):
+	var placed_nodes: Array = get_tree().get_nodes_in_group(PLACED_OBJECT_GROUP)
+	for index: int in range(placed_nodes.size()):
+		var node: Node = placed_nodes[index] as Node
 		if not is_instance_valid(node):
 			continue
 		if scene_root != node and not scene_root.is_ancestor_of(node):
 			continue
 		if node.has_method("get_occupied_tile_coords"):
-			var occupied_tiles: Array = node.call("get_occupied_tile_coords")
+			var occupied_tiles: Array = node.call("get_occupied_tile_coords") as Array
 			if occupied_tiles.has(tile_coords):
 				return true
 			continue
@@ -375,7 +444,9 @@ func _has_anchor_object_at_tile(scene_root: Node, tile_coords: Vector2i, object_
 	if scene_root == null:
 		return false
 
-	for node in get_tree().get_nodes_in_group(PLACED_OBJECT_GROUP):
+	var placed_nodes: Array = get_tree().get_nodes_in_group(PLACED_OBJECT_GROUP)
+	for index: int in range(placed_nodes.size()):
+		var node: Node = placed_nodes[index] as Node
 		if not is_instance_valid(node):
 			continue
 		if scene_root != node and not scene_root.is_ancestor_of(node):
@@ -384,7 +455,7 @@ func _has_anchor_object_at_tile(scene_root: Node, tile_coords: Vector2i, object_
 			continue
 		if object_type.is_empty():
 			return true
-		var node_object_type := StringName(str(node.get_meta(&"object_type", "")))
+		var node_object_type: StringName = StringName(str(node.get_meta(&"object_type", "")))
 		if node_object_type == object_type:
 			return true
 
@@ -393,7 +464,7 @@ func _has_anchor_object_at_tile(scene_root: Node, tile_coords: Vector2i, object_
 
 func _get_selected_buildable_occupied_offsets() -> Array[Vector2i]:
 	if selected_buildable_id == &"electric_trap":
-		var normalized_rotation := posmod(int(round(_selected_rotation_degrees)), 180)
+		var normalized_rotation: int = posmod(int(round(_selected_rotation_degrees)), 180)
 		if normalized_rotation == 90:
 			return [Vector2i(0, -1), Vector2i.ZERO, Vector2i(0, 1)]
 		return [Vector2i(-1, 0), Vector2i.ZERO, Vector2i(1, 0)]
@@ -612,12 +683,22 @@ func _ensure_build_menu() -> void:
 
 	_build_menu = BUILD_MENU_SCENE.instantiate()
 	add_child(_build_menu)
+	if _build_menu.has_signal("buildable_selected"):
+		_build_menu.buildable_selected.connect(_on_buildable_selected)
+	if _build_menu.has_signal("category_selected"):
+		_build_menu.category_selected.connect(_on_category_selected)
+	if _build_menu.has_signal("rotate_requested"):
+		_build_menu.rotate_requested.connect(_rotate_selected_prefab)
+	if _build_menu.has_signal("confirm_requested"):
+		_build_menu.confirm_requested.connect(_confirm_selected_placement)
+	if _build_menu.has_signal("cancel_requested"):
+		_build_menu.cancel_requested.connect(_exit_build_mode)
 
 
 func _refresh_build_menu() -> void:
 	if _build_menu == null:
 		return
-	_build_menu.refresh_menu("Build Mode", _build_hint_text(), _build_buildables_text())
+	_build_menu.refresh_menu(_build_menu_state())
 
 
 func _get_selected_buildable_prefab() -> PackedScene:
@@ -709,54 +790,6 @@ func _format_cost(cost: Dictionary) -> String:
 	return ", ".join(parts)
 
 
-func _build_buildables_text() -> String:
-	var lines: Array[String] = [
-		"Placeables",
-		"",
-	]
-
-	var ordered_ids := _get_buildable_order_source()
-	if ordered_ids.is_empty():
-		lines.append("No buildables configured.")
-		return "\n".join(lines)
-
-	var current_category := &""
-	for buildable_id: StringName in ordered_ids:
-		if not _has_buildable(buildable_id):
-			continue
-		var category_id := StringName(_get_buildable_entry(buildable_id).get(&"category", &""))
-		if category_id != current_category:
-			if not current_category.is_empty():
-				lines.append("")
-			current_category = category_id
-			lines.append(_get_buildable_category_label(category_id))
-			lines.append("")
-
-		var is_unlocked := _is_buildable_unlocked(buildable_id)
-		var is_selected := is_unlocked and _buildable_ids.find(buildable_id) == _selected_prefab_index
-		var cost := _get_buildable_cost(buildable_id)
-		var display_name := _get_buildable_display_name(buildable_id) if is_unlocked else _get_buildable_locked_name(buildable_id)
-		lines.append("%s%s" % ["> " if is_selected else "  ", display_name])
-		if is_unlocked:
-			lines.append("  Cost: %s" % _format_cost(cost))
-			var description := _get_buildable_description(buildable_id)
-			if not description.is_empty():
-				lines.append("  %s" % description)
-			if bool(_get_buildable_entry(buildable_id).get(&"overlay", false)):
-				lines.append("  Placement: overlay")
-			if bool(_get_buildable_entry(buildable_id).get(&"rotatable", false)):
-				if is_selected:
-					lines.append("  Rotation: %d degrees (R rotates)" % int(round(_selected_rotation_degrees)))
-				else:
-					lines.append("  Rotation: rotatable")
-			lines.append("  Status: %s" % ("Ready to place" if _can_afford_cost(cost) else "Missing materials"))
-		else:
-			lines.append("  Locked: %s" % _get_buildable_gate_hint(buildable_id))
-		lines.append("")
-
-	return "\n".join(lines)
-
-
 func _is_buildable_unlocked(buildable_id: StringName) -> bool:
 	if BuildingDatabase != null and BuildingDatabase.has_method("is_buildable_unlocked"):
 		return bool(BuildingDatabase.is_buildable_unlocked(buildable_id))
@@ -795,8 +828,8 @@ func _format_resource_name(item_id: StringName) -> String:
 	return " ".join(words)
 
 
-func _is_pointer_over_build_menu() -> bool:
-	return is_instance_valid(_build_menu) and _build_menu.contains_screen_point(get_viewport().get_mouse_position())
+func _is_pointer_over_build_menu(screen_position: Vector2) -> bool:
+	return is_instance_valid(_build_menu) and _build_menu.contains_screen_point(screen_position)
 
 
 func _can_afford_cost(cost: Dictionary) -> bool:
@@ -827,5 +860,212 @@ func _build_hint_text() -> String:
 	if not _dynamic_build_hint.is_empty():
 		return _dynamic_build_hint
 	if selected_buildable_id == &"shelter_roof":
-		return "B or Esc closes. Tab cycles buildables. Shelter Roof covers a 3x3 area and needs 2 adjacent walls or doors."
-	return "B or Esc closes. Tab cycles buildables. Recipes live in the pack UI and field journal, not in the build menu."
+		return "Pick a card, tap or drag the snapped preview into place, then use Confirm. Shelter Roof covers 3x3 and needs 2 adjacent walls or doors."
+	return "Pick a card, tap or drag the snapped preview into place, then use Rotate, Confirm, or Cancel."
+
+
+func _build_menu_state() -> Dictionary:
+	var cost := _get_selected_buildable_cost()
+	var feedback_text := _get_build_feedback_text(cost)
+	var feedback_kind := _get_build_feedback_kind(cost)
+	return {
+		&"title": "Build Mode",
+		&"hint": _build_hint_text(),
+		&"status_text": _get_build_status_text(cost),
+		&"status_kind": feedback_kind,
+		&"categories": _build_category_entries(),
+		&"buildables": _build_palette_entries(),
+		&"selected": {
+			&"label": _get_selected_label_text(),
+			&"detail_text": _get_selected_detail_text(cost),
+			&"feedback_text": feedback_text,
+			&"feedback_kind": feedback_kind,
+			&"placement_text": _get_selected_placement_text(),
+			&"icon": _get_buildable_icon(selected_buildable_id),
+			&"rotation_degrees": _selected_rotation_degrees,
+			&"preview_kind": feedback_kind,
+		},
+		&"can_confirm": _last_can_confirm,
+		&"can_rotate": _is_selected_buildable_rotatable(),
+	}
+
+
+func _build_category_entries() -> Array[Dictionary]:
+	var categories: Array[Dictionary] = [{
+		&"id": ALL_CATEGORY_ID,
+		&"label": "All",
+		&"selected": _selected_category_id == ALL_CATEGORY_ID,
+	}]
+	var seen: Dictionary = {}
+	for buildable_id: StringName in _get_buildable_order_source():
+		if not _has_buildable(buildable_id):
+			continue
+		var category_id := _get_buildable_category_id(buildable_id)
+		if seen.has(category_id):
+			continue
+		seen[category_id] = true
+		categories.append({
+			&"id": category_id,
+			&"label": _get_buildable_category_label(category_id),
+			&"selected": _selected_category_id == category_id,
+		})
+	return categories
+
+
+func _build_palette_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for buildable_id: StringName in _get_buildable_order_source():
+		if not _has_buildable(buildable_id):
+			continue
+		var category_id := _get_buildable_category_id(buildable_id)
+		if _selected_category_id != ALL_CATEGORY_ID and category_id != _selected_category_id:
+			continue
+		var unlocked := _is_buildable_unlocked(buildable_id)
+		var cost := _get_buildable_cost(buildable_id)
+		var label := _get_buildable_display_name(buildable_id) if unlocked else _get_buildable_locked_name(buildable_id)
+		var subtitle := ""
+		if unlocked:
+			subtitle = "%s • %s" % [
+				_format_cost(cost),
+				"Ready" if _can_afford_cost(cost) else "Missing mats",
+			]
+		else:
+			subtitle = _get_buildable_gate_hint(buildable_id)
+		entries.append({
+			&"id": buildable_id,
+			&"label": label,
+			&"subtitle": subtitle,
+			&"tooltip": _get_buildable_tooltip(buildable_id, unlocked, cost),
+			&"selected": buildable_id == selected_buildable_id,
+			&"unlocked": unlocked,
+			&"affordable": _can_afford_cost(cost),
+			&"icon": _get_buildable_icon(buildable_id),
+		})
+	return entries
+
+
+func _get_buildable_tooltip(buildable_id: StringName, unlocked: bool, cost: Dictionary) -> String:
+	if not unlocked:
+		return _get_buildable_gate_hint(buildable_id)
+	var parts: Array[String] = [_get_buildable_description(buildable_id)]
+	parts.append("Cost: %s" % _format_cost(cost))
+	if bool(_get_buildable_entry(buildable_id).get(&"overlay", false)):
+		parts.append("Overlay placement")
+	if bool(_get_buildable_entry(buildable_id).get(&"rotatable", false)):
+		parts.append("Rotatable")
+	return "\n".join(parts)
+
+
+func _get_selected_label_text() -> String:
+	if selected_buildable_id.is_empty():
+		return "Choose a buildable"
+	if _is_buildable_unlocked(selected_buildable_id):
+		return _get_buildable_display_name(selected_buildable_id)
+	return _get_buildable_locked_name(selected_buildable_id)
+
+
+func _get_selected_detail_text(cost: Dictionary) -> String:
+	if selected_buildable_id.is_empty():
+		return "Select a build card to inspect its cost and placement rules."
+	if not _is_buildable_unlocked(selected_buildable_id):
+		return _get_buildable_gate_hint(selected_buildable_id)
+	var parts: Array[String] = [
+		_get_buildable_description(selected_buildable_id),
+		"Cost: %s" % _format_cost(cost),
+	]
+	if _selected_buildable_is_overlay():
+		parts.append("Placement: overlay")
+	if _is_selected_buildable_rotatable():
+		parts.append("Rotation: %d degrees" % int(round(_selected_rotation_degrees)))
+	return "\n".join(parts)
+
+
+func _get_selected_placement_text() -> String:
+	return "Tile %d, %d" % [_last_tile_coords.x, _last_tile_coords.y]
+
+
+func _get_build_status_text(cost: Dictionary) -> String:
+	if not _last_placement_valid:
+		return "Blocked"
+	if not _can_afford_cost(cost):
+		return "Missing Materials"
+	return "Ready"
+
+
+func _get_build_feedback_kind(cost: Dictionary) -> String:
+	if not _last_placement_valid:
+		return "blocked"
+	if not _can_afford_cost(cost):
+		return "warning"
+	return "ready"
+
+
+func _get_build_feedback_text(cost: Dictionary) -> String:
+	if not _last_placement_valid:
+		return _last_placement_reason
+	if not _can_afford_cost(cost):
+		return "Missing materials: %s" % _missing_cost_text(cost)
+	if _dynamic_build_hint.is_empty():
+		return "Placement is valid. Tap Confirm to build."
+	return _dynamic_build_hint
+
+
+func _missing_cost_text(cost: Dictionary) -> String:
+	var missing_parts: Array[String] = []
+	for item_id: StringName in cost.keys():
+		var required := int(cost[item_id])
+		var available: int = InventoryManager.get_stack(item_id).quantity
+		if available >= required:
+			continue
+		missing_parts.append("%s %d/%d" % [_format_resource_name(item_id), available, required])
+	missing_parts.sort()
+	return ", ".join(missing_parts)
+
+
+func _get_buildable_category_id(buildable_id: StringName) -> StringName:
+	return StringName(_get_buildable_entry(buildable_id).get(&"category", &""))
+
+
+func _get_buildable_icon(buildable_id: StringName) -> Texture2D:
+	if _buildable_icon_cache.has(buildable_id):
+		return _buildable_icon_cache[buildable_id]
+	var prefab := _get_buildable_entry(buildable_id).get(&"prefab") as PackedScene
+	var texture := _build_default_ghost_texture()
+	if prefab != null:
+		var preview_instance := prefab.instantiate()
+		if preview_instance != null:
+			var sprite := _find_sprite_2d(preview_instance)
+			if sprite != null and sprite.texture != null:
+				texture = sprite.texture
+			preview_instance.free()
+	_buildable_icon_cache[buildable_id] = texture
+	return texture
+
+
+func _on_buildable_selected(buildable_id: StringName) -> void:
+	if not _is_buildable_unlocked(buildable_id):
+		return
+	_select_prefab_by_id(buildable_id)
+
+
+func _on_category_selected(category_id: StringName) -> void:
+	_selected_category_id = category_id
+	if _selected_category_id != ALL_CATEGORY_ID and _get_buildable_category_id(selected_buildable_id) != _selected_category_id:
+		for buildable_id: StringName in _get_buildable_order_source():
+			if not _has_buildable(buildable_id):
+				continue
+			if _get_buildable_category_id(buildable_id) != _selected_category_id:
+				continue
+			if not _is_buildable_unlocked(buildable_id):
+				continue
+			_select_prefab_by_id(buildable_id)
+			break
+	_refresh_build_menu()
+
+
+func _prime_touch_pointer() -> void:
+	if MobileInputRouter == null or not MobileInputRouter.prefers_touch_controls():
+		return
+	if MobileInputRouter.has_touch_pointer():
+		return
+	MobileInputRouter.set_touch_pointer_screen_position(get_viewport().get_visible_rect().size * 0.5, true)

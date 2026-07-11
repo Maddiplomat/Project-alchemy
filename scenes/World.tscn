@@ -5,9 +5,6 @@
 [ext_resource type="PackedScene" uid="uid://cxfen0v27oux3" path="res://scenes/Player.tscn" id="3_7g83o"]
 [ext_resource type="PackedScene" path="res://scenes/UI/HUD.tscn" id="4_hud"]
 [ext_resource type="PackedScene" uid="uid://b1f6s64gvfqtt" path="res://scenes/inventory_grid.tscn" id="5_1lgw5"]
-[ext_resource type="PackedScene" path="res://scenes/Furnace.tscn" id="7_ot3xq"]
-[ext_resource type="PackedScene" path="res://scenes/CharcoalPileProp.tscn" id="8_cp1v9"]
-[ext_resource type="PackedScene" path="res://scenes/ChemBench.tscn" id="9_cbnch"]
 [ext_resource type="PackedScene" path="res://scenes/EnemySpawner.tscn" id="10_spawner"]
 [ext_resource type="Script" path="res://scripts/IgnitionSystem.gd" id="11_ignite"]
 [ext_resource type="Script" path="res://scripts/CameraShake.gd" id="12_camera_shake"]
@@ -93,15 +90,6 @@ position = Vector2(960, 520)
 
 [node name="from_sulfur_flats" type="Marker2D" parent="TravelEntries"]
 position = Vector2(928, 800)
-
-[node name="Furnace" parent="." instance=ExtResource("7_ot3xq")]
-position = Vector2(464, 512)
-
-[node name="CharcoalPileProp" parent="." instance=ExtResource("8_cp1v9")]
-position = Vector2(490, 518)
-
-[node name="ChemBench" parent="." instance=ExtResource("9_cbnch")]
-position = Vector2(720, 448)
 
 [node name="HUD" parent="." unique_id=1866474338 instance=ExtResource("4_hud")]
 

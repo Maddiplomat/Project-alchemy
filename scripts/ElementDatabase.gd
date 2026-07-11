@@ -16,6 +16,7 @@ var scanned_elements: Dictionary[StringName, bool] = {}
 var biome_elements: Dictionary[StringName, Array] = {}
 
 const ELEMENT_DATA_DIR := "res://data/elements"
+const PERSISTENCE_KEY := &"element_database"
 
 var starter_element_ids: Array[StringName] = [&"wood", &"stone", &"iron"]
 var mid_game_element_ids: Array[StringName] = []
@@ -104,6 +105,10 @@ func get_scanned_elements() -> Array[StringName]:
 		result.append(element_id)
 	result.sort()
 	return result
+
+
+func get_persistence_key() -> StringName:
+	return PERSISTENCE_KEY
 
 
 func capture_persistent_state() -> Dictionary:

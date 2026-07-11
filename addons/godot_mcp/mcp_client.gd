@@ -4,6 +4,8 @@ class_name MCPClient
 ## WebSocket client for communication with the MCP server.
 ## Handles connection, reconnection, and message routing.
 
+const DebugLog = preload("res://scripts/DebugLog.gd")
+
 signal connected
 signal disconnected
 signal tool_requested(request_id: String, tool_name: String, args: Dictionary)
@@ -86,7 +88,7 @@ func _attempt_connection() -> void:
 	socket.inbound_buffer_size  = 1 * 1024 * 1024   # 1 MB
 	_is_connected = false
 
-	print("[MCP] Connecting to ", server_url, "...")
+	DebugLog.info("[MCP] Connecting to %s..." % server_url)
 	var err := socket.connect_to_url(server_url)
 	if err != OK:
 		push_error("[MCP] Failed to connect: ", err)
@@ -95,7 +97,7 @@ func _attempt_connection() -> void:
 func _handle_connect() -> void:
 	_is_connected = true
 	_current_reconnect_delay = RECONNECT_DELAY  # Reset backoff
-	print("[MCP] Connected to server")
+	DebugLog.info("[MCP] Connected to server")
 
 	# Send godot_ready message with project info. role=editor distinguishes
 	# this connection from the runtime helper that may also connect.
@@ -109,7 +111,7 @@ func _handle_connect() -> void:
 
 func _handle_disconnect() -> void:
 	_is_connected = false
-	print("[MCP] Disconnected from server")
+	DebugLog.info("[MCP] Disconnected from server")
 	disconnected.emit()
 
 	if _should_reconnect:
@@ -118,7 +120,7 @@ func _handle_disconnect() -> void:
 func _schedule_reconnect() -> void:
 	if not _reconnect_timer:
 		return
-	print("[MCP] Reconnecting in ", _current_reconnect_delay, " seconds...")
+	DebugLog.info("[MCP] Reconnecting in %.1f seconds..." % _current_reconnect_delay)
 	_reconnect_timer.start(_current_reconnect_delay)
 	# Exponential backoff
 	_current_reconnect_delay = min(_current_reconnect_delay * 2, MAX_RECONNECT_DELAY)
@@ -140,7 +142,7 @@ func _handle_message(json_string: String) -> void:
 			var request_id: String = message.get(&"id", "")
 			var tool_name: String = message.get(&"tool", "")
 			var args: Dictionary = message.get(&"args", {})
-			print("[MCP] Tool request: ", tool_name, " (", request_id, ")")
+			DebugLog.info("[MCP] Tool request: %s (%s)" % [tool_name, request_id])
 			tool_requested.emit(request_id, tool_name, args)
 		"client_status":
 			var count: int = int(message.get(&"count", 0))
@@ -151,7 +153,7 @@ func _handle_message(json_string: String) -> void:
 				_runtime_connected = rconn
 				runtime_status_changed.emit(rconn)
 		_:
-			print("[MCP] Unknown message type: ", msg_type)
+			DebugLog.info("[MCP] Unknown message type: %s" % msg_type)
 
 func send_tool_result(request_id: String, success: bool, result = null, error: String = "") -> void:
 	var response := {
@@ -170,7 +172,7 @@ func send_tool_result(request_id: String, success: bool, result = null, error: S
 		response[&"error"] = error
 
 	_send_message(response)
-	print("[MCP] Sent result for ", request_id, " (success=", success, ")")
+	DebugLog.info("[MCP] Sent result for %s (success=%s)" % [request_id, str(success)])
 
 func _send_message(message: Dictionary) -> void:
 	if socket.get_ready_state() == WebSocketPeer.STATE_OPEN:

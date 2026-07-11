@@ -1,5 +1,11 @@
 extends CanvasLayer
 
+const DebugLog = preload("res://scripts/DebugLog.gd")
+const FurnacePredictionScript = preload("res://scripts/FurnacePrediction.gd")
+const FurnaceSlotControllerScript = preload("res://scripts/FurnaceSlotController.gd")
+const FurnaceTheme = preload("res://scripts/FurnaceTheme.gd")
+const FurnaceWarningFXScript = preload("res://scripts/FurnaceWarningFX.gd")
+
 signal ui_closed
 signal smelt_requested
 signal forge_requested
@@ -20,18 +26,16 @@ const GAUGE_DANGER_COLOR := Color(0.89, 0.29, 0.24, 1.0)
 const CARBONISATION_GOOD_COLOR := Color(0.34, 0.82, 0.45, 1.0)
 const CARBONISATION_SLAG_COLOR := Color(0.89, 0.29, 0.24, 1.0)
 const BUTTON_IDLE_COLOR := Color(0.28, 0.30, 0.35, 1.0)
-const BUTTON_HOVER_COLOR := Color(0.36, 0.39, 0.45, 1.0)
-const BUTTON_PRESSED_COLOR := Color(0.22, 0.24, 0.28, 1.0)
 const SMELT_BUTTON_COLOR := Color(0.79, 0.47, 0.18, 1.0)
 const FORGE_BUTTON_COLOR := Color(0.39, 0.54, 0.74, 1.0)
 const PANEL_VIEW_SCALE := 0.46
 const PANEL_MARGIN := Vector2(24.0, 24.0)
+const TOUCH_PANEL_MARGIN := 16.0
 const RATIO_GUIDE_BG_COLOR := Color(0.18, 0.20, 0.23, 0.82)
 const RATIO_IRON_FILL_COLOR := Color(0.34, 0.44, 0.52, 0.92)
 const RATIO_CARBON_FILL_COLOR := Color(0.54, 0.31, 0.12, 0.96)
 const RATIO_GUIDE_TARGET_COLOR := Color(0.34, 0.82, 0.45, 0.32)
 const RATIO_GUIDE_MARKER_COLOR := Color(0.97, 0.97, 0.97, 0.95)
-const RATIO_GUIDE_TOOLTIP_FALLBACK := "Load a carbon source into Input B for steel guidance."
 const OUTPUT_PREVIEW_COLOR := Color(0.58, 0.61, 0.66, 1.0)
 const FURNACE_EXPLOSION_RADIUS := 32.0
 const FURNACE_EXPLOSION_DAMAGE := 35
@@ -47,48 +51,6 @@ const CARBONISATION_FLASH_TEMPERATURE := 650.0
 const CARBONISATION_SFX_TEMPERATURE := 680.0
 const CARBONISATION_SLAG_TEMPERATURE := 700.0
 const WARNING_FLASH_SPEED := 0.014
-const STEEL_SWORD_RECIPE_INPUT := &"steel"
-const STEEL_SWORD_RECIPE_OUTPUT := &"steel_sword"
-const TOOL_RECIPE_DEFINITIONS := {
-	&"iron_axe": {
-		&"metal_id": &"iron",
-		&"metal_qty": 2,
-		&"wood_qty": 2,
-		&"display_name": "Iron Axe",
-		&"tool_type": "axe",
-	},
-	&"steel_axe": {
-		&"metal_id": &"steel",
-		&"metal_qty": 2,
-		&"wood_qty": 2,
-		&"display_name": "Steel Axe",
-		&"tool_type": "axe",
-		&"discovery_gate": {
-			&"entry_id": &"steel",
-			&"hint": "Discover Steel in the furnace to unlock advanced forge patterns.",
-			&"locked_name": "???",
-		},
-	},
-	&"iron_pickaxe": {
-		&"metal_id": &"iron",
-		&"metal_qty": 2,
-		&"wood_qty": 2,
-		&"display_name": "Iron Pickaxe",
-		&"tool_type": "pickaxe",
-	},
-	&"steel_pickaxe": {
-		&"metal_id": &"steel",
-		&"metal_qty": 2,
-		&"wood_qty": 2,
-		&"display_name": "Steel Pickaxe",
-		&"tool_type": "pickaxe",
-		&"discovery_gate": {
-			&"entry_id": &"steel",
-			&"hint": "Discover Steel in the furnace to unlock advanced forge patterns.",
-			&"locked_name": "???",
-		},
-	},
-}
 
 @onready var root: Control = $Root
 @onready var panel: PanelContainer = $Root/PanelContainer
@@ -99,6 +61,7 @@ const TOOL_RECIPE_DEFINITIONS := {
 @onready var forge_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ForgeButton
 @onready var recipe_cycle_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/RecipeCycleButton
 @onready var fire_toggle_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/FireToggleButton
+@onready var inventory_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/InventoryButton
 @onready var action_hint_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ActionHintLabel
 @onready var fuel_cost_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/FuelCostLabel
 @onready var mode_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer/ActionLabel
@@ -115,7 +78,6 @@ var _is_initialized := false
 var _bound_furnace: Node
 var carbonisation_mode := false
 var _last_reaction_result: Dictionary = {}
-var _placeholder_textures := {}
 var ratio_container: VBoxContainer
 var ratio_slider: HSlider
 var ratio_value_label: Label
@@ -128,17 +90,6 @@ var ratio_current_marker: ColorRect
 var carbon_slag_zone: ColorRect
 var carbon_optimal_zone: ColorRect
 var _explosion_spark_texture: Texture2D
-var _warning_audio_player: AudioStreamPlayer
-var _warning_audio_stream: AudioStreamWAV
-var warning_mode := ""
-var warning_flash_active := false
-var warning_sfx_fired := false
-var warning_flash_threshold := 0.0
-var warning_sfx_threshold := 0.0
-var warning_result_threshold := 0.0
-var warning_audio_play_count := 0
-var warning_last_audio_temp := -1.0
-var warning_display_text := ""
 var _slot_refs: Dictionary[StringName, Dictionary] = {}
 var _burn_enabled := true
 var _fuel_cost_state: Dictionary = {&"item_id": &"", &"burned_units": 0.0}
@@ -147,6 +98,9 @@ var _selected_forge_output_index := 0
 var _power_status_label: Label
 var _power_button: Button
 var _power_state: Dictionary = {&"has_cell": false, &"charge_remaining_seconds": 0.0, &"switchboard_enabled": true, &"boost_active": false, &"grid_powered": false}
+var _prediction := FurnacePredictionScript.new()
+var _slot_controller := FurnaceSlotControllerScript.new()
+var _warning_fx := FurnaceWarningFXScript.new()
 var _slot_state: Dictionary[StringName, Dictionary] = {
 	&"input_a": {&"item_id": &"", &"quantity": 0},
 	&"input_b": {&"item_id": &"", &"quantity": 0},
@@ -163,14 +117,15 @@ func _ready() -> void:
 	forge_button.pressed.connect(_on_forge_pressed)
 	recipe_cycle_button.pressed.connect(_on_recipe_cycle_pressed)
 	fire_toggle_button.pressed.connect(_on_fire_toggle_pressed)
+	inventory_button.pressed.connect(_on_inventory_button_pressed)
 	ratio_slider.value_changed.connect(_on_ratio_slider_changed)
 	get_viewport().size_changed.connect(_layout_panel)
 
 	_slot_refs = {
-		&"input_a": _build_slot_ref("InputSlotA"),
-		&"input_b": _build_slot_ref("InputSlotB"),
-		&"fuel": _build_slot_ref("FuelSlot"),
-		&"output": _build_slot_ref("OutputSlot"),
+		&"input_a": _slot_controller.build_slot_ref(self, "InputSlotA"),
+		&"input_b": _slot_controller.build_slot_ref(self, "InputSlotB"),
+		&"fuel": _slot_controller.build_slot_ref(self, "FuelSlot"),
+		&"output": _slot_controller.build_slot_ref(self, "OutputSlot"),
 	}
 	for slot_id: StringName in _slot_refs.keys():
 		var slot_visual: Control = _slot_refs[slot_id].get(&"visual")
@@ -179,7 +134,7 @@ func _ready() -> void:
 
 	_apply_theme()
 	_reset_slots()
-	_ensure_warning_audio_player()
+	_warning_fx.ensure_audio_player(self)
 	_update_ratio_label(ratio_slider.value)
 	_update_ratio_guidance()
 	_update_mode_state(false)
@@ -199,7 +154,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		close_ui()
 		get_viewport().set_input_as_handled()
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+	if event is InputEventKey and event.pressed and not event.echo and (
+		event.keycode == KEY_ESCAPE or event.keycode == KEY_BACK
+	):
 		close_ui()
 		get_viewport().set_input_as_handled()
 
@@ -237,25 +194,30 @@ func is_initialized() -> bool:
 func _layout_panel() -> void:
 	if panel == null:
 		return
-
+	var viewport_size := get_viewport().get_visible_rect().size
+	if MobileInputRouter != null and MobileInputRouter.prefers_touch_controls():
+		panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+		panel.offset_left = TOUCH_PANEL_MARGIN
+		panel.offset_top = TOUCH_PANEL_MARGIN
+		panel.offset_right = -TOUCH_PANEL_MARGIN
+		panel.offset_bottom = -TOUCH_PANEL_MARGIN
+		panel.scale = Vector2.ONE
+		panel.position = Vector2.ZERO
+		return
 	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	panel.pivot_offset = Vector2.ZERO
 	panel.size = panel.custom_minimum_size
 	panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
-
-	var viewport_size := get_viewport().get_visible_rect().size
 	var scaled_size := panel.size * PANEL_VIEW_SCALE
-	panel.position = Vector2(
-		PANEL_MARGIN.x,
-		maxf(PANEL_MARGIN.y, (viewport_size.y - scaled_size.y) * 0.5)
-	)
+	panel.position = Vector2(PANEL_MARGIN.x, maxf(PANEL_MARGIN.y, (viewport_size.y - scaled_size.y) * 0.5))
 
 
 func _finalize_open_ui_layout() -> void:
 	if not _is_open or panel == null:
 		return
 	_layout_panel()
-	panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
+	if MobileInputRouter == null or not MobileInputRouter.prefers_touch_controls():
+		panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
 
 
 func bind_furnace(furnace: Node) -> void:
@@ -277,18 +239,18 @@ func can_accept_inventory_drop(global_mouse_position: Vector2, item_id: StringNa
 	if not _is_open or not _is_initialized or not is_instance_valid(_bound_furnace):
 		return false
 
-	var slot_id := _get_drop_slot_id(global_mouse_position)
+	var slot_id := _slot_controller.get_drop_slot_id(_slot_refs, global_mouse_position)
 	if slot_id.is_empty():
 		return false
 
-	return _can_accept_drop_to_slot(slot_id, item_id, qty)
+	return _slot_controller.can_accept_drop_to_slot(_slot_state, slot_id, item_id, qty)
 
 
 func handle_inventory_drop(global_mouse_position: Vector2, item_id: StringName, qty: int) -> bool:
 	if not can_accept_inventory_drop(global_mouse_position, item_id, qty):
 		return false
 
-	var slot_id := _get_drop_slot_id(global_mouse_position)
+	var slot_id := _slot_controller.get_drop_slot_id(_slot_refs, global_mouse_position)
 	if slot_id.is_empty():
 		return false
 
@@ -370,6 +332,11 @@ func _on_fire_toggle_pressed() -> void:
 	_pull_state_from_furnace()
 
 
+func _on_inventory_button_pressed() -> void:
+	if MobileInputRouter != null:
+		MobileInputRouter.tap_action(&"toggle_inventory")
+
+
 func _on_ratio_slider_changed(value: float) -> void:
 	_update_ratio_label(value)
 	_update_ratio_guidance()
@@ -383,130 +350,42 @@ func _on_furnace_temp_changed(current_temp: float) -> void:
 	_pull_state_from_furnace()
 
 
-func _build_slot_ref(node_name: String) -> Dictionary:
-	var panel_path := "Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/%s" % node_name
-	var slot_path := "%s/MarginContainer/VBoxContainer" % panel_path
-	return {
-		&"panel": get_node(NodePath(panel_path)),
-		&"visual": get_node(NodePath("%s/IconHolder/SlotVisual" % slot_path)),
-		&"icon": get_node(NodePath("%s/IconHolder/SlotVisual/ItemIcon" % slot_path)),
-		&"quantity": get_node(NodePath("%s/IconHolder/SlotVisual/QuantityLabel" % slot_path)),
-		&"name": get_node(NodePath("%s/ItemNameLabel" % slot_path)),
-	}
-
-
 func _apply_theme() -> void:
 	if not _is_initialized and temperature_gauge == null:
 		return
-
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = PANEL_BG_COLOR
-	panel_style.border_width_left = 1
-	panel_style.border_width_top = 1
-	panel_style.border_width_right = 1
-	panel_style.border_width_bottom = 1
-	panel_style.border_color = PANEL_BORDER_COLOR
-	panel_style.corner_radius_top_left = 12
-	panel_style.corner_radius_top_right = 12
-	panel_style.corner_radius_bottom_right = 12
-	panel_style.corner_radius_bottom_left = 12
-	panel.add_theme_stylebox_override("panel", panel_style)
-
-	for slot_id: StringName in _slot_refs:
-		var slot_panel: PanelContainer = _slot_refs[slot_id][&"panel"]
-		var slot_style := StyleBoxFlat.new()
-		slot_style.bg_color = SLOT_BG_COLOR
-		slot_style.border_width_left = 1
-		slot_style.border_width_top = 1
-		slot_style.border_width_right = 1
-		slot_style.border_width_bottom = 1
-		slot_style.border_color = SLOT_BORDER_COLOR
-		slot_style.corner_radius_top_left = 10
-		slot_style.corner_radius_top_right = 10
-		slot_style.corner_radius_bottom_right = 10
-		slot_style.corner_radius_bottom_left = 10
-		slot_panel.add_theme_stylebox_override("panel", slot_style)
-
-		var slot_visual: Panel = _slot_refs[slot_id][&"visual"]
-		var visual_style := StyleBoxFlat.new()
-		visual_style.bg_color = Color(0.09, 0.10, 0.12, 1.0)
-		visual_style.border_width_left = 1
-		visual_style.border_width_top = 1
-		visual_style.border_width_right = 1
-		visual_style.border_width_bottom = 1
-		visual_style.border_color = Color(0.23, 0.25, 0.29, 1.0)
-		visual_style.corner_radius_top_left = 8
-		visual_style.corner_radius_top_right = 8
-		visual_style.corner_radius_bottom_right = 8
-		visual_style.corner_radius_bottom_left = 8
-		slot_visual.add_theme_stylebox_override("panel", visual_style)
-
-	var gauge_background := StyleBoxFlat.new()
-	gauge_background.bg_color = Color(0.08, 0.09, 0.11, 1.0)
-	gauge_background.border_width_left = 1
-	gauge_background.border_width_top = 1
-	gauge_background.border_width_right = 1
-	gauge_background.border_width_bottom = 1
-	gauge_background.border_color = SLOT_BORDER_COLOR
-	gauge_background.corner_radius_top_left = 8
-	gauge_background.corner_radius_top_right = 8
-	gauge_background.corner_radius_bottom_right = 8
-	gauge_background.corner_radius_bottom_left = 8
-	temperature_gauge.add_theme_stylebox_override("background", gauge_background)
-
-	var gauge_fill := StyleBoxFlat.new()
-	gauge_fill.bg_color = GAUGE_NORMAL_COLOR
-	gauge_fill.corner_radius_top_left = 6
-	gauge_fill.corner_radius_top_right = 6
-	gauge_fill.corner_radius_bottom_right = 6
-	gauge_fill.corner_radius_bottom_left = 6
-	temperature_gauge.add_theme_stylebox_override("fill", gauge_fill)
-	temperature_gauge.add_theme_color_override("font_color", Color(0, 0, 0, 0))
-
-	_style_button(smelt_button, SMELT_BUTTON_COLOR)
-	_style_button(forge_button, FORGE_BUTTON_COLOR)
-	_style_button(recipe_cycle_button, BUTTON_IDLE_COLOR)
-	_style_button(fire_toggle_button, BUTTON_IDLE_COLOR)
-	_style_button(close_button, BUTTON_IDLE_COLOR)
-	title_label.add_theme_color_override("font_color", Color(0.94, 0.95, 0.97, 1.0))
-	summary_label.add_theme_color_override("font_color", Color(0.72, 0.74, 0.79, 1.0))
-	temp_readout_label.add_theme_color_override("font_color", GAUGE_NORMAL_COLOR)
-	action_hint_label.add_theme_color_override("font_color", Color(0.72, 0.74, 0.79, 1.0))
-	fuel_cost_label.add_theme_color_override("font_color", Color(0.60, 0.76, 0.67, 1.0))
-	mode_label.add_theme_color_override("font_color", Color(0.93, 0.94, 0.96, 1.0))
-	ratio_value_label.add_theme_color_override("font_color", Color(0.72, 0.74, 0.79, 1.0))
-	danger_label.add_theme_color_override("font_color", GAUGE_DANGER_COLOR)
-
-
-func _style_button(button: Button, accent_color: Color) -> void:
-	var normal := StyleBoxFlat.new()
-	normal.bg_color = accent_color
-	normal.corner_radius_top_left = 8
-	normal.corner_radius_top_right = 8
-	normal.corner_radius_bottom_right = 8
-	normal.corner_radius_bottom_left = 8
-	normal.border_width_left = 1
-	normal.border_width_top = 1
-	normal.border_width_right = 1
-	normal.border_width_bottom = 1
-	normal.border_color = accent_color.darkened(0.3)
-
-	var hover := normal.duplicate()
-	hover.bg_color = accent_color.lightened(0.12)
-
-	var pressed := normal.duplicate()
-	pressed.bg_color = accent_color.darkened(0.16)
-
-	var disabled := normal.duplicate()
-	disabled.bg_color = accent_color.darkened(0.45)
-	disabled.border_color = accent_color.darkened(0.55)
-
-	button.add_theme_stylebox_override("normal", normal)
-	button.add_theme_stylebox_override("hover", hover)
-	button.add_theme_stylebox_override("pressed", pressed)
-	button.add_theme_stylebox_override("disabled", disabled)
-	button.add_theme_color_override("font_color", Color(0.97, 0.97, 0.97, 1.0))
-	button.add_theme_color_override("font_disabled_color", Color(0.68, 0.68, 0.70, 1.0))
+	FurnaceTheme.apply(
+		panel,
+		_slot_refs,
+		temperature_gauge,
+		{
+			"smelt": smelt_button,
+			"forge": forge_button,
+			"recipe_cycle": recipe_cycle_button,
+			"fire_toggle": fire_toggle_button,
+			"close": close_button,
+		},
+		{
+			"title": title_label,
+			"summary": summary_label,
+			"temp": temp_readout_label,
+			"action_hint": action_hint_label,
+			"fuel_cost": fuel_cost_label,
+			"mode": mode_label,
+			"ratio_value": ratio_value_label,
+			"danger": danger_label,
+		},
+		{
+			"panel_bg": PANEL_BG_COLOR,
+			"panel_border": PANEL_BORDER_COLOR,
+			"slot_bg": SLOT_BG_COLOR,
+			"slot_border": SLOT_BORDER_COLOR,
+			"gauge_normal": GAUGE_NORMAL_COLOR,
+			"gauge_danger": GAUGE_DANGER_COLOR,
+			"smelt_button": SMELT_BUTTON_COLOR,
+			"forge_button": FORGE_BUTTON_COLOR,
+			"button_idle": BUTTON_IDLE_COLOR,
+		}
+	)
 
 
 func _reset_slots() -> void:
@@ -574,81 +453,45 @@ func _set_slot(slot_id: StringName, item_id: StringName, quantity: int, empty_la
 
 
 func _apply_slot_visual(slot_id: StringName, item_id: StringName, quantity: int, empty_label: String) -> void:
-	var refs: Dictionary = _slot_refs.get(slot_id, {})
-	if refs.is_empty():
-		return
-
-	var icon: TextureRect = refs[&"icon"]
-	var quantity_label: Label = refs[&"quantity"]
-	var name_label: Label = refs[&"name"]
-	var has_item := not item_id.is_empty() and quantity > 0
-
-	icon.texture = _get_placeholder_texture(String(item_id)) if has_item else null
-	icon.modulate = _get_item_color(String(item_id)) if has_item else SLOT_EMPTY_COLOR
-	quantity_label.text = "x%d" % quantity if has_item else ""
-	name_label.text = _get_item_label(item_id) if has_item else empty_label
-	name_label.modulate = Color(0.93, 0.94, 0.96, 1.0) if has_item else Color(0.57, 0.60, 0.65, 1.0)
+	_slot_controller.apply_slot_visual(_slot_refs, slot_id, item_id, quantity, empty_label)
 
 
 func _refresh_probable_output() -> void:
-	var input_a: Dictionary = _slot_state.get(&"input_a", {})
-	var input_b: Dictionary = _slot_state.get(&"input_b", {})
-
-	var input_a_id: StringName = input_a.get(&"item_id", &"")
-	var input_b_id: StringName = input_b.get(&"item_id", &"")
-	var input_a_qty := int(input_a.get(&"quantity", 0))
-	var input_b_qty := int(input_b.get(&"quantity", 0))
 	_update_mode_state(_should_use_carbonisation_mode())
+	var preview := _prediction.build_output_preview(
+		_slot_state,
+		_get_current_temperature(),
+		carbonisation_mode,
+		ratio_slider.value,
+		_available_forge_output_ids,
+		_selected_forge_output_index,
+		_get_charred_output_id(),
+		Callable(ElementDatabase, "get_element"),
+		Callable(self, "_get_item_label"),
+		Callable(self, "_get_forge_lock_hint"),
+		Callable(self, "_is_forge_recipe_unlocked"),
+		Callable(ChemistryEngine, "evaluate_reaction")
+	)
+	_available_forge_output_ids = preview.get(&"available_forge_output_ids", [])
+	_selected_forge_output_index = int(preview.get(&"selected_forge_output_index", 0))
 
-	if input_a_qty <= 0 and input_b_qty <= 0:
-		show_output_placeholder("Awaiting recipe")
-		return
-
-	var forge_output_id := _get_matching_forge_output_id()
-	if not forge_output_id.is_empty():
-		_slot_state[&"output"] = {&"item_id": forge_output_id, &"quantity": 1}
-		_apply_slot_visual(&"output", forge_output_id, 1, "Awaiting recipe")
-		var forge_outputs := _get_matching_forge_output_ids()
-		if forge_outputs.size() > 1:
-			action_hint_label.text = "Use Forge for %s. Cycle recipe to choose (%d/%d)." % [
-				_get_item_label(forge_output_id),
-				_selected_forge_output_index + 1,
-				forge_outputs.size(),
-			]
-		else:
-			action_hint_label.text = "Use Forge for %s." % _get_item_label(forge_output_id)
-		_update_recipe_cycle_button()
-		return
-
-	var locked_forge_outputs := _get_matching_forge_output_ids(true)
-	if not locked_forge_outputs.is_empty():
-		show_output_placeholder("Discovery locked")
-		action_hint_label.text = _get_forge_lock_hint(locked_forge_outputs[0])
-		_update_recipe_cycle_button()
-		return
-
-	if input_b_qty <= 0 and input_a_id == &"wood":
-		var output_id := _get_charred_output_id()
-		_slot_state[&"output"] = {&"item_id": output_id, &"quantity": maxi(1, input_a_qty)}
-		_apply_slot_visual(&"output", output_id, maxi(1, input_a_qty), "Awaiting recipe")
-		return
-
-	if input_a_qty <= 0 and input_b_id == &"wood":
-		var output_id := _get_charred_output_id()
-		_slot_state[&"output"] = {&"item_id": output_id, &"quantity": maxi(1, input_b_qty)}
-		_apply_slot_visual(&"output", output_id, maxi(1, input_b_qty), "Awaiting recipe")
-		return
-
-	if carbonisation_mode:
-		show_output_placeholder("Awaiting heat")
-		return
-
-	if input_a_qty <= 0 or input_b_qty <= 0:
-		show_output_placeholder("Load two materials")
-		return
-
-	var prediction := _evaluate_alloy_prediction(input_a_id, input_b_id, _get_current_temperature())
-	_show_output_prediction(prediction)
+	match str(preview.get(&"kind", "placeholder")):
+		"output":
+			var output_id := StringName(preview.get(&"output_id", &""))
+			var quantity := int(preview.get(&"quantity", 0))
+			_slot_state[&"output"] = {&"item_id": output_id, &"quantity": quantity}
+			_apply_slot_visual(&"output", output_id, quantity, "Awaiting recipe")
+			var action_hint := str(preview.get(&"action_hint", ""))
+			if not action_hint.is_empty():
+				action_hint_label.text = action_hint
+		"prediction":
+			_show_output_prediction(preview.get(&"prediction", {}))
+		_:
+			show_output_placeholder(str(preview.get(&"placeholder_text", "Awaiting recipe")))
+			var action_hint := str(preview.get(&"action_hint", ""))
+			if not action_hint.is_empty():
+				action_hint_label.text = action_hint
+	_update_recipe_cycle_button()
 
 
 func _update_action_button_states() -> void:
@@ -656,7 +499,10 @@ func _update_action_button_states() -> void:
 	var input_b: Dictionary = _slot_state.get(&"input_b", {})
 	var input_a_qty := int(input_a.get(&"quantity", 0))
 	var input_b_qty := int(input_b.get(&"quantity", 0))
-	var has_forge_recipe := not _get_matching_forge_output_id().is_empty()
+	var selection := _prediction.sync_forge_selection(_slot_state, _available_forge_output_ids, _selected_forge_output_index, Callable(self, "_is_forge_recipe_unlocked"))
+	_available_forge_output_ids = selection.get(&"available_forge_output_ids", [])
+	_selected_forge_output_index = int(selection.get(&"selected_forge_output_index", 0))
+	var has_forge_recipe := not StringName(selection.get(&"selected_output_id", &"")).is_empty()
 	var single_input := _get_single_input_state()
 	var can_run_carbonisation := not single_input.is_empty() and StringName(single_input.get(&"item_id", &"")) == &"wood"
 	forge_button.disabled = not has_forge_recipe
@@ -674,281 +520,45 @@ func _get_charred_output_id() -> StringName:
 
 
 func _update_temperature_display(current_temp: float) -> void:
-	if temperature_gauge == null or temp_readout_label == null or danger_label == null:
-		return
-
-	var clamped_temp := clampf(current_temp, 0.0, MAX_TEMPERATURE)
-	temperature_gauge.value = clamped_temp
-	temp_readout_label.text = "%d°C" % int(round(clamped_temp))
-	_update_warning_state(clamped_temp)
-
-	var fill_style: StyleBoxFlat = temperature_gauge.get_theme_stylebox("fill").duplicate()
-	if carbonisation_mode:
-		var is_slag := clamped_temp >= CARBONISATION_SLAG_TEMPERATURE
-		var is_optimal := clamped_temp >= CARBONISATION_OPTIMAL_MIN and clamped_temp < CARBONISATION_SLAG_TEMPERATURE
-		var fill_color := GAUGE_NORMAL_COLOR
-		if is_slag:
-			fill_color = CARBONISATION_SLAG_COLOR
-		elif is_optimal:
-			fill_color = CARBONISATION_GOOD_COLOR
-		fill_style.bg_color = _get_warning_fill_color(fill_color, Color(1.0, 0.92, 0.72, 1.0))
-		temp_readout_label.add_theme_color_override("font_color", fill_color)
-		danger_label.text = warning_display_text if not warning_display_text.is_empty() else "400-699°C makes Charcoal | 700°C makes Slag"
-		danger_label.visible = true
-	else:
-		var is_danger := clamped_temp >= SMELTING_EXPLOSION_TEMPERATURE
-		var base_color := GAUGE_DANGER_COLOR if is_danger else GAUGE_NORMAL_COLOR
-		fill_style.bg_color = _get_warning_fill_color(base_color, Color(1.0, 0.88, 0.74, 1.0))
-		temp_readout_label.add_theme_color_override("font_color", base_color)
-		danger_label.text = warning_display_text if not warning_display_text.is_empty() else "Overheat warning from 1500°C | Explosion at 1600°C"
-		danger_label.visible = warning_flash_active or is_danger
-
-	temperature_gauge.add_theme_stylebox_override("fill", fill_style)
-
-
-func _update_warning_state(current_temp: float) -> void:
-	var next_mode := "carbonisation" if carbonisation_mode else "smelting"
-	var next_flash_threshold := CARBONISATION_FLASH_TEMPERATURE if carbonisation_mode else SMELTING_FLASH_TEMPERATURE
-	var next_sfx_threshold := CARBONISATION_SFX_TEMPERATURE if carbonisation_mode else SMELTING_SFX_TEMPERATURE
-	var next_result_threshold := CARBONISATION_SLAG_TEMPERATURE if carbonisation_mode else SMELTING_EXPLOSION_TEMPERATURE
-
-	if warning_mode != next_mode:
-		warning_sfx_fired = false
-		warning_last_audio_temp = -1.0
-
-	warning_mode = next_mode
-	warning_flash_threshold = next_flash_threshold
-	warning_sfx_threshold = next_sfx_threshold
-	warning_result_threshold = next_result_threshold
-	warning_flash_active = current_temp >= warning_flash_threshold
-
-	if not warning_flash_active:
-		warning_sfx_fired = false
-		warning_last_audio_temp = -1.0
-
-	if current_temp >= warning_sfx_threshold and not warning_sfx_fired:
-		_play_warning_audio(current_temp)
-		warning_sfx_fired = true
-	elif current_temp < warning_flash_threshold:
-		warning_sfx_fired = false
-
-	if carbonisation_mode:
-		if current_temp >= CARBONISATION_SLAG_TEMPERATURE:
-			warning_display_text = "Overburn warning: 700°C wastes the wood into Slag"
-		elif current_temp >= CARBONISATION_SFX_TEMPERATURE:
-			warning_display_text = "Critical warning: audio cue at 680°C, Slag at 700°C"
-		elif current_temp >= CARBONISATION_FLASH_TEMPERATURE:
-			warning_display_text = "Overburn warning: gauge flashes from 650°C"
-		else:
-			warning_display_text = "400-699°C makes Charcoal | 700°C makes Slag"
-		return
-
-	if current_temp >= SMELTING_EXPLOSION_TEMPERATURE:
-		warning_display_text = "Critical warning: furnace explodes at 1600°C"
-	elif current_temp >= SMELTING_SFX_TEMPERATURE:
-		warning_display_text = "Critical warning: audio cue at 1580°C, explosion at 1600°C"
-	elif current_temp >= SMELTING_FLASH_TEMPERATURE:
-		warning_display_text = "Overheat warning: gauge flashes from 1500°C"
-	else:
-		warning_display_text = "Overheat warning from 1500°C | Explosion at 1600°C"
-
-
-func _get_warning_fill_color(base_color: Color, flash_color: Color) -> Color:
-	if not warning_flash_active:
-		return base_color
-
-	var flash_phase := 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) * WARNING_FLASH_SPEED)
-	return base_color.lerp(flash_color, flash_phase * 0.7)
-
-
-func _ensure_warning_audio_player() -> void:
-	if _warning_audio_player != null:
-		return
-
-	_warning_audio_player = AudioStreamPlayer.new()
-	_warning_audio_player.name = "WarningAudioPlayer"
-	_warning_audio_player.bus = &"Master"
-	_warning_audio_player.volume_db = -9.0
-	_warning_audio_player.stream = _build_warning_audio_stream()
-	add_child(_warning_audio_player)
-
-
-func _build_warning_audio_stream() -> AudioStreamWAV:
-	if _warning_audio_stream != null:
-		return _warning_audio_stream
-
-	var mix_rate := 22050
-	var duration_seconds := 0.12
-	var sample_count := int(float(mix_rate) * duration_seconds)
-	var pcm_bytes := PackedByteArray()
-	pcm_bytes.resize(sample_count * 2)
-	var frequency := 1240.0
-
-	for sample_index in range(sample_count):
-		var envelope := 1.0 - (float(sample_index) / float(sample_count))
-		var sample_value := sin(TAU * frequency * (float(sample_index) / float(mix_rate))) * envelope
-		var pcm_value := int(clampi(int(round(sample_value * 12000.0)), -32768, 32767))
-		var encoded_value := pcm_value if pcm_value >= 0 else 65536 + pcm_value
-		pcm_bytes[sample_index * 2] = encoded_value & 0xff
-		pcm_bytes[sample_index * 2 + 1] = (encoded_value >> 8) & 0xff
-
-	_warning_audio_stream = AudioStreamWAV.new()
-	_warning_audio_stream.mix_rate = mix_rate
-	_warning_audio_stream.format = AudioStreamWAV.FORMAT_16_BITS
-	_warning_audio_stream.stereo = false
-	_warning_audio_stream.data = pcm_bytes
-	return _warning_audio_stream
-
-
-func _play_warning_audio(current_temp: float) -> void:
-	_ensure_warning_audio_player()
-	if _warning_audio_player == null:
-		return
-
-	_warning_audio_player.stop()
-	_warning_audio_player.play()
-	warning_audio_play_count += 1
-	warning_last_audio_temp = current_temp
-
-
-func _get_drop_slot_id(global_mouse_position: Vector2) -> StringName:
-	for slot_id: StringName in [&"input_a", &"input_b", &"fuel"]:
-		var slot_ref: Dictionary = _slot_refs.get(slot_id, {})
-		if slot_ref.is_empty():
-			continue
-
-		var slot_visual: Control = slot_ref.get(&"visual")
-		if slot_visual != null and slot_visual.get_global_rect().has_point(global_mouse_position):
-			return slot_id
-
-	return &""
+	_warning_fx.update_temperature_display(
+		current_temp,
+		carbonisation_mode,
+		{
+			"temperature_gauge": temperature_gauge,
+			"temp_readout_label": temp_readout_label,
+			"danger_label": danger_label,
+		},
+		{
+			"max_temperature": MAX_TEMPERATURE,
+			"carbonisation_optimal_min": CARBONISATION_OPTIMAL_MIN,
+			"carbonisation_slag_temperature": CARBONISATION_SLAG_TEMPERATURE,
+			"carbonisation_flash_temperature": CARBONISATION_FLASH_TEMPERATURE,
+			"carbonisation_sfx_temperature": CARBONISATION_SFX_TEMPERATURE,
+			"carbonisation_good_color": CARBONISATION_GOOD_COLOR,
+			"carbonisation_slag_color": CARBONISATION_SLAG_COLOR,
+			"smelting_flash_temperature": SMELTING_FLASH_TEMPERATURE,
+			"smelting_sfx_temperature": SMELTING_SFX_TEMPERATURE,
+			"smelting_explosion_temperature": SMELTING_EXPLOSION_TEMPERATURE,
+			"warning_flash_speed": WARNING_FLASH_SPEED,
+			"gauge_normal_color": GAUGE_NORMAL_COLOR,
+			"gauge_danger_color": GAUGE_DANGER_COLOR,
+		}
+	)
 
 
 func _on_slot_gui_input(event: InputEvent, slot_id: StringName) -> void:
-	if not _is_open or slot_id == &"output":
-		return
-	if not (event is InputEventMouseButton):
-		return
-	var mouse_event := event as InputEventMouseButton
-	if mouse_event.pressed or not (mouse_event.button_index == MOUSE_BUTTON_LEFT or mouse_event.button_index == MOUSE_BUTTON_RIGHT):
+	if not _slot_controller.should_withdraw_from_gui_input(_is_open, event, slot_id):
 		return
 	_withdraw_slot_to_inventory(slot_id)
 	get_viewport().set_input_as_handled()
 
 
 func _withdraw_slot_to_inventory(slot_id: StringName) -> void:
-	if not is_instance_valid(_bound_furnace):
-		return
-
-	var slot_state: Dictionary = _bound_furnace.get_fuel_state() if slot_id == &"fuel" else _bound_furnace.get_input(slot_id)
-	var item_id := StringName(slot_state.get(&"item_id", &""))
-	var quantity := int(slot_state.get(&"quantity", 0))
-	if item_id.is_empty() or quantity <= 0:
-		return
-
-	var item_data := ElementDatabase.get_element(item_id)
-	if item_data.is_empty():
-		action_hint_label.text = "Cannot return %s from this slot." % _get_item_label(item_id)
-		return
-	if not InventoryManager.can_add_item(item_data, quantity):
-		action_hint_label.text = "Inventory full. Cannot remove %s x%d." % [_get_item_label(item_id), quantity]
-		return
-
-	var removed_qty := 0
-	if slot_id == &"fuel":
-		if _bound_furnace.has_method("remove_fuel"):
-			removed_qty = int(_bound_furnace.remove_fuel(quantity))
-	else:
-		removed_qty = int(_bound_furnace.consume_input(slot_id, quantity))
-	if removed_qty <= 0:
-		return
-
-	if not InventoryManager.add_item(item_data, removed_qty):
-		if slot_id == &"fuel":
-			_bound_furnace.add_fuel(item_id, removed_qty)
-		else:
-			_bound_furnace.set_input(slot_id, item_id, removed_qty)
-		action_hint_label.text = "Inventory full. Cannot remove %s x%d." % [_get_item_label(item_id), removed_qty]
-		return
-
-	action_hint_label.text = "Removed %s x%d." % [_get_item_label(item_id), removed_qty]
-
-
-func _can_accept_drop_to_slot(slot_id: StringName, item_id: StringName, qty: int) -> bool:
-	if qty <= 0 or item_id.is_empty():
-		return false
-	if slot_id == &"fuel":
-		var fuel_state: Dictionary = _slot_state.get(slot_id, {})
-		var current_fuel_id: StringName = fuel_state.get(&"item_id", &"")
-		return ChemistryEngine.get_fuel_value(String(item_id)) > 0.0 and (
-			current_fuel_id.is_empty() or current_fuel_id == item_id
-		)
-	if ElementDatabase.get_element(item_id).is_empty():
-		return false
-
-	var slot_state: Dictionary = _slot_state.get(slot_id, {})
-	var current_item_id: StringName = slot_state.get(&"item_id", &"")
-	return current_item_id.is_empty() or current_item_id == item_id
+	_slot_controller.withdraw_slot_to_inventory(_bound_furnace, slot_id, action_hint_label, Callable(self, "_get_item_label"))
 
 
 func _get_item_label(item_id: StringName) -> String:
-	if item_id.is_empty():
-		return ""
-
-	var element_data := ElementDatabase.get_element(item_id)
-	if not element_data.is_empty():
-		return str(element_data.get(&"display_name", item_id))
-
-	return String(item_id).replace("_", " ").capitalize()
-
-
-func _get_item_color(item_id: String) -> Color:
-	match item_id:
-		"wood":
-			return Color.BURLYWOOD
-		"stone":
-			return Color.GRAY
-		"iron":
-			return Color.SILVER
-		"steel":
-			return Color(0.70, 0.76, 0.82, 1.0)
-		"pure_carbon":
-			return Color(0.29, 0.31, 0.35, 1.0)
-		"charcoal":
-			return Color(0.18, 0.19, 0.21, 1.0)
-		"slag":
-			return Color(0.43, 0.18, 0.16, 1.0)
-		"iron_axe":
-			return Color(0.71, 0.73, 0.77, 1.0)
-		"steel_axe":
-			return Color(0.82, 0.85, 0.90, 1.0)
-		"iron_pickaxe":
-			return Color(0.76, 0.82, 0.88, 1.0)
-		"steel_pickaxe":
-			return Color(0.86, 0.90, 0.95, 1.0)
-		"steel_sword":
-			return Color(0.82, 0.85, 0.90, 1.0)
-		_:
-			return Color.WHITE
-
-
-func _get_placeholder_texture(item_id: String) -> Texture2D:
-	if item_id.is_empty():
-		return null
-
-	if _placeholder_textures.has(item_id):
-		return _placeholder_textures[item_id]
-
-	var gradient := Gradient.new()
-	gradient.set_color(0, Color.WHITE)
-	gradient.set_color(1, Color.WHITE)
-
-	var texture := GradientTexture2D.new()
-	texture.gradient = gradient
-	texture.width = 96
-	texture.height = 96
-	_placeholder_textures[item_id] = texture
-	return texture
+	return _slot_controller.get_item_label(item_id)
 
 
 func _evaluate_smelt_request() -> void:
@@ -1076,7 +686,7 @@ func _evaluate_forge_request() -> void:
 		action_hint_label.text = "Forge supports tools and the Steel Sword."
 		return
 
-	if forge_output_id == STEEL_SWORD_RECIPE_OUTPUT:
+	if forge_output_id == FurnacePredictionScript.STEEL_SWORD_RECIPE_OUTPUT:
 		_forge_steel_sword(current_temp)
 		return
 	_forge_tool(forge_output_id, current_temp)
@@ -1166,17 +776,17 @@ func _deliver_output_to_inventory(output_id: StringName, quantity: int) -> void:
 	if output_id.is_empty() or quantity <= 0:
 		return
 
-	if TOOL_RECIPE_DEFINITIONS.has(output_id):
+	if FurnacePredictionScript.TOOL_RECIPE_DEFINITIONS.has(output_id):
 		var tool_item := _build_tool_item(output_id)
 		var tool_added := InventoryManager.add_item(tool_item, quantity)
 		if not tool_added:
 			action_hint_label.text = "Inventory full! Output dropped on the floor."
-			print("[FurnaceUI] Could not add %s x%d to inventory — capacity reached." % [output_id, quantity])
+			DebugLog.info("[FurnaceUI] Could not add %s x%d to inventory; capacity reached." % [output_id, quantity])
 		return
 
-	if output_id == STEEL_SWORD_RECIPE_OUTPUT:
+	if output_id == FurnacePredictionScript.STEEL_SWORD_RECIPE_OUTPUT:
 		var sword_item := {
-			&"id": STEEL_SWORD_RECIPE_OUTPUT,
+			&"id": FurnacePredictionScript.STEEL_SWORD_RECIPE_OUTPUT,
 			&"display_name": "Steel Sword",
 			&"category": InventoryManager.InventoryItemCategory.CRAFTED,
 			&"durability": 1.0,
@@ -1189,7 +799,7 @@ func _deliver_output_to_inventory(output_id: StringName, quantity: int) -> void:
 		var sword_added := InventoryManager.add_item(sword_item, quantity)
 		if not sword_added:
 			action_hint_label.text = "Inventory full! Output dropped on the floor."
-			print("[FurnaceUI] Could not add %s x%d to inventory — capacity reached." % [output_id, quantity])
+			DebugLog.info("[FurnaceUI] Could not add %s x%d to inventory; capacity reached." % [output_id, quantity])
 		return
 
 	var element_data := ElementDatabase.get_element(output_id)
@@ -1210,7 +820,7 @@ func _deliver_output_to_inventory(output_id: StringName, quantity: int) -> void:
 	var added := InventoryManager.add_item(item_data, quantity)
 	if not added:
 		action_hint_label.text = "Inventory full! Output dropped on the floor."
-		print("[FurnaceUI] Could not add %s x%d to inventory — capacity reached." % [output_id, quantity])
+		DebugLog.info("[FurnaceUI] Could not add %s x%d to inventory; capacity reached." % [output_id, quantity])
 
 
 func _build_explosion_result(notes: String) -> Dictionary:
@@ -1223,66 +833,22 @@ func _build_explosion_result(notes: String) -> Dictionary:
 
 
 func _get_matching_tool_recipe_output_ids(include_locked: bool = false) -> Array[StringName]:
-	var input_a: Dictionary = _slot_state.get(&"input_a", {})
-	var input_b: Dictionary = _slot_state.get(&"input_b", {})
-	var input_a_id: StringName = input_a.get(&"item_id", &"")
-	var input_b_id: StringName = input_b.get(&"item_id", &"")
-	var input_a_qty := int(input_a.get(&"quantity", 0))
-	var input_b_qty := int(input_b.get(&"quantity", 0))
-	var matches: Array[StringName] = []
-
-	for output_id: StringName in TOOL_RECIPE_DEFINITIONS.keys():
-		var recipe: Dictionary = TOOL_RECIPE_DEFINITIONS[output_id]
-		var metal_id: StringName = recipe.get(&"metal_id", &"")
-		var metal_qty := int(recipe.get(&"metal_qty", 0))
-		var wood_qty := int(recipe.get(&"wood_qty", 0))
-		var matches_straight := (
-			input_a_id == metal_id and input_a_qty >= metal_qty and
-			input_b_id == &"wood" and input_b_qty >= wood_qty
-		)
-		var matches_swapped := (
-			input_b_id == metal_id and input_b_qty >= metal_qty and
-			input_a_id == &"wood" and input_a_qty >= wood_qty
-		)
-		if matches_straight or matches_swapped:
-			if include_locked and not _is_forge_recipe_unlocked(recipe):
-				matches.append(output_id)
-				continue
-			if not include_locked and not _is_forge_recipe_unlocked(recipe):
-				continue
-			matches.append(output_id)
-	return matches
+	return _prediction.get_matching_tool_recipe_output_ids(_slot_state, include_locked, Callable(self, "_is_forge_recipe_unlocked"))
 
 
 func _get_matching_forge_output_ids(include_locked: bool = false) -> Array[StringName]:
-	var forge_outputs := _get_matching_tool_recipe_output_ids(include_locked)
-	if _is_steel_sword_forge_ready() and (include_locked or _is_steel_sword_unlocked()):
-		forge_outputs.append(STEEL_SWORD_RECIPE_OUTPUT)
-	return forge_outputs
+	return _prediction.get_matching_forge_output_ids(_slot_state, include_locked, Callable(self, "_is_forge_recipe_unlocked"))
 
 
 func _sync_forge_selection() -> void:
-	var forge_outputs := _get_matching_forge_output_ids()
-	var previous_selection: StringName = &""
-	if not _available_forge_output_ids.is_empty() and _selected_forge_output_index < _available_forge_output_ids.size():
-		previous_selection = _available_forge_output_ids[_selected_forge_output_index]
-	_available_forge_output_ids = forge_outputs
-	if forge_outputs.is_empty():
-		_selected_forge_output_index = 0
-		return
-	if not previous_selection.is_empty():
-		var selected_index := forge_outputs.find(previous_selection)
-		if selected_index != -1:
-			_selected_forge_output_index = selected_index
-			return
-	_selected_forge_output_index = clampi(_selected_forge_output_index, 0, forge_outputs.size() - 1)
+	var selection := _prediction.sync_forge_selection(_slot_state, _available_forge_output_ids, _selected_forge_output_index, Callable(self, "_is_forge_recipe_unlocked"))
+	_available_forge_output_ids = selection.get(&"available_forge_output_ids", [])
+	_selected_forge_output_index = int(selection.get(&"selected_forge_output_index", 0))
 
 
 func _get_matching_forge_output_id() -> StringName:
 	_sync_forge_selection()
-	if _available_forge_output_ids.is_empty():
-		return &""
-	return _available_forge_output_ids[_selected_forge_output_index]
+	return StringName(_available_forge_output_ids[_selected_forge_output_index]) if not _available_forge_output_ids.is_empty() else &""
 
 
 func _update_recipe_cycle_button() -> void:
@@ -1304,7 +870,7 @@ func _update_recipe_cycle_button() -> void:
 
 
 func _forge_tool(output_id: StringName, current_temp: float) -> void:
-	var recipe: Dictionary = TOOL_RECIPE_DEFINITIONS.get(output_id, {})
+	var recipe: Dictionary = _prediction.get_forge_recipe_definition(output_id)
 	if recipe.is_empty():
 		return
 
@@ -1346,58 +912,41 @@ func _forge_tool(output_id: StringName, current_temp: float) -> void:
 
 
 func _build_tool_item(output_id: StringName) -> Dictionary:
-	var recipe: Dictionary = TOOL_RECIPE_DEFINITIONS.get(output_id, {})
-	return {
-		&"id": output_id,
-		&"display_name": str(recipe.get(&"display_name", String(output_id).replace("_", " ").capitalize())),
-		&"category": InventoryManager.InventoryItemCategory.TOOL,
-		&"durability": 1.0,
-		&"max_durability": 1.0,
-		&"tool_type": str(recipe.get(&"tool_type", "")),
-	}
+	return _prediction.build_tool_item(output_id, InventoryManager.InventoryItemCategory.TOOL)
 
 
 func _is_steel_sword_forge_ready() -> bool:
-	var input_a: Dictionary = _slot_state.get(&"input_a", {})
-	var input_b: Dictionary = _slot_state.get(&"input_b", {})
-	var input_a_id: StringName = input_a.get(&"item_id", &"")
-	var input_b_id: StringName = input_b.get(&"item_id", &"")
-	var input_a_qty := int(input_a.get(&"quantity", 0))
-	var input_b_qty := int(input_b.get(&"quantity", 0))
-	return (
-		(input_a_id == STEEL_SWORD_RECIPE_INPUT and input_a_qty >= 1 and input_b_qty <= 0) or
-		(input_b_id == STEEL_SWORD_RECIPE_INPUT and input_b_qty >= 1 and input_a_qty <= 0)
-	)
+	return _prediction.is_steel_sword_forge_ready(_slot_state)
 
 
 func _forge_steel_sword(current_temp: float) -> void:
 	if not _is_steel_sword_unlocked():
-		action_hint_label.text = _get_forge_lock_hint(STEEL_SWORD_RECIPE_OUTPUT)
+		action_hint_label.text = _get_forge_lock_hint(FurnacePredictionScript.STEEL_SWORD_RECIPE_OUTPUT)
 		return
 	var source_slot: StringName = &"input_a"
 	var source_state: Dictionary = _slot_state.get(source_slot, {})
-	if source_state.get(&"item_id", &"") != STEEL_SWORD_RECIPE_INPUT:
+	if source_state.get(&"item_id", &"") != FurnacePredictionScript.STEEL_SWORD_RECIPE_INPUT:
 		source_slot = &"input_b"
 		source_state = _slot_state.get(source_slot, {})
-	if source_state.get(&"item_id", &"") != STEEL_SWORD_RECIPE_INPUT:
+	if source_state.get(&"item_id", &"") != FurnacePredictionScript.STEEL_SWORD_RECIPE_INPUT:
 		show_output_placeholder("Load Steel")
 		action_hint_label.text = "Steel Sword forging needs Steel x1."
 		return
 
-	var consumed_qty := _consume_furnace_slot(source_slot, STEEL_SWORD_RECIPE_INPUT, 1)
+	var consumed_qty := _consume_furnace_slot(source_slot, FurnacePredictionScript.STEEL_SWORD_RECIPE_INPUT, 1)
 	if consumed_qty <= 0:
 		show_output_placeholder("Load Steel")
 		action_hint_label.text = "Steel Sword forging needs Steel x1."
 		return
 
 	var forge_result := {
-		"output_id": String(STEEL_SWORD_RECIPE_OUTPUT),
+		"output_id": String(FurnacePredictionScript.STEEL_SWORD_RECIPE_OUTPUT),
 		"quality": 1.0,
 		"tier": "success",
 		"notes": "Steel Sword forged. Baseline melee output online.",
 	}
 	_last_reaction_result = forge_result
-	var inputs_log := [{"item_id": STEEL_SWORD_RECIPE_INPUT, "quantity": consumed_qty}]
+	var inputs_log := [{"item_id": FurnacePredictionScript.STEEL_SWORD_RECIPE_INPUT, "quantity": consumed_qty}]
 	_apply_reaction_result(forge_result, 1, inputs_log, current_temp)
 
 
@@ -1408,24 +957,15 @@ func _is_forge_recipe_unlocked(recipe: Dictionary) -> bool:
 
 
 func _is_steel_sword_unlocked() -> bool:
-	return _is_forge_recipe_unlocked(_get_steel_sword_recipe_definition())
+	return _prediction.is_steel_sword_unlocked(Callable(self, "_is_forge_recipe_unlocked"))
 
 
 func _get_steel_sword_recipe_definition() -> Dictionary:
-	return {
-		&"display_name": "Steel Sword",
-		&"discovery_gate": {
-			&"entry_id": &"steel",
-			&"hint": "Discover Steel in the furnace to unlock advanced forge patterns.",
-			&"locked_name": "???",
-		},
-	}
+	return _prediction.get_steel_sword_recipe_definition()
 
 
 func _get_forge_recipe_definition(output_id: StringName) -> Dictionary:
-	if output_id == STEEL_SWORD_RECIPE_OUTPUT:
-		return _get_steel_sword_recipe_definition()
-	return TOOL_RECIPE_DEFINITIONS.get(output_id, {})
+	return _prediction.get_forge_recipe_definition(output_id)
 
 
 func _get_forge_lock_hint(output_id: StringName) -> String:
@@ -1439,7 +979,7 @@ func _get_forge_lock_hint(output_id: StringName) -> String:
 
 ## Trigger an explosion: shake, burst sparks, damage nearby bodies, and reset the furnace.
 func _trigger_explosion(notes: String, inputs_log: Array, temp: float) -> void:
-	print("[FurnaceUI] EXPLOSION triggered at %d°C" % int(temp))
+	DebugLog.warning("[FurnaceUI] Explosion triggered at %d°C" % int(temp))
 
 	var camera_shake := EventBus.get_camera_shake()
 	if camera_shake != null and camera_shake.has_method("shake"):
@@ -2004,7 +1544,7 @@ func _update_ratio_guidance() -> void:
 		return
 
 	var guidance := _get_active_ratio_guidance()
-	var tooltip := str(guidance.get("tooltip", RATIO_GUIDE_TOOLTIP_FALLBACK))
+	var tooltip := str(guidance.get("tooltip", FurnacePredictionScript.RATIO_GUIDE_TOOLTIP_FALLBACK))
 	ratio_container.tooltip_text = tooltip
 	ratio_slider.tooltip_text = tooltip
 	ratio_value_label.tooltip_text = tooltip
@@ -2054,113 +1594,27 @@ func _update_ratio_current_marker(value: float) -> void:
 
 
 func _get_active_ratio_guidance() -> Dictionary:
-	if carbonisation_mode:
-		return {
-			"has_window": false,
-			"tooltip": "Carbonisation mode: a single Wood stack is loaded."
-		}
-
-	var source_info := _get_active_carbon_source_info()
-	if source_info.is_empty():
-		return {
-			"has_window": false,
-			"tooltip": RATIO_GUIDE_TOOLTIP_FALLBACK
-		}
-
-	return _build_ratio_guidance(source_info)
+	return _prediction.get_active_ratio_guidance(carbonisation_mode, _get_active_carbon_source_info())
 
 
 func _build_ratio_guidance(source_info: Dictionary) -> Dictionary:
-	var display_name := str(source_info.get("display_name", "Carbon source"))
-	var carbon_fraction := clampf(float(source_info.get("carbon_fraction", 0.0)), 0.0, 1.0)
-	var steel_window_min := float(source_info.get("steel_window_min_pct", 0.0))
-	var steel_window_max := float(source_info.get("steel_window_max_pct", 0.0))
-	if carbon_fraction <= 0.0:
-		return {
-			"has_window": false,
-			"tooltip": "%s: no carbon profile available." % display_name
-		}
-
-	if steel_window_max <= steel_window_min:
-		return {
-			"has_window": false,
-			"tooltip": "%s: steel window unavailable." % display_name
-		}
-
-	return {
-		"has_window": true,
-		"ratio_min": steel_window_min,
-		"ratio_max": steel_window_max,
-		"tooltip": "%s: steel at %s-%s%% carbon" % [
-			display_name,
-			_format_pct(steel_window_min),
-			_format_pct(steel_window_max)
-		]
-	}
+	return _prediction.build_ratio_guidance(source_info)
 
 
 func _format_pct(value: float) -> String:
-	var rounded_value := snappedf(value, 0.1)
-	if is_equal_approx(rounded_value, roundf(rounded_value)):
-		return str(int(round(rounded_value)))
-	return "%.1f" % rounded_value
+	return _prediction.format_pct(value)
 
 
 func _get_active_carbon_source_info() -> Dictionary:
-	if carbonisation_mode:
-		return {}
-
-	var input_b: Dictionary = _slot_state.get(&"input_b", {})
-	var input_b_id: StringName = input_b.get(&"item_id", &"")
-	if input_b_id.is_empty():
-		return {}
-
-	var element_data := ElementDatabase.get_element(input_b_id)
-	if element_data.is_empty():
-		return {}
-
-	var properties: Dictionary = element_data.get(&"properties", {})
-	var carbon_fraction := 0.0
-	if properties.has(&"carbon_pct_when_burned"):
-		carbon_fraction = float(properties.get(&"carbon_pct_when_burned", 0.0))
-	elif properties.has(&"carbon_percentage"):
-		carbon_fraction = float(properties.get(&"carbon_percentage", 0.0))
-	else:
-		return {}
-
-	return {
-		"element_id": input_b_id,
-		"display_name": str(element_data.get(&"display_name", String(input_b_id).capitalize())),
-		"symbol": str(element_data.get(&"symbol", "C")),
-		"carbon_fraction": clampf(carbon_fraction, 0.0, 1.0),
-		"steel_window_min_pct": maxf(float(properties.get(&"steel_window_carbon_min_pct", 0.0)), 0.0),
-		"steel_window_max_pct": maxf(float(properties.get(&"steel_window_carbon_max_pct", 0.0)), 0.0)
-	}
+	return _prediction.get_active_carbon_source_info(_slot_state, carbonisation_mode, Callable(ElementDatabase, "get_element"))
 
 
 func _get_effective_b_ratio_from_slider(source_info: Dictionary) -> float:
-	var carbon_fraction := clampf(float(source_info.get("carbon_fraction", 0.0)), 0.0, 1.0)
-	if carbon_fraction <= 0.0:
-		return 0.0
-	return clampf(ratio_slider.value / carbon_fraction, 0.0, 100.0)
+	return _prediction.get_effective_b_ratio(ratio_slider.value, source_info)
 
 
 func _evaluate_alloy_prediction(input_a_id: StringName, input_b_id: StringName, current_temp: float) -> Dictionary:
-	var source_info := _get_active_carbon_source_info()
-	if source_info.is_empty():
-		return {
-			"output_id": null,
-			"quality": 0.0,
-			"tier": "unknown",
-			"notes": "No carbon source profile"
-		}
-
-	return ChemistryEngine.evaluate_reaction(
-		String(input_a_id),
-		String(input_b_id),
-		_get_effective_b_ratio_from_slider(source_info),
-		current_temp
-	)
+	return _prediction.evaluate_alloy_prediction(input_a_id, input_b_id, current_temp, ratio_slider.value, _get_active_carbon_source_info(), Callable(ChemistryEngine, "evaluate_reaction"))
 
 
 func _show_output_prediction(result: Dictionary) -> void:

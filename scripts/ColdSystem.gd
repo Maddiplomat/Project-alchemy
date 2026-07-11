@@ -7,6 +7,7 @@ const COLD_BUILDUP_RATE: float = 2.0
 const COLD_DECAY_RATE: float = 5.0
 const COLD_MAX: float = 100.0
 const COLD_DAMAGE_TICK_RATE: float = 2.0
+const PERSISTENCE_KEY := &"cold_system"
 
 var cold_level: float = 0.0
 var is_player_warmed: bool = false
@@ -34,6 +35,10 @@ func _process(delta: float) -> void:
 
 func get_cold_level() -> float:
 	return cold_level
+
+
+func get_persistence_key() -> StringName:
+	return PERSISTENCE_KEY
 
 
 func is_warmed() -> bool:

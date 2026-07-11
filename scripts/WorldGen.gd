@@ -99,6 +99,10 @@ func _ready() -> void:
 func _ensure_active_game_session() -> void:
 	if GameManager == null:
 		return
+	var world_system := get_tree().root.get_node_or_null("WorldSystem")
+	if world_system != null and world_system.has_method("has_pending_restore_state"):
+		if bool(world_system.call("has_pending_restore_state")):
+			return
 	if GameManager.game_state == GameManager.GameState.BOOT \
 		or GameManager.game_state == GameManager.GameState.MAIN_MENU:
 		GameManager.start_new_game()
@@ -894,7 +898,7 @@ func _place_overworld_sodium_trailhead() -> void:
 	var trailhead := TRAILHEAD_PROP_SCENE.instantiate()
 	trailhead.position = ground_layer.map_to_local(trailhead_tile) + Vector2(0.0, -2.0)
 	trailhead.set("trail_name", "Sodium Shoals Trailhead")
-	trailhead.set("prompt_text", "Press E to travel")
+	trailhead.set("prompt_text", "Tap Interact to travel" if MobileInputRouter.prefers_touch_controls() else "Press E to travel")
 	trailhead.set("travel_blurb", "This route leaves the base behind. Pack dry storage space and return capacity before heading into the shoals.")
 	trailhead.set("target_scene_path", SODIUM_SHOALS_SCENE_PATH)
 	trailhead.set("target_entry_point_id", &"arrival_from_overworld")
@@ -909,7 +913,7 @@ func _place_overworld_sulfur_trailhead() -> void:
 	var trailhead := TRAILHEAD_PROP_SCENE.instantiate()
 	trailhead.position = ground_layer.map_to_local(trailhead_tile) + Vector2(0.0, -2.0)
 	trailhead.set("trail_name", "Sulfur Flats Trailhead")
-	trailhead.set("prompt_text", "Press E to travel")
+	trailhead.set("prompt_text", "Tap Interact to travel" if MobileInputRouter.prefers_touch_controls() else "Press E to travel")
 	trailhead.set("travel_blurb", "This route breaks away from the home map and drops straight into the flats. Bring a distillation kit and room to haul sulfur back.")
 	trailhead.set("target_scene_path", SULFUR_FLATS_SCENE_PATH)
 	trailhead.set("target_entry_point_id", &"arrival_from_overworld")
@@ -942,7 +946,7 @@ func _place_sodium_shoals_return_trailhead() -> void:
 	var trailhead := TRAILHEAD_PROP_SCENE.instantiate()
 	trailhead.position = ground_layer.map_to_local(trailhead_tile) + Vector2(0.0, -2.0)
 	trailhead.set("trail_name", "Return Trail")
-	trailhead.set("prompt_text", "Press E to return")
+	trailhead.set("prompt_text", "Tap Interact to return" if MobileInputRouter.prefers_touch_controls() else "Press E to return")
 	trailhead.set("travel_blurb", "Head back to the home zone. Unstable cargo keeps its risk on the walk out.")
 	trailhead.set("target_scene_path", OVERWORLD_SCENE_PATH)
 	trailhead.set("target_entry_point_id", &"from_sodium_shoals")
@@ -960,7 +964,7 @@ func _place_sulfur_flats_return_trailhead() -> void:
 	var trailhead := TRAILHEAD_PROP_SCENE.instantiate()
 	trailhead.position = ground_layer.map_to_local(trailhead_tile) + Vector2(0.0, -2.0)
 	trailhead.set("trail_name", "Return Trail")
-	trailhead.set("prompt_text", "Press E to return")
+	trailhead.set("prompt_text", "Tap Interact to return" if MobileInputRouter.prefers_touch_controls() else "Press E to return")
 	trailhead.set("travel_blurb", "Head back to the home zone. Unstable cargo keeps its risk on the walk out.")
 	trailhead.set("target_scene_path", OVERWORLD_SCENE_PATH)
 	trailhead.set("target_entry_point_id", &"from_sulfur_flats")
@@ -1877,7 +1881,9 @@ func _set_world_seed(world_seed: int) -> void:
 func move_player_to_travel_entry(entry_point_id: StringName) -> bool:
 	if entry_point_id.is_empty():
 		return false
-	var current_player := GameManager.get_player()
+	var current_player := get_node_or_null("Player") as Node2D
+	if current_player == null and GameManager != null:
+		current_player = GameManager.get_player()
 	if current_player == null:
 		return false
 	var travel_entries := get_node_or_null("TravelEntries")

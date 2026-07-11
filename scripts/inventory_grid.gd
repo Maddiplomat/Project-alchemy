@@ -4,15 +4,34 @@ extends CanvasLayer
 @onready var grid = $InventoryPanel/PanelContent/InventoryColumn/Grid
 @onready var weight_bar: ProgressBar = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightBar
 @onready var weight_label: Label = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightLabel
+@onready var inventory_keybind_label: Label = $InventoryPanel/KeybindStrip/InventoryKeybindLabel
 @onready var select_keybind_label: Label = $InventoryPanel/KeybindStrip/SelectKeybindLabel
 @onready var crafting_panel: Control = $InventoryPanel/PanelContent/CraftingPanel
 @onready var crafting_hint_label: Label = $InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/CraftingHint
 @onready var recipes_list: VBoxContainer = $InventoryPanel/PanelContent/CraftingPanel/MarginContainer/CraftingContent/RecipesScroll/RecipesList
+@onready var phone_hotbar: PanelContainer = $PhoneHotbar
+@onready var hotbar_slots: HBoxContainer = $PhoneHotbar/MarginContainer/HotbarRow/HotbarSlots
+@onready var mobile_action_panel: PanelContainer = $MobileActionPanel
+@onready var selected_item_label: Label = $MobileActionPanel/MarginContainer/VBoxContainer/SelectedItemLabel
+@onready var use_button: Button = $MobileActionPanel/MarginContainer/VBoxContainer/ActionButtons/UseButton
+@onready var transfer_button: Button = $MobileActionPanel/MarginContainer/VBoxContainer/ActionButtons/TransferButton
+@onready var split_button: Button = $MobileActionPanel/MarginContainer/VBoxContainer/ActionButtons/SplitButton
+@onready var drop_button: Button = $MobileActionPanel/MarginContainer/VBoxContainer/ActionButtons/DropButton
+@onready var details_button: Button = $MobileActionPanel/MarginContainer/VBoxContainer/DetailsButton
+@onready var action_hint_label: Label = $MobileActionPanel/MarginContainer/VBoxContainer/ActionHintLabel
 @onready var tooltip_panel: Panel = $TooltipPanel
 @onready var tooltip_name_label: Label = $TooltipPanel/MarginContainer/TooltipContent/NameLabel
 @onready var tooltip_weight_label: Label = $TooltipPanel/MarginContainer/TooltipContent/WeightLabel
 @onready var tooltip_category_label: Label = $TooltipPanel/MarginContainer/TooltipContent/CategoryLabel
 @onready var tooltip_durability_label: Label = $TooltipPanel/MarginContainer/TooltipContent/DurabilityLabel
+@onready var quantity_modal: PanelContainer = $QuantityModal
+@onready var quantity_title_label: Label = $QuantityModal/MarginContainer/VBoxContainer/TitleLabel
+@onready var quantity_summary_label: Label = $QuantityModal/MarginContainer/VBoxContainer/SummaryLabel
+@onready var quantity_value_label: Label = $QuantityModal/MarginContainer/VBoxContainer/StepperRow/QuantityValueLabel
+@onready var quantity_minus_button: Button = $QuantityModal/MarginContainer/VBoxContainer/StepperRow/MinusButton
+@onready var quantity_plus_button: Button = $QuantityModal/MarginContainer/VBoxContainer/StepperRow/PlusButton
+@onready var quantity_cancel_button: Button = $QuantityModal/MarginContainer/VBoxContainer/ModalButtons/CancelButton
+@onready var quantity_confirm_button: Button = $QuantityModal/MarginContainer/VBoxContainer/ModalButtons/ConfirmButton
 @onready var crafting_highlight: Panel = $InventoryPanel/PanelContent/CraftingPanel/CraftingHighlight
 @onready var crafting_pulse_player: AnimationPlayer = $InventoryPanel/PanelContent/CraftingPanel/CraftingPulsePlayer
 
@@ -20,6 +39,7 @@ const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
 const SLOT_COUNT := InventoryManager.MAX_SLOTS
 const TOOLTIP_DELAY := 0.3
 const TOOLTIP_OFFSET := Vector2(18, 18)
+const SLOT_TOUCH_SIZE := Vector2(80, 80)
 const CRAFTING_PULSE_ANIMATION_NAME := "crafting_pulse"
 const WEIGHT_NORMAL_COLOR := Color(0.45, 0.83, 0.61, 1.0)
 const WEIGHT_WARNING_COLOR := Color(0.95, 0.67, 0.29, 1.0)
@@ -30,18 +50,27 @@ const RECIPE_ROW_BG_COLOR := Color(0.14, 0.16, 0.19, 0.9)
 const RECIPE_ROW_BORDER_COLOR := Color(0.29, 0.31, 0.36, 1.0)
 const RECIPE_DURABILITY_COLOR := Color(0.75, 0.86, 0.43, 1.0)
 const ITEM_ICON_SIZE := Vector2(34, 34)
-const SELECT_KEYBIND_BASE_TEXT := "1-5: select active item   F6: save game"
-const DRAG_QUANTITY_HINT_TEXT := "Wheel or Up/Down or Q/E to adjust qty, drag outside panel to drop"
+const SELECT_KEYBIND_BASE_TEXT := "Tap slots to equip. Long-press for details."
+const DESKTOP_KEYBIND_BASE_TEXT := "1-5: select active item   F6/Cmd+S: save game"
+const DRAG_QUANTITY_HINT_TEXT := "Use Split or Drop to choose a quantity."
 const WORLD_DROP_DISTANCE := 22.0
 const DISTILLATION_KIT_ITEM_ID := &"distillation_kit"
 const SULFUR_ITEM_ID := &"sulfur"
 const SULFURIC_BOLT_ITEM_ID := &"sulfuric_bolt"
 const RUST_BOLT_ITEM_ID := &"rust_bolt"
+const TOUCH_UI_MARGIN := 14.0
+
+enum QuantityAction {
+	NONE,
+	DROP,
+	SPLIT_DROP,
+}
 
 var drag_origin_index := -1
 var drag_ghost: TextureRect = null
 var drag_source_quantity := 0
 var drag_quantity := 0
+var selected_slot_index := 0
 var hover_slot_index := -1
 var tooltip_slot_index := -1
 var tooltip_delay_timer: SceneTreeTimer = null
@@ -49,36 +78,24 @@ var recipe_row_refs: Dictionary[StringName, Dictionary] = {}
 var _placeholder_textures := {}
 var _carrier_risk_item_id: StringName = &""
 var _tooltip_hint_label: Label = null
+var _hotbar_slots: Array[InventorySlot] = []
+var _pending_transfer_slot_index := -1
+var _quantity_modal_action := QuantityAction.NONE
+var _quantity_modal_slot_index := -1
+var _quantity_modal_value := 1
+var _drag_pointer_position := Vector2.ZERO
 
 func _ready():
-	for i in range(SLOT_COUNT):
-		var slot = SLOT_SCENE.instantiate()
-		grid.add_child(slot)
-		slot.slot_index = i
-		slot.drag_started.connect(_on_slot_drag_started)
-		slot.drag_released.connect(_on_slot_drag_released)
-		slot.clicked.connect(_on_slot_clicked)
-		slot.hover_started.connect(_on_slot_hover_started)
-		slot.hover_ended.connect(_on_slot_hover_ended)
-
-		# Set minimum size for GridContainer to respect
-		slot.custom_minimum_size = Vector2(64, 64)
-
-		# Set ItemIcon anchors and modes
-		var icon = slot.get_node("ItemIcon")
-		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-
-		# Set QuantityLabel anchors
-		var label = slot.get_node("QuantityLabel")
-		label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-
+	_build_slot_row(grid)
+	_build_hotbar()
 	InventoryManager.inventory_changed.connect(refresh_grid.unbind(1))
 	InventoryManager.active_slot_changed.connect(func(_id): refresh_grid())
 	InventoryManager.weight_changed.connect(_on_weight_changed)
+	if MobileInputRouter != null and MobileInputRouter.has_signal("input_mode_changed"):
+		MobileInputRouter.input_mode_changed.connect(func(_mode: StringName) -> void:
+			_refresh_touch_layout()
+			_update_drag_hint_label()
+		)
 	if EventBus != null and EventBus.has_signal("discovery_entry_added"):
 		EventBus.discovery_entry_added.connect(func(_entry: Dictionary) -> void:
 			_build_recipe_rows()
@@ -90,77 +107,77 @@ func _ready():
 		CarrierRiskSystem.carrier_risk_ignition.connect(_on_carrier_risk_ignition)
 	if crafting_panel != null:
 		crafting_panel.visible = false
+	use_button.pressed.connect(_on_use_button_pressed)
+	transfer_button.pressed.connect(_on_transfer_button_pressed)
+	split_button.pressed.connect(_on_split_button_pressed)
+	drop_button.pressed.connect(_on_drop_button_pressed)
+	details_button.pressed.connect(_on_details_button_pressed)
+	quantity_minus_button.pressed.connect(func() -> void: _adjust_quantity_modal(-1))
+	quantity_plus_button.pressed.connect(func() -> void: _adjust_quantity_modal(1))
+	quantity_cancel_button.pressed.connect(_close_quantity_modal)
+	quantity_confirm_button.pressed.connect(_confirm_quantity_modal)
 	_ensure_tooltip_hint_label()
 	_build_recipe_rows()
 	_refresh_recipe_states()
 	_refresh_crafting_hint()
+	selected_slot_index = InventoryManager.active_slot_index
 	refresh_grid()
 	_update_weight_display(InventoryManager.total_weight, InventoryManager.carry_capacity)
+	_refresh_touch_layout()
 	_update_drag_hint_label()
+	get_viewport().size_changed.connect(func() -> void:
+		_position_inventory_panel()
+		_position_touch_panels()
+	)
 
 	call_deferred("_setup_panel")
 
 func _setup_panel():
-	var vp_size = get_viewport().get_visible_rect().size
-	panel.position = Vector2(vp_size.x, (vp_size.y - panel.size.y) / 2)
+	_position_inventory_panel()
 	panel.visible = false
 	tooltip_panel.visible = false
+	_position_touch_panels()
 
 func _input(event):
 	if event.is_action_pressed("toggle_inventory"):
 		if _is_inventory_toggle_blocked():
 			return
 		toggle_inventory()
+		get_viewport().set_input_as_handled()
+		return
 
-	if _is_dragging():
-		if event is InputEventMouseButton and event.pressed:
-			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-				_adjust_drag_quantity(1 if not event.shift_pressed else 5)
-				get_viewport().set_input_as_handled()
-				return
-			if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-				_adjust_drag_quantity(-1 if not event.shift_pressed else -5)
-				get_viewport().set_input_as_handled()
+	if not _prefers_touch_ui():
+		for i in range(1, mini(SLOT_COUNT, 9) + 1):
+			if event.is_action_pressed("slot_%d" % i):
+				_select_slot(i - 1, true)
 				return
 
-		if event is InputEventKey and event.pressed:
-			if event.keycode == KEY_UP or event.keycode == KEY_E or event.keycode == KEY_W:
-				_adjust_drag_quantity(1 if not event.shift_pressed else 5)
-				get_viewport().set_input_as_handled()
-				return
-			if event.keycode == KEY_DOWN or event.keycode == KEY_Q or event.keycode == KEY_S:
-				_adjust_drag_quantity(-1 if not event.shift_pressed else -5)
-				get_viewport().set_input_as_handled()
-				return
-
-	# Hotkeys for visible inventory slots.
-	for i in range(1, mini(SLOT_COUNT, 9) + 1):
-		if event.is_action_pressed("slot_%d" % i):
-			InventoryManager.set_active_slot(i - 1)
-			return
-
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
-		if _is_dragging():
-			var mouse_position := get_viewport().get_mouse_position()
-			_finish_drag(_get_slot_index_at_position(mouse_position), mouse_position)
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed and _is_dragging():
+		var release_position := get_viewport().get_mouse_position()
+		_finish_drag(_get_slot_index_at_position(release_position), release_position)
 
 func _process(_delta: float) -> void:
 	if drag_ghost != null:
-		drag_ghost.global_position = get_viewport().get_mouse_position() - (drag_ghost.size / 2.0)
+		var pointer_position := _get_pointer_screen_position()
+		drag_ghost.global_position = pointer_position - (drag_ghost.size / 2.0)
 	if tooltip_panel.visible:
 		_update_tooltip_position()
+	_refresh_touch_layout()
 
 func toggle_inventory():
 	var vp_size = get_viewport().get_visible_rect().size
 	var target_x = vp_size.x
 
 	if not panel.visible or panel.position.x >= vp_size.x - 1:
-		# opening
 		panel.visible = true
-		target_x = vp_size.x - panel.size.x - 50
+		_position_inventory_panel()
+		target_x = panel.position.x
 		refresh_grid()
 	else:
 		_hide_tooltip()
+		_hide_mobile_action_panel()
+		_close_quantity_modal()
+		target_x = vp_size.x + 16.0
 
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -168,7 +185,6 @@ func toggle_inventory():
 	tween.tween_property(panel, "position:x", target_x, 0.4)
 
 	if target_x >= vp_size.x - 1:
-		# closing
 		tween.tween_callback(func(): panel.visible = false)
 
 
@@ -184,22 +200,22 @@ func _is_inventory_toggle_blocked() -> bool:
 	return player != null and player.has_method("is_input_paused") and bool(player.call("is_input_paused"))
 
 func refresh_grid():
+	selected_slot_index = clampi(selected_slot_index, 0, SLOT_COUNT - 1)
 	var active_index = InventoryManager.active_slot_index
 	for i in range(grid.get_child_count()):
 		var slot = grid.get_child(i)
 		var data = InventoryManager.get_slot_data(i)
-
 		slot.is_equipped = (i == active_index and data.item_id != &"")
-
 		if data.item_id != &"":
 			slot.update_slot(String(data.item_id), data.quantity, data.purity, null, null)
 		else:
 			slot.clear()
 		slot.set_carrier_risk_alert(not _carrier_risk_item_id.is_empty() and data.item_id == _carrier_risk_item_id)
-
-	if tooltip_panel.visible and hover_slot_index >= 0:
-		_show_tooltip_for_slot(hover_slot_index)
-	elif hover_slot_index == -1:
+	_refresh_hotbar()
+	_refresh_mobile_action_panel()
+	if tooltip_panel.visible and (hover_slot_index >= 0 or selected_slot_index >= 0):
+		_show_tooltip_for_slot(hover_slot_index if hover_slot_index >= 0 else selected_slot_index)
+	elif hover_slot_index == -1 and not _prefers_touch_ui():
 		_hide_tooltip()
 	_refresh_recipe_states()
 	_refresh_crafting_hint()
@@ -228,6 +244,10 @@ func _apply_carrier_risk_slot_state() -> void:
 		var slot = grid.get_child(i)
 		var data = InventoryManager.get_slot_data(i)
 		slot.set_carrier_risk_alert(not _carrier_risk_item_id.is_empty() and data.item_id == _carrier_risk_item_id)
+	for slot_index in range(_hotbar_slots.size()):
+		var hotbar_slot := _hotbar_slots[slot_index]
+		var hotbar_data := InventoryManager.get_slot_data(slot_index)
+		hotbar_slot.set_carrier_risk_alert(not _carrier_risk_item_id.is_empty() and hotbar_data.item_id == _carrier_risk_item_id)
 
 func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 	_update_weight_display(total_weight, carry_capacity)
@@ -248,34 +268,81 @@ func _update_weight_display(total_weight: float, carry_capacity: float) -> void:
 	else:
 		weight_bar.modulate = WEIGHT_NORMAL_COLOR
 
+func _build_slot_row(target_row: Container) -> void:
+	for i in range(SLOT_COUNT):
+		var slot := SLOT_SCENE.instantiate() as InventorySlot
+		target_row.add_child(slot)
+		_configure_slot(slot, i)
+
+func _build_hotbar() -> void:
+	for i in range(SLOT_COUNT):
+		var slot := SLOT_SCENE.instantiate() as InventorySlot
+		hotbar_slots.add_child(slot)
+		_configure_slot(slot, i)
+		slot.custom_minimum_size = SLOT_TOUCH_SIZE
+		_hotbar_slots.append(slot)
+
+func _configure_slot(slot: InventorySlot, slot_index: int) -> void:
+	slot.slot_index = slot_index
+	slot.drag_started.connect(_on_slot_drag_started)
+	slot.drag_released.connect(_on_slot_drag_released)
+	slot.clicked.connect(_on_slot_clicked)
+	slot.hover_started.connect(_on_slot_hover_started)
+	slot.hover_ended.connect(_on_slot_hover_ended)
+	slot.long_pressed.connect(_on_slot_long_pressed)
+	slot.custom_minimum_size = SLOT_TOUCH_SIZE
+	var icon := slot.get_node("ItemIcon") as TextureRect
+	if icon != null:
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var label := slot.get_node("QuantityLabel") as Label
+	if label != null:
+		label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+
 func _on_slot_drag_started(slot_index: int) -> void:
 	if _is_dragging():
 		return
-	if slot_index < 0 or slot_index >= grid.get_child_count():
+	if slot_index < 0 or slot_index >= SLOT_COUNT:
 		return
-
-	var slot = grid.get_child(slot_index)
-	if not slot.has_item():
+	var slot := _get_slot_control(slot_index)
+	if slot == null or not slot.has_item():
 		return
-
 	_hide_tooltip()
+	_hide_mobile_action_panel()
+	_close_quantity_modal()
 	drag_origin_index = slot_index
 	drag_source_quantity = int(InventoryManager.get_slot_data(slot_index).get("quantity", 0))
 	drag_quantity = drag_source_quantity
 	slot.set_drag_origin(true)
 	_create_drag_ghost(slot)
 	_update_drag_hint_label()
+	_drag_pointer_position = _get_pointer_screen_position()
 
 func _on_slot_drag_released(slot_index: int) -> void:
 	if _is_dragging():
-		_finish_drag(slot_index, get_viewport().get_mouse_position())
+		_finish_drag(slot_index, _drag_pointer_position if _drag_pointer_position != Vector2.ZERO else _get_pointer_screen_position())
 
 func _on_slot_clicked(slot_index: int) -> void:
-	InventoryManager.set_active_slot(slot_index)
+	selected_slot_index = slot_index
+	if _pending_transfer_slot_index >= 0 and _pending_transfer_slot_index != slot_index:
+		InventoryManager.swap_slots(_pending_transfer_slot_index, slot_index)
+		_pending_transfer_slot_index = -1
+		refresh_grid()
+		return
+	_select_slot(slot_index, true)
+	if _prefers_touch_ui():
+		_show_mobile_action_panel(slot_index)
 
-func _create_drag_ghost(source_slot) -> void:
+func _on_slot_long_pressed(slot_index: int) -> void:
+	selected_slot_index = slot_index
+	_show_tooltip_for_slot(slot_index)
+	_show_mobile_action_panel(slot_index)
+
+func _create_drag_ghost(source_slot: InventorySlot) -> void:
 	_clear_drag_ghost()
-
 	drag_ghost = TextureRect.new()
 	drag_ghost.texture = source_slot.item_icon.texture
 	drag_ghost.modulate = source_slot.item_icon.modulate
@@ -284,8 +351,7 @@ func _create_drag_ghost(source_slot) -> void:
 	drag_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	drag_ghost.z_index = 4096
 	drag_ghost.size = source_slot.get_global_rect().size
-	drag_ghost.global_position = get_viewport().get_mouse_position() - (drag_ghost.size / 2.0)
-
+	drag_ghost.global_position = _get_pointer_screen_position() - (drag_ghost.size / 2.0)
 	var quantity_badge := Label.new()
 	quantity_badge.name = "QuantityBadge"
 	quantity_badge.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -303,6 +369,7 @@ func _create_drag_ghost(source_slot) -> void:
 	_update_drag_ghost_quantity()
 
 func _finish_drag(drop_slot_index: int, release_mouse_position: Vector2) -> void:
+	_drag_pointer_position = release_mouse_position
 	var from_slot := drag_origin_index
 	var quantity_to_drop := drag_quantity
 	_clear_drag_ghost()
@@ -310,32 +377,32 @@ func _finish_drag(drop_slot_index: int, release_mouse_position: Vector2) -> void
 	drag_source_quantity = 0
 	drag_quantity = 0
 	_update_drag_hint_label()
-
-	if from_slot >= 0 and from_slot < grid.get_child_count():
-		grid.get_child(from_slot).set_drag_origin(false)
-
-	if drop_slot_index >= 0 and drop_slot_index < grid.get_child_count() and drop_slot_index != from_slot:
+	if from_slot >= 0 and from_slot < SLOT_COUNT:
+		var from_control := _get_slot_control(from_slot)
+		if from_control != null:
+			from_control.set_drag_origin(false)
+	if drop_slot_index >= 0 and drop_slot_index < SLOT_COUNT and drop_slot_index != from_slot:
+		InventoryManager.swap_slots(from_slot, drop_slot_index)
+		selected_slot_index = drop_slot_index
+		refresh_grid()
 		return
-
 	if from_slot < 0:
 		return
-
 	var dragged_item := InventoryManager.get_slot_data(from_slot)
 	if dragged_item.item_id == &"":
 		return
-
 	if _try_drop_to_station_ui(dragged_item, quantity_to_drop):
 		return
-
-	if _should_drop_to_world(release_mouse_position):
+	if not _prefers_touch_ui() and _should_drop_to_world(release_mouse_position):
 		_try_drop_to_world(dragged_item, quantity_to_drop)
 
 func _get_slot_index_at_position(global_mouse_position: Vector2) -> int:
-	for i in range(grid.get_child_count()):
-		var slot = grid.get_child(i)
+	for i in range(SLOT_COUNT):
+		var slot := _get_slot_control(i)
+		if slot == null:
+			continue
 		if slot.get_global_rect().has_point(global_mouse_position):
 			return i
-
 	return -1
 
 func _clear_drag_ghost() -> void:
@@ -358,23 +425,22 @@ func _adjust_drag_quantity(delta: int) -> void:
 func _update_drag_ghost_quantity() -> void:
 	if drag_ghost == null:
 		return
-
 	var quantity_badge := drag_ghost.get_node_or_null("QuantityBadge") as Label
 	if quantity_badge == null:
 		return
-
 	quantity_badge.text = "x%d" % drag_quantity
 
 
 func _update_drag_hint_label() -> void:
-	if select_keybind_label == null:
-		return
-
-	select_keybind_label.text = (
-		"%s | %s" % [SELECT_KEYBIND_BASE_TEXT, DRAG_QUANTITY_HINT_TEXT]
-		if _is_dragging() and drag_source_quantity > 1 else
-		SELECT_KEYBIND_BASE_TEXT
-	)
+	var touch_mode := _prefers_touch_ui()
+	if inventory_keybind_label != null:
+		inventory_keybind_label.text = "Use the five-slot hotbar." if touch_mode else "Tab: open inventory"
+	if select_keybind_label != null:
+		select_keybind_label.text = (
+			"%s | %s" % [SELECT_KEYBIND_BASE_TEXT, DRAG_QUANTITY_HINT_TEXT]
+			if touch_mode and _is_dragging() and drag_source_quantity > 1 else
+			(SELECT_KEYBIND_BASE_TEXT if touch_mode else DESKTOP_KEYBIND_BASE_TEXT)
+		)
 
 
 func _try_drop_to_station_ui(dragged_item: Dictionary, initial_drag_quantity: int) -> bool:
@@ -386,8 +452,7 @@ func _try_drop_to_station_ui(dragged_item: Dictionary, initial_drag_quantity: in
 	var quantity := mini(initial_drag_quantity, int(dragged_item.get("quantity", 0)))
 	if item_id.is_empty() or quantity <= 0:
 		return false
-
-	var mouse_position := get_viewport().get_mouse_position()
+	var pointer_position := _drag_pointer_position if _drag_pointer_position != Vector2.ZERO else _get_pointer_screen_position()
 	for station_ui in get_tree().get_nodes_in_group(&"station_inventory_drop_target"):
 		if station_ui == null or not is_instance_valid(station_ui):
 			continue
@@ -395,7 +460,7 @@ func _try_drop_to_station_ui(dragged_item: Dictionary, initial_drag_quantity: in
 			continue
 		if not station_ui.has_method("handle_inventory_drop"):
 			continue
-		if not station_ui.handle_inventory_drop(mouse_position, item_id, quantity):
+		if not station_ui.handle_inventory_drop(pointer_position, item_id, quantity):
 			continue
 		InventoryManager.remove_element(item_id, quantity)
 		return true
@@ -435,30 +500,42 @@ func _try_drop_to_world(dragged_item: Dictionary, initial_drag_quantity: int) ->
 
 
 func _get_world_drop_position(player: Node2D) -> Vector2:
-	var viewport_rect := get_viewport().get_visible_rect()
-	var screen_center := viewport_rect.size * 0.5
-	var direction := (get_viewport().get_mouse_position() - screen_center).normalized()
+	var direction := Vector2.DOWN
+	if MobileInputRouter != null and MobileInputRouter.has_touch_aim():
+		direction = player.global_position.direction_to(
+			get_viewport().get_canvas_transform().affine_inverse() * MobileInputRouter.get_touch_aim_screen_position()
+		)
+	elif MobileInputRouter != null and MobileInputRouter.has_touch_pointer():
+		direction = player.global_position.direction_to(
+			get_viewport().get_canvas_transform().affine_inverse() * MobileInputRouter.get_touch_pointer_screen_position()
+		)
+	else:
+		var viewport_rect := get_viewport().get_visible_rect()
+		var screen_center := viewport_rect.size * 0.5
+		direction = (get_viewport().get_mouse_position() - screen_center).normalized()
 	if direction == Vector2.ZERO:
 		direction = Vector2.DOWN
 	return player.global_position + direction * WORLD_DROP_DISTANCE
 
 func _on_slot_hover_started(slot_index: int) -> void:
+	if _prefers_touch_ui():
+		return
 	if _is_dragging():
 		return
-	if slot_index < 0 or slot_index >= grid.get_child_count():
+	if slot_index < 0 or slot_index >= SLOT_COUNT:
 		return
-
-	var slot = grid.get_child(slot_index)
+	var slot := _get_slot_control(slot_index)
 	if not slot.has_item():
 		_hide_tooltip()
 		return
-
 	hover_slot_index = slot_index
 	tooltip_slot_index = -1
 	tooltip_panel.visible = false
 	_start_tooltip_delay(slot_index)
 
 func _on_slot_hover_ended(slot_index: int) -> void:
+	if _prefers_touch_ui():
+		return
 	if hover_slot_index == slot_index:
 		hover_slot_index = -1
 	_hide_tooltip()
@@ -503,17 +580,221 @@ func _hide_tooltip() -> void:
 func _update_tooltip_position() -> void:
 	var viewport_rect := get_viewport().get_visible_rect()
 	var tooltip_size := tooltip_panel.size
-	var target_position := get_viewport().get_mouse_position() + TOOLTIP_OFFSET
-
+	var target_position := _get_pointer_screen_position() + TOOLTIP_OFFSET
+	if _prefers_touch_ui():
+		var slot := _get_display_slot_control(selected_slot_index)
+		if slot != null:
+			target_position = slot.get_global_rect().position + Vector2(0.0, -tooltip_size.y - 12.0)
 	if target_position.x + tooltip_size.x > viewport_rect.size.x:
 		target_position.x = viewport_rect.size.x - tooltip_size.x - 8.0
 	if target_position.y + tooltip_size.y > viewport_rect.size.y:
 		target_position.y = viewport_rect.size.y - tooltip_size.y - 8.0
-
 	tooltip_panel.global_position = Vector2(
 		maxf(8.0, target_position.x),
 		maxf(8.0, target_position.y)
 	)
+
+func _prefers_touch_ui() -> bool:
+	return MobileInputRouter != null and MobileInputRouter.prefers_touch_controls()
+
+func _get_pointer_screen_position() -> Vector2:
+	if MobileInputRouter != null and MobileInputRouter.has_touch_pointer():
+		return MobileInputRouter.get_touch_pointer_screen_position()
+	return get_viewport().get_mouse_position()
+
+func _get_slot_control(slot_index: int) -> InventorySlot:
+	if slot_index < 0 or slot_index >= grid.get_child_count():
+		return null
+	return grid.get_child(slot_index) as InventorySlot
+
+func _get_display_slot_control(slot_index: int) -> InventorySlot:
+	if _prefers_touch_ui() and slot_index >= 0 and slot_index < _hotbar_slots.size():
+		return _hotbar_slots[slot_index]
+	return _get_slot_control(slot_index)
+
+func _select_slot(slot_index: int, set_active: bool) -> void:
+	selected_slot_index = clampi(slot_index, 0, SLOT_COUNT - 1)
+	if set_active:
+		InventoryManager.set_active_slot(selected_slot_index)
+	_refresh_mobile_action_panel()
+	_refresh_hotbar()
+
+func _refresh_hotbar() -> void:
+	var active_index := InventoryManager.active_slot_index
+	for slot_index in range(_hotbar_slots.size()):
+		var hotbar_slot := _hotbar_slots[slot_index]
+		var data := InventoryManager.get_slot_data(slot_index)
+		hotbar_slot.is_equipped = slot_index == active_index and data.item_id != &""
+		if data.item_id != &"":
+			hotbar_slot.update_slot(String(data.item_id), data.quantity, data.purity, null, null)
+		else:
+			hotbar_slot.clear()
+		hotbar_slot.visible = true
+
+func _refresh_touch_layout() -> void:
+	if phone_hotbar == null:
+		return
+	var touch_mode := _prefers_touch_ui()
+	phone_hotbar.visible = touch_mode
+	mobile_action_panel.visible = touch_mode and mobile_action_panel.visible
+	quantity_modal.visible = touch_mode and quantity_modal.visible
+	_position_touch_panels()
+
+func _position_touch_panels() -> void:
+	var viewport_size := get_viewport().get_visible_rect().size
+	var safe_insets := _get_safe_insets(viewport_size)
+	var inset_left := float(safe_insets.get(&"left", 0.0))
+	var inset_top := float(safe_insets.get(&"top", 0.0))
+	var inset_right := float(safe_insets.get(&"right", 0.0))
+	var inset_bottom := float(safe_insets.get(&"bottom", 0.0))
+	var bottom_margin := inset_bottom + TOUCH_UI_MARGIN
+	if phone_hotbar != null:
+		phone_hotbar.position = Vector2(
+			maxf(inset_left + TOUCH_UI_MARGIN, (viewport_size.x - phone_hotbar.size.x) * 0.5),
+			viewport_size.y - phone_hotbar.size.y - bottom_margin
+		)
+	if mobile_action_panel != null:
+		mobile_action_panel.position = Vector2(
+			maxf(inset_left + TOUCH_UI_MARGIN, viewport_size.x - inset_right - mobile_action_panel.size.x - TOUCH_UI_MARGIN),
+			maxf(inset_top + 88.0, viewport_size.y - mobile_action_panel.size.y - phone_hotbar.size.y - bottom_margin - 12.0)
+		)
+	if quantity_modal != null:
+		quantity_modal.position = Vector2(
+			maxf(inset_left + TOUCH_UI_MARGIN, (viewport_size.x - quantity_modal.size.x) * 0.5),
+			maxf(inset_top + 80.0, (viewport_size.y - quantity_modal.size.y) * 0.5)
+		)
+
+
+func _position_inventory_panel() -> void:
+	var viewport_size := get_viewport().get_visible_rect().size
+	var safe_insets := _get_safe_insets(viewport_size)
+	var inset_left := float(safe_insets.get(&"left", 0.0))
+	var inset_top := float(safe_insets.get(&"top", 0.0))
+	var inset_right := float(safe_insets.get(&"right", 0.0))
+	if _prefers_touch_ui():
+		panel.size = Vector2(
+			maxf(360.0, viewport_size.x - inset_left - inset_right - TOUCH_UI_MARGIN * 2.0),
+			minf(420.0, viewport_size.y * 0.54)
+		)
+		panel.position = Vector2(
+			inset_left + TOUCH_UI_MARGIN,
+			inset_top + 78.0
+		)
+		return
+
+	panel.position = Vector2(viewport_size.x, maxf(24.0, (viewport_size.y - panel.size.y) * 0.5))
+
+
+func _get_safe_insets(viewport_size: Vector2) -> Dictionary:
+	var safe_rect := Rect2(Vector2.ZERO, viewport_size)
+	if DisplayServer.has_method("get_display_safe_area"):
+		var safe_area: Variant = DisplayServer.get_display_safe_area()
+		if safe_area is Rect2i:
+			safe_rect = Rect2(safe_area.position, safe_area.size)
+		elif safe_area is Rect2:
+			safe_rect = safe_area
+	return {
+		&"left": maxf(0.0, safe_rect.position.x),
+		&"top": maxf(0.0, safe_rect.position.y),
+		&"right": maxf(0.0, viewport_size.x - safe_rect.end.x),
+		&"bottom": maxf(0.0, viewport_size.y - safe_rect.end.y),
+	}
+
+func _show_mobile_action_panel(slot_index: int) -> void:
+	if not _prefers_touch_ui():
+		return
+	selected_slot_index = slot_index
+	mobile_action_panel.visible = true
+	_refresh_mobile_action_panel()
+
+func _hide_mobile_action_panel() -> void:
+	mobile_action_panel.visible = false
+	_pending_transfer_slot_index = -1
+
+func _refresh_mobile_action_panel() -> void:
+	if mobile_action_panel == null:
+		return
+	var slot_data := InventoryManager.get_slot_data(selected_slot_index)
+	var has_item := StringName(slot_data.get("item_id", &"")) != &""
+	selected_item_label.text = _get_tooltip_item_name(slot_data, ElementDatabase.get_element(StringName(slot_data.get("id", &""))), StringName(slot_data.get("id", &""))) if has_item else "Empty Slot"
+	use_button.disabled = not has_item
+	transfer_button.disabled = not has_item
+	split_button.disabled = not has_item or int(slot_data.get("quantity", 0)) <= 1
+	drop_button.disabled = not has_item
+	details_button.disabled = not has_item
+	action_hint_label.text = (
+		"Tap another slot to finish the transfer."
+		if _pending_transfer_slot_index >= 0 else
+		"Tap a slot to equip. Long-press for details. Drag to move."
+	)
+	transfer_button.text = "Choose Target" if _pending_transfer_slot_index == selected_slot_index else "Transfer"
+
+func _on_use_button_pressed() -> void:
+	_select_slot(selected_slot_index, true)
+	_hide_tooltip()
+
+func _on_transfer_button_pressed() -> void:
+	var slot_data := InventoryManager.get_slot_data(selected_slot_index)
+	if StringName(slot_data.get("item_id", &"")) == &"":
+		return
+	_pending_transfer_slot_index = selected_slot_index
+	_refresh_mobile_action_panel()
+
+func _on_split_button_pressed() -> void:
+	_open_quantity_modal(selected_slot_index, QuantityAction.SPLIT_DROP)
+
+func _on_drop_button_pressed() -> void:
+	var slot_data := InventoryManager.get_slot_data(selected_slot_index)
+	if int(slot_data.get("quantity", 0)) <= 1:
+		_try_drop_to_world(slot_data, 1)
+		refresh_grid()
+		return
+	_open_quantity_modal(selected_slot_index, QuantityAction.DROP)
+
+func _on_details_button_pressed() -> void:
+	_show_tooltip_for_slot(selected_slot_index)
+
+func _open_quantity_modal(slot_index: int, action: int) -> void:
+	var slot_data := InventoryManager.get_slot_data(slot_index)
+	var max_quantity := maxi(1, int(slot_data.get("quantity", 1)))
+	_quantity_modal_slot_index = slot_index
+	_quantity_modal_action = action
+	_quantity_modal_value = clampi(_quantity_modal_value, 1, max_quantity)
+	if _quantity_modal_value > max_quantity:
+		_quantity_modal_value = max_quantity
+	quantity_title_label.text = "Split Stack" if action == QuantityAction.SPLIT_DROP else "Drop Items"
+	quantity_summary_label.text = "Choose how many items to drop." if action == QuantityAction.DROP else "Choose a partial stack to drop."
+	quantity_confirm_button.text = "Drop"
+	_update_quantity_modal()
+	quantity_modal.visible = true
+
+func _update_quantity_modal() -> void:
+	var slot_data := InventoryManager.get_slot_data(_quantity_modal_slot_index)
+	var max_quantity := maxi(1, int(slot_data.get("quantity", 1)))
+	_quantity_modal_value = clampi(_quantity_modal_value, 1, max_quantity)
+	quantity_value_label.text = "%d" % _quantity_modal_value
+	quantity_minus_button.disabled = _quantity_modal_value <= 1
+	quantity_plus_button.disabled = _quantity_modal_value >= max_quantity
+
+func _adjust_quantity_modal(delta: int) -> void:
+	if not quantity_modal.visible:
+		return
+	_quantity_modal_value += delta
+	_update_quantity_modal()
+
+func _close_quantity_modal() -> void:
+	quantity_modal.visible = false
+	_quantity_modal_action = QuantityAction.NONE
+	_quantity_modal_slot_index = -1
+
+func _confirm_quantity_modal() -> void:
+	if _quantity_modal_slot_index < 0:
+		_close_quantity_modal()
+		return
+	var slot_data := InventoryManager.get_slot_data(_quantity_modal_slot_index)
+	_try_drop_to_world(slot_data, _quantity_modal_value)
+	_close_quantity_modal()
+	refresh_grid()
 
 func _format_category(category: String) -> String:
 	if category.is_empty():

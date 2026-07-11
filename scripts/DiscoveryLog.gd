@@ -1,5 +1,7 @@
 extends Node
 
+const DebugLog = preload("res://scripts/DebugLog.gd")
+
 ## DiscoveryLog Autoload
 ## Records every unique smelting outcome, broadcasts it as a signal,
 ## and surfaces a timestamped history for the in-game journal.
@@ -9,6 +11,7 @@ signal entry_added(entry: Dictionary)
 
 ## Maximum number of entries kept in memory.
 const MAX_LOG_SIZE := 500
+const PERSISTENCE_KEY := &"discovery_log"
 
 ## Outcome severity tiers — mirrors ChemistryEngine result tiers.
 enum OutcomeTier {
@@ -167,6 +170,10 @@ func get_all_discoveries() -> Array[StringName]:
 		result.append(entry_id)
 	result.sort()
 	return result
+
+
+func get_persistence_key() -> StringName:
+	return PERSISTENCE_KEY
 
 
 func capture_persistent_state() -> Dictionary:
@@ -394,7 +401,7 @@ func _print_entry(entry: Dictionary) -> void:
 	var tier_str := str(entry.get("tier", "?"))
 	var temp_str := "%d°C" % int(entry.get("temperature", 0.0))
 	var notes_str := str(entry.get("notes", ""))
-	print(
+	DebugLog.info(
 		"[DiscoveryLog] %s%s (%s) @ %s — %s"
 		% [flag, name_str, tier_str, temp_str, notes_str]
 	)

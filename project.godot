@@ -11,13 +11,14 @@ config_version=5
 [application]
 
 config/name="Project Alchemy"
+config/version="0.1.0"
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
 
 [autoload]
 
-MCPRuntime="*uid://cfbudnvirj11t"
+MCPRuntime="*res://scripts/MCPRuntime.gd"
 GameManager="*res://scripts/GameManager.gd"
 ElementDatabase="*res://scripts/ElementDatabase.gd"
 RecipeDatabase="*res://scripts/RecipeDatabase.gd"
@@ -26,6 +27,7 @@ CraftingManager="*res://scripts/CraftingManager.gd"
 WorldSystem="*res://scripts/WorldSystem.gd"
 ChemistryEngine="*res://scripts/ChemistryEngine.gd"
 EventBus="*res://scripts/EventBus.gd"
+PersistenceRegistry="*res://scripts/PersistenceRegistry.gd"
 DiscoveryLog="*res://scripts/DiscoveryLog.gd"
 WeatherSystem="*res://scripts/WeatherSystem.gd"
 DiscoveryJournal="*res://scripts/DiscoveryJournal.gd"
@@ -37,6 +39,8 @@ ResearchObjectives="*res://scripts/ResearchObjectives.gd"
 StorageManager="*res://scripts/StorageManager.gd"
 BaseDefenseSystem="*res://scripts/BaseDefenseSystem.gd"
 BaseThreatDirector="*res://scripts/BaseThreatDirector.gd"
+MobileInputRouter="*res://scripts/input/MobileInputRouter.gd"
+MobilePerformance="*res://scripts/MobilePerformance.gd"
 
 [display]
 
@@ -45,6 +49,7 @@ window/size/viewport_height=720
 window/size/mode=2
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+window/handheld/orientation="landscape"
 
 [editor_plugins]
 
@@ -93,7 +98,9 @@ toggle_journal={
 }
 manual_save={
 "deadzone": 0.5,
-"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194315,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":4194315,"physical_keycode":4194315,"key_label":4194315,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":true,"meta_pressed":false,"pressed":false,"keycode":83,"physical_keycode":83,"key_label":83,"unicode":115,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":true,"pressed":false,"keycode":83,"physical_keycode":83,"key_label":83,"unicode":115,"location":0,"echo":false,"script":null)
 ])
 }
 slot_1={
@@ -141,6 +148,30 @@ fire_projectile={
 "events": Array[InputEvent]([Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":1,"canceled":false,"pressed":false,"double_click":false,"script":null)
 ])
 }
+toggle_build_mode={
+"deadzone": 0.5,
+"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":66,"physical_keycode":66,"key_label":66,"unicode":98,"location":0,"echo":false,"script":null)
+])
+}
+build_confirm={
+"deadzone": 0.5,
+"events": Array[InputEvent]([])
+}
+build_cancel={
+"deadzone": 0.5,
+"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":4194308,"physical_keycode":4194308,"key_label":4194308,"unicode":0,"location":0,"echo":false,"script":null)
+])
+}
+build_rotate={
+"deadzone": 0.5,
+"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":82,"physical_keycode":82,"key_label":82,"unicode":114,"location":0,"echo":false,"script":null)
+])
+}
+toggle_objectives_panel={
+"deadzone": 0.5,
+"events": Array[InputEvent]([Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":79,"physical_keycode":79,"key_label":79,"unicode":111,"location":0,"echo":false,"script":null)
+])
+}
 
 [physics]
 
@@ -150,3 +181,4 @@ fire_projectile={
 
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true

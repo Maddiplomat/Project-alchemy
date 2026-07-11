@@ -40,7 +40,7 @@ func _ready() -> void:
 	_thunder_audio_player.stream = _build_thunder_stream()
 	add_child(_thunder_audio_player)
 
-	set_process(true)
+	set_process(false)
 	_schedule_next_squall()
 
 
@@ -75,6 +75,7 @@ func _start_squall() -> void:
 			_rain_particles.global_position = player.global_position + Vector2(0.0, -220.0)
 		_rain_particles.restart()
 		_rain_particles.emitting = true
+	set_process(true)
 	_squall_end_timer = get_tree().create_timer(SQUALL_DURATION_SECONDS)
 	_squall_end_timer.timeout.connect(_end_squall, CONNECT_ONE_SHOT)
 
@@ -84,6 +85,7 @@ func _end_squall() -> void:
 	GameManager.set_environmental_warning(WARNING_ID, false)
 	if _rain_particles != null:
 		_rain_particles.emitting = false
+	set_process(false)
 	_tween_canvas_to(NORMAL_CANVAS_COLOR, 2.0)
 	_schedule_next_squall()
 
@@ -126,7 +128,10 @@ func _configure_rain_particles() -> void:
 	process_material.color_ramp = _build_rain_gradient()
 	_rain_particles.process_material = process_material
 	_rain_particles.texture = _build_rain_texture()
-	_rain_particles.amount = int(ceili(RAIN_PARTICLE_RATE * RAIN_PARTICLE_LIFETIME))
+	var particle_scale := 1.0
+	if MobilePerformance != null and MobilePerformance.has_method("get_particle_amount_scale"):
+		particle_scale = float(MobilePerformance.get_particle_amount_scale())
+	_rain_particles.amount = maxi(24, int(ceili(RAIN_PARTICLE_RATE * RAIN_PARTICLE_LIFETIME * particle_scale)))
 	_rain_particles.lifetime = RAIN_PARTICLE_LIFETIME
 	_rain_particles.one_shot = false
 	_rain_particles.explosiveness = 0.0

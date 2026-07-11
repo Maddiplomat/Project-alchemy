@@ -13,25 +13,54 @@ func _ready() -> void:
 func _run_test() -> void:
 	var source := WorldSaveDataScript.new()
 	var target := WorldSaveDataScript.new()
+	var backend_envelope_target := WorldSaveDataScript.new()
 	var versionless_target := WorldSaveDataScript.new()
 	var version_one_target := WorldSaveDataScript.new()
+	var scene_state_by_path_target := WorldSaveDataScript.new()
 
 	_seed_source_state(source)
 	var serialized := source.serialize()
+	var normalized_backend := source.normalize_save_envelope(serialized)
 	target.deserialize(serialized)
+	backend_envelope_target.deserialize(normalized_backend)
 
 	_assert(int(serialized.get("version", 0)) == int(source.SAVE_STATE_VERSION), "Expected serialized save state version.")
 	_assert(_has_backend_envelope_shape(serialized), "Expected serialized save data to use the backend-ready envelope.")
 	var metadata := serialized.get("metadata", {}) as Dictionary
 	var integrity := metadata.get("integrity", {}) as Dictionary
 	_assert(not str(integrity.get("checksum", "")).is_empty(), "Expected serialized save data to include an integrity checksum.")
+	var checksum_repair_input: Dictionary = serialized.duplicate(true)
+	var checksum_repair_metadata := (checksum_repair_input.get("metadata", {}) as Dictionary).duplicate(true)
+	var checksum_repair_integrity := (checksum_repair_metadata.get("integrity", {}) as Dictionary).duplicate(true)
+	checksum_repair_integrity["checksum"] = "invalid"
+	checksum_repair_metadata["integrity"] = checksum_repair_integrity
+	checksum_repair_input["metadata"] = checksum_repair_metadata
+	var repaired_backend := source.normalize_save_envelope(checksum_repair_input)
+	var repaired_metadata := repaired_backend.get("metadata", {}) as Dictionary
+	var repaired_integrity := repaired_metadata.get("integrity", {}) as Dictionary
+	_assert(
+		str(repaired_metadata.get("migration_status", "")) == "checksum_repaired",
+		"Expected invalid backend checksums to be repaired during normalization."
+	)
+	_assert(
+		str(repaired_integrity.get("checksum", "")) != "invalid",
+		"Expected normalization to replace invalid backend checksums."
+	)
+	_assert(
+		bool(source.call("_verify_integrity_checksum", repaired_backend, false)),
+		"Expected repaired backend envelopes to validate cleanly."
+	)
 	_assert(
 		_states_match(source, target),
 		"Expected deserialize(serialize(state)) to preserve WorldSaveData fields. Mismatch: %s" % _describe_first_mismatch(source, target)
 	)
+	_assert(
+		_states_match(source, backend_envelope_target),
+		"Expected normalized backend envelope to preserve WorldSaveData fields. Mismatch: %s" % _describe_first_mismatch(source, backend_envelope_target)
+	)
 
 	var versionless_flat := _build_flat_payload(source, false)
-	var versionless_migrated := source._migrate_save_data(versionless_flat)
+	var versionless_migrated := source.normalize_save_envelope(versionless_flat)
 	versionless_target.deserialize(versionless_flat)
 	_assert(int(versionless_migrated.get("version", 0)) == int(source.SAVE_STATE_VERSION), "Expected versionless saves to migrate to the current save version.")
 	_assert(
@@ -44,7 +73,7 @@ func _run_test() -> void:
 	)
 
 	var version_one_flat := _build_flat_payload(source, true)
-	var version_one_migrated := source._migrate_save_data(version_one_flat)
+	var version_one_migrated := source.normalize_save_envelope(version_one_flat)
 	version_one_target.deserialize(version_one_flat)
 	_assert(int(version_one_migrated.get("version", 0)) == int(source.SAVE_STATE_VERSION), "Expected version 1 saves to migrate to the current save version.")
 	_assert(
@@ -56,10 +85,29 @@ func _run_test() -> void:
 		"Expected version 1 payload to migrate and preserve state. Mismatch: %s" % _describe_first_mismatch(source, version_one_target)
 	)
 
+	var scene_state_by_path_save := _build_scene_state_by_path_payload(source)
+	var scene_state_by_path_migrated := source.normalize_save_envelope(scene_state_by_path_save)
+	scene_state_by_path_target.deserialize(scene_state_by_path_save)
+	_assert(int(scene_state_by_path_migrated.get("version", 0)) == int(source.SAVE_STATE_VERSION), "Expected world_system.scene_state_by_path saves to migrate to the current save version.")
+	_assert(
+		str((scene_state_by_path_migrated.get("metadata", {}) as Dictionary).get("migration_status", "")) == "migrated_from_flat_v1",
+		"Expected world_system.scene_state_by_path saves to record migration status."
+	)
+	_assert(
+		_states_match(source, scene_state_by_path_target),
+		"Expected world_system.scene_state_by_path payload to migrate and preserve state. Mismatch: %s" % _describe_first_mismatch(source, scene_state_by_path_target)
+	)
+
+	_assert_same_normalized_envelope_keys(normalized_backend, versionless_migrated, "backend envelope", "flat versionless")
+	_assert_same_normalized_envelope_keys(normalized_backend, version_one_migrated, "backend envelope", "flat v1")
+	_assert_same_normalized_envelope_keys(normalized_backend, scene_state_by_path_migrated, "backend envelope", "world_system.scene_state_by_path")
+
 	source.free()
 	target.free()
+	backend_envelope_target.free()
 	versionless_target.free()
 	version_one_target.free()
+	scene_state_by_path_target.free()
 
 	if _failures == 0:
 		print("WorldSaveDataRoundTripTest passed.")
@@ -228,11 +276,108 @@ func _build_flat_payload(world_save_data: Node, include_version: bool) -> Dictio
 	return flat_payload
 
 
+func _build_scene_state_by_path_payload(world_save_data: Node) -> Dictionary:
+	var current_scene_state := _build_flat_payload(world_save_data, true)
+	var current_scene_path := str(world_save_data.get("active_path"))
+	var root_scene_path := "res://scenes/World.tscn"
+	return {
+		"version": 1,
+		"metadata": {
+			"slot_id": 1,
+			"saved_at_unix": 123456789,
+			"current_day": 2,
+			"current_scene_path": current_scene_path,
+		},
+		"game_manager": {
+			"current_day": 2,
+			"current_scene_path": current_scene_path,
+		},
+		"world_system": {
+			"current_seed": int(str(world_save_data.get("world_seed"))),
+			"scene_seeds": {
+				root_scene_path: 777,
+				current_scene_path: int(str(world_save_data.get("world_seed"))),
+			},
+			"scene_state_by_path": {
+				root_scene_path: {
+					"world": {
+						"seed": "777",
+						"biomes_unlocked": ["world"],
+						"explored_tiles": [],
+					},
+					"player": {
+						"position": {"x": 32.0, "y": 32.0},
+						"health": 100.0,
+						"status_effects": [],
+						"inventory": [],
+						"active_path": root_scene_path,
+						"active_slot_index": 0,
+					},
+					"base": {
+						"placed_stations": [],
+						"walls": [],
+						"storage": [],
+						"chest_inventories": {},
+						"defense_grid_charge": 0.0,
+					},
+					"resources": {
+						"active_trees": [],
+						"pending_tree_respawns": [],
+					},
+					"discoveries": [],
+					"progression": {
+						"scanner_tier": 0,
+					},
+				},
+				current_scene_path: {
+					"world": (current_scene_state.get("world", {}) as Dictionary).duplicate(true),
+					"player": (current_scene_state.get("player", {}) as Dictionary).duplicate(true),
+					"base": (current_scene_state.get("base", {}) as Dictionary).duplicate(true),
+					"resources": (current_scene_state.get("resources", {}) as Dictionary).duplicate(true),
+					"discoveries": (current_scene_state.get("discoveries", []) as Array).duplicate(true),
+					"progression": (current_scene_state.get("progression", {}) as Dictionary).duplicate(true),
+				},
+			},
+		},
+		"element_database": {},
+		"discovery_log": {},
+		"research_objectives": {},
+		"power_switchboard": {},
+		"weather_system": {},
+		"cold_system": {},
+	}
+
+
 func _has_backend_envelope_shape(save_data: Dictionary) -> bool:
 	for key in ["version", "metadata", "game_manager", "world_system", "current_scene_state", "global_systems"]:
 		if not save_data.has(key):
 			return false
 	return true
+
+
+func _assert_same_normalized_envelope_keys(expected: Dictionary, actual: Dictionary, expected_label: String, actual_label: String) -> void:
+	_assert(
+		_dictionary_key_set(expected) == _dictionary_key_set(actual),
+		"Expected normalized top-level keys to match for %s and %s." % [expected_label, actual_label]
+	)
+	_assert(
+		_dictionary_key_set(expected.get("global_systems", {}) as Dictionary)
+			== _dictionary_key_set(actual.get("global_systems", {}) as Dictionary),
+		"Expected normalized global_systems keys to match for %s and %s." % [expected_label, actual_label]
+	)
+	_assert(
+		_dictionary_key_set(expected.get("current_scene_state", {}) as Dictionary)
+			== _dictionary_key_set(actual.get("current_scene_state", {}) as Dictionary),
+		"Expected normalized current_scene_state keys to match for %s and %s." % [expected_label, actual_label]
+	)
+
+
+func _dictionary_key_set(dictionary: Dictionary) -> Array[String]:
+	var keys: Array[String] = []
+	for key in dictionary.keys():
+		keys.append(str(key))
+	keys.sort()
+	return keys
 
 
 func _assert(condition: bool, message: String) -> void:

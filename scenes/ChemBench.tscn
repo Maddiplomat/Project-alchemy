@@ -28,5 +28,5 @@ offset_left = -90.0
 offset_top = -46.0
 offset_right = 90.0
 offset_bottom = -8.0
-text = "Press E to use ChemBench"
+text = "Tap Interact to use ChemBench"
 horizontal_alignment = 1

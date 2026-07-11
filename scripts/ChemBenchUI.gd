@@ -18,6 +18,7 @@ const TEMPERATURE_MIN := 20.0
 const TEMPERATURE_MAX := 260.0
 const PANEL_VIEW_SCALE := 0.62
 const PANEL_MARGIN := Vector2(24.0, 24.0)
+const TOUCH_PANEL_MARGIN := 16.0
 const RATIO_TARGET_INPUT_A := &"input_a"
 const RATIO_TARGET_INPUT_B := &"input_b"
 const STABILIZATION_DISCOVERY_ID := &"stabilization_success"
@@ -45,6 +46,7 @@ const RAIN_CONTAMINATION_REASON := &"rain_contamination"
 @onready var temperature_slider: HSlider = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/TemperatureSlider
 @onready var temperature_value_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/TemperatureValueLabel
 @onready var react_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/ReactButton
+@onready var inventory_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/InventoryButton
 @onready var action_hint_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/ControlColumn/MarginContainer/VBoxContainer/ActionHintLabel
 @onready var catalyst_visual: Panel = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer/VBoxContainer/CatalystVisual
 @onready var catalyst_name_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/InstrumentRow/CatalystRack/MarginContainer/VBoxContainer/CatalystNameLabel
@@ -89,6 +91,7 @@ func _ready() -> void:
 	ratio_slider.value_changed.connect(_on_ratio_slider_changed)
 	temperature_slider.value_changed.connect(_on_temperature_slider_changed)
 	react_button.pressed.connect(_on_react_button_pressed)
+	inventory_button.pressed.connect(_on_inventory_button_pressed)
 	close_button.pressed.connect(_on_close_button_pressed)
 	get_viewport().size_changed.connect(_layout_panel)
 	_layout_panel()
@@ -103,7 +106,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _stabilization_active:
 		get_viewport().set_input_as_handled()
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+	if event is InputEventKey and event.pressed and not event.echo and (
+		event.keycode == KEY_ESCAPE or event.keycode == KEY_BACK
+	):
 		emit_signal("ui_closed")
 		get_viewport().set_input_as_handled()
 
@@ -628,6 +633,11 @@ func _on_close_button_pressed() -> void:
 	emit_signal("ui_closed")
 
 
+func _on_inventory_button_pressed() -> void:
+	if MobileInputRouter != null:
+		MobileInputRouter.tap_action(&"toggle_inventory")
+
+
 func _ensure_lesson_banner() -> void:
 	if _lesson_banner != null:
 		return
@@ -690,25 +700,30 @@ func _on_chemistry_lesson_triggered(_lesson_id: StringName, message: String) -> 
 func _layout_panel() -> void:
 	if panel == null:
 		return
-
+	var viewport_size := get_viewport().get_visible_rect().size
+	if MobileInputRouter != null and MobileInputRouter.prefers_touch_controls():
+		panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+		panel.offset_left = TOUCH_PANEL_MARGIN
+		panel.offset_top = TOUCH_PANEL_MARGIN
+		panel.offset_right = -TOUCH_PANEL_MARGIN
+		panel.offset_bottom = -TOUCH_PANEL_MARGIN
+		panel.scale = Vector2.ONE
+		panel.position = Vector2.ZERO
+		return
 	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	panel.pivot_offset = Vector2.ZERO
 	panel.size = panel.custom_minimum_size
 	panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
-
-	var viewport_size := get_viewport().get_visible_rect().size
 	var scaled_size := panel.size * PANEL_VIEW_SCALE
-	panel.position = Vector2(
-		PANEL_MARGIN.x,
-		maxf(PANEL_MARGIN.y, (viewport_size.y - scaled_size.y) * 0.5)
-	)
+	panel.position = Vector2(PANEL_MARGIN.x, maxf(PANEL_MARGIN.y, (viewport_size.y - scaled_size.y) * 0.5))
 
 
 func _finalize_open_ui_layout() -> void:
 	if not _is_open or panel == null:
 		return
 	_layout_panel()
-	panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
+	if MobileInputRouter == null or not MobileInputRouter.prefers_touch_controls():
+		panel.scale = Vector2(PANEL_VIEW_SCALE, PANEL_VIEW_SCALE)
 
 
 func _apply_theme() -> void:
@@ -783,10 +798,15 @@ func _get_drop_slot_id(global_mouse_position: Vector2) -> StringName:
 func _on_slot_gui_input(event: InputEvent, slot_id: StringName) -> void:
 	if not visible or _stabilization_active:
 		return
-	if not (event is InputEventMouseButton):
-		return
-	var mouse_event := event as InputEventMouseButton
-	if mouse_event.pressed or not (mouse_event.button_index == MOUSE_BUTTON_LEFT or mouse_event.button_index == MOUSE_BUTTON_RIGHT):
+	if event is InputEventScreenTouch:
+		var touch_event := event as InputEventScreenTouch
+		if touch_event.pressed:
+			return
+	elif event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		if mouse_event.pressed or not (mouse_event.button_index == MOUSE_BUTTON_LEFT or mouse_event.button_index == MOUSE_BUTTON_RIGHT):
+			return
+	else:
 		return
 	_withdraw_slot_to_inventory(slot_id)
 	get_viewport().set_input_as_handled()

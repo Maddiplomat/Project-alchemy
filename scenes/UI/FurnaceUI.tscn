@@ -26,17 +26,15 @@ mouse_filter = 2
 color = Color(0, 0, 0, 0.36)
 
 [node name="PanelContainer" type="PanelContainer" parent="Root" unique_id=1538519946]
-custom_minimum_size = Vector2(960, 352)
+custom_minimum_size = Vector2(720, 720)
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -480.0
-offset_top = -176.0
-offset_right = 480.0
-offset_bottom = 176.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -72,15 +70,16 @@ autowrap_mode = 3
 [node name="HSeparator" type="HSeparator" parent="Root/PanelContainer/MarginContainer/VBoxContainer" unique_id=1971462061]
 layout_mode = 2
 
-[node name="FurnaceRow" type="HBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer" unique_id=586200725]
+[node name="FurnaceRow" type="GridContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer" unique_id=586200725]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 14
+columns = 2
 
 [node name="InputSlotA" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1837864569]
-custom_minimum_size = Vector2(130, 244)
+custom_minimum_size = Vector2(0, 190)
 layout_mode = 2
-size_flags_vertical = 3
+size_flags_horizontal = 3
 
 [node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotA" unique_id=704467313]
 layout_mode = 2
@@ -143,9 +142,9 @@ vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="InputSlotB" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1251842284]
-custom_minimum_size = Vector2(130, 244)
+custom_minimum_size = Vector2(0, 190)
 layout_mode = 2
-size_flags_vertical = 3
+size_flags_horizontal = 3
 
 [node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/InputSlotB" unique_id=933415249]
 layout_mode = 2
@@ -208,9 +207,9 @@ vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="FuelSlot" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1864955365]
-custom_minimum_size = Vector2(130, 244)
+custom_minimum_size = Vector2(0, 190)
 layout_mode = 2
-size_flags_vertical = 3
+size_flags_horizontal = 3
 
 [node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/FuelSlot" unique_id=1831631149]
 layout_mode = 2
@@ -273,9 +272,9 @@ vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="TemperatureColumn" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1359798625]
-custom_minimum_size = Vector2(162, 244)
+custom_minimum_size = Vector2(0, 190)
 layout_mode = 2
-size_flags_vertical = 3
+size_flags_horizontal = 3
 
 [node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn" unique_id=647855230]
 layout_mode = 2
@@ -372,9 +371,9 @@ text = "Danger above 1600°C"
 horizontal_alignment = 1
 
 [node name="OutputSlot" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1521137346]
-custom_minimum_size = Vector2(130, 244)
+custom_minimum_size = Vector2(0, 190)
 layout_mode = 2
-size_flags_vertical = 3
+size_flags_horizontal = 3
 
 [node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/OutputSlot" unique_id=340761798]
 layout_mode = 2
@@ -437,9 +436,9 @@ vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="ActionColumn" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=493508307]
-custom_minimum_size = Vector2(180, 244)
+custom_minimum_size = Vector2(0, 220)
 layout_mode = 2
-size_flags_vertical = 3
+size_flags_horizontal = 3
 
 [node name="MarginContainer" type="MarginContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn" unique_id=1347664784]
 layout_mode = 2
@@ -460,29 +459,34 @@ text = "CONTROL"
 horizontal_alignment = 1
 
 [node name="SpacerTop" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=1889832332]
-custom_minimum_size = Vector2(0, 34)
+custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
 [node name="SmeltButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=368564703]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
 text = "Smelt"
 
 [node name="ForgeButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
 text = "Forge"
 
 [node name="RecipeCycleButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 34)
+custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
 text = "Recipe"
 visible = false
 
 [node name="FireToggleButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
 text = "Fire: On"
+
+[node name="InventoryButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "Inventory"
 
 [node name="ActionHintLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=542648246]
 layout_mode = 2
@@ -499,6 +503,6 @@ layout_mode = 2
 size_flags_vertical = 3
 
 [node name="CloseButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=45284968]
-custom_minimum_size = Vector2(0, 38)
+custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
-text = "Close (E)"
+text = "Close"

@@ -1,6 +1,7 @@
 extends Node
 
 enum WeatherState { CLEAR, RAIN, ACID_MIST, ELECTRICAL_STORM }
+const PERSISTENCE_KEY := &"weather_system"
 
 signal weather_changed(new_state: int)
 signal weather_tick(state: int, delta: float)
@@ -25,6 +26,7 @@ const MIN_RAIN_EMISSION_HALF_WIDTH := 460.0
 const RAIN_WORLD_MARGIN := 96.0
 const RAIN_PARTICLE_FALL_SPEED := 520.0
 const RAIN_PARTICLES_PER_1000PX_WIDTH := 180.0
+const RARE_WEATHER_CHECK_INTERVAL := 0.75
 
 var current_state: int = WeatherState.CLEAR
 
@@ -37,6 +39,7 @@ var _warning_lead_time := -1.0
 var _warning_active := false
 var _weather_visual_root: CanvasLayer = null
 var _rain_particles: GPUParticles2D = null
+var _rare_weather_check_elapsed := 0.0
 
 
 func _ready() -> void:
@@ -51,15 +54,18 @@ func _ready() -> void:
 	_state_time_remaining = _roll_state_duration(WeatherState.CLEAR)
 	_plan_next_state()
 	_apply_environmental_warnings()
+	get_viewport().size_changed.connect(_layout_weather_visuals)
 
 
 func _physics_process(delta: float) -> void:
-	_sync_weather_visuals()
 	if not _is_weather_active():
 		return
 
-	_refresh_saved_unlock_state()
-	_check_sulfur_flats_unlock()
+	_rare_weather_check_elapsed += maxf(delta, 0.0)
+	if _rare_weather_check_elapsed >= RARE_WEATHER_CHECK_INTERVAL:
+		_rare_weather_check_elapsed = 0.0
+		_refresh_saved_unlock_state()
+		_check_sulfur_flats_unlock()
 
 	_state_time_remaining -= maxf(delta, 0.0)
 	_update_transition_warning()
@@ -115,6 +121,10 @@ func has_rare_weather_unlocked() -> bool:
 
 func restore_rare_weather_unlock(unlocked: bool) -> void:
 	_rare_weather_unlocked = unlocked
+
+
+func get_persistence_key() -> StringName:
+	return PERSISTENCE_KEY
 
 
 func capture_persistent_state() -> Dictionary:
@@ -341,6 +351,7 @@ func _sync_weather_visuals() -> void:
 		if not _rain_particles.emitting:
 			_rain_particles.restart()
 			_rain_particles.emitting = true
+		_layout_weather_visuals()
 		return
 
 	_rain_particles.emitting = false
@@ -405,8 +416,11 @@ func _layout_weather_visuals() -> void:
 		RAIN_PARTICLES_PER_1000PX_WIDTH * (viewport_size.x / 1000.0),
 		RAIN_PARTICLES_PER_1000PX_WIDTH
 	)
+	var particle_scale := 1.0
+	if MobilePerformance != null and MobilePerformance.has_method("get_particle_amount_scale"):
+		particle_scale = float(MobilePerformance.get_particle_amount_scale())
 	_rain_particles.lifetime = required_lifetime
-	_rain_particles.amount = maxi(160, int(ceili(target_emission_rate * required_lifetime)))
+	_rain_particles.amount = maxi(72, int(ceili(target_emission_rate * required_lifetime * particle_scale)))
 	_rain_particles.visibility_rect = Rect2(
 		Vector2(-emission_half_width - RAIN_WORLD_MARGIN, -RAIN_WORLD_MARGIN * 2.0),
 		Vector2(

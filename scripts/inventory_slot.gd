@@ -6,6 +6,7 @@ signal drag_released(slot_index: int)
 signal clicked(slot_index: int)
 signal hover_started(slot_index: int)
 signal hover_ended(slot_index: int)
+signal long_pressed(slot_index: int)
 
 @onready var item_icon: TextureRect = $ItemIcon
 @onready var broken_overlay: Control = $BrokenOverlay
@@ -30,6 +31,8 @@ const SLOT_BORDER_RISK := Color(0.96, 0.18, 0.18, 1.0)
 const SLOT_BG_RISK := Color(0.31, 0.08, 0.08, 0.98)
 const QUANTITY_FONT_COLOR := Color(0.97, 0.97, 0.97, 1.0)
 const QUANTITY_OUTLINE_COLOR := Color(0.03, 0.04, 0.05, 0.95)
+const TOUCH_DRAG_THRESHOLD := 18.0
+const TOUCH_LONG_PRESS_SECONDS := 0.42
 
 var slot_index := -1
 var item_id: StringName = &""
@@ -46,6 +49,11 @@ var _press_start_pos := Vector2.ZERO
 var _pulse_time := 0.0
 var _carrier_risk_active := false
 var _carrier_risk_time := 0.0
+var _touch_press_active := false
+var _touch_drag_active := false
+var _touch_long_press_emitted := false
+var _touch_press_position := Vector2.ZERO
+var _touch_press_started_msec := 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -84,6 +92,11 @@ func _process(delta: float) -> void:
 		_pulse_time = 0.0
 		_carrier_risk_time = 0.0
 		_apply_background_style()
+	if _touch_press_active and not _touch_drag_active and not _touch_long_press_emitted:
+		var held_seconds := float(Time.get_ticks_msec() - _touch_press_started_msec) / 1000.0
+		if held_seconds >= TOUCH_LONG_PRESS_SECONDS:
+			_touch_long_press_emitted = true
+			long_pressed.emit(slot_index)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -94,6 +107,30 @@ func _gui_input(event: InputEvent) -> void:
 			if event.global_position.distance_to(_press_start_pos) < 10.0:
 				clicked.emit(slot_index)
 			drag_released.emit(slot_index)
+		accept_event()
+	elif event is InputEventScreenTouch:
+		var touch_event := event as InputEventScreenTouch
+		_update_touch_pointer(touch_event.position, touch_event.pressed)
+		if touch_event.pressed:
+			_touch_press_active = true
+			_touch_drag_active = false
+			_touch_long_press_emitted = false
+			_touch_press_position = touch_event.position
+			_touch_press_started_msec = Time.get_ticks_msec()
+		elif _touch_press_active:
+			if _touch_drag_active:
+				drag_released.emit(slot_index)
+			elif not _touch_long_press_emitted:
+				clicked.emit(slot_index)
+			_reset_touch_press_state()
+		accept_event()
+	elif event is InputEventScreenDrag:
+		var drag_event := event as InputEventScreenDrag
+		_update_touch_pointer(drag_event.position, true)
+		if _touch_press_active and not _touch_drag_active:
+			if drag_event.position.distance_to(_touch_press_position) >= TOUCH_DRAG_THRESHOLD:
+				_touch_drag_active = true
+				drag_started.emit(slot_index)
 		accept_event()
 
 func update_display() -> void:
@@ -177,6 +214,16 @@ func _on_mouse_entered() -> void:
 
 func _on_mouse_exited() -> void:
 	hover_ended.emit(slot_index)
+
+func _reset_touch_press_state() -> void:
+	_touch_press_active = false
+	_touch_drag_active = false
+	_touch_long_press_emitted = false
+	_touch_press_started_msec = 0
+
+func _update_touch_pointer(screen_position: Vector2, active: bool) -> void:
+	if MobileInputRouter != null:
+		MobileInputRouter.set_touch_pointer_screen_position(screen_position, active)
 
 func _get_item_color(item_id: String) -> Color:
 	match item_id:

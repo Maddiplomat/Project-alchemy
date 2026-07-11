@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://sf4qimqpj1u1"]
+
+[ext_resource type="Script" path="res://scripts/dev/MCPRuntimeGuardTest.gd" id="1_test"]
+
+[node name="MCPRuntimeGuardTest" type="Node"]
+script = ExtResource("1_test")

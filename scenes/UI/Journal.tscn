@@ -31,18 +31,27 @@ offset_bottom = -16.0
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="TitleRow" type="VBoxContainer" parent="MarginContainer/Root"]
+[node name="HeaderRow" type="HBoxContainer" parent="MarginContainer/Root"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="TitleRow" type="VBoxContainer" parent="MarginContainer/Root/HeaderRow"]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="TitleLabel" type="Label" parent="MarginContainer/Root/TitleRow"]
+[node name="TitleLabel" type="Label" parent="MarginContainer/Root/HeaderRow/TitleRow"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Field Journal"
 
-[node name="SubtitleLabel" type="Label" parent="MarginContainer/Root/TitleRow"]
+[node name="SubtitleLabel" type="Label" parent="MarginContainer/Root/HeaderRow/TitleRow"]
 layout_mode = 2
-text = "Press J to close."
+text = "Use Close or Journal to dismiss."
+
+[node name="CloseButton" type="Button" parent="MarginContainer/Root/HeaderRow"]
+custom_minimum_size = Vector2(92, 42)
+layout_mode = 2
+text = "Close"
 
 [node name="TabBar" type="TabBar" parent="MarginContainer/Root"]
 layout_mode = 2
@@ -54,15 +63,17 @@ custom_minimum_size = Vector2(0, 360)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Split" type="HSplitContainer" parent="MarginContainer/Root/Content"]
+[node name="Split" type="BoxContainer" parent="MarginContainer/Root/Content"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-split_offset = 240
+theme_override_constants/separation = 10
 
 [node name="ListFrame" type="PanelContainer" parent="MarginContainer/Root/Content/Split"]
 custom_minimum_size = Vector2(220, 0)
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 
 [node name="ListMargin" type="MarginContainer" parent="MarginContainer/Root/Content/Split/ListFrame"]
 layout_mode = 2

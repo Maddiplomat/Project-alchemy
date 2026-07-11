@@ -11,16 +11,19 @@ const MARKER_COLORS := {
 }
 
 var _map_markers: Node = null
+var _refresh_timer: Timer = null
 
 
 func _ready() -> void:
 	_bind_map_markers(EventBus.get_map_markers())
 	if not EventBus.service_registered.is_connected(_on_service_registered):
 		EventBus.service_registered.connect(_on_service_registered)
-
-
-func _process(_delta: float) -> void:
-	queue_redraw()
+	_refresh_timer = Timer.new()
+	_refresh_timer.one_shot = false
+	_refresh_timer.wait_time = _get_refresh_interval()
+	_refresh_timer.timeout.connect(_on_refresh_timer_timeout)
+	add_child(_refresh_timer)
+	_refresh_timer.start()
 
 
 func _draw() -> void:
@@ -69,3 +72,16 @@ func _bind_map_markers(service: Node) -> void:
 	_map_markers = service
 	if _map_markers.has_signal("markers_changed") and not _map_markers.markers_changed.is_connected(queue_redraw):
 		_map_markers.markers_changed.connect(queue_redraw)
+
+
+func _on_refresh_timer_timeout() -> void:
+	if _refresh_timer != null:
+		_refresh_timer.wait_time = _get_refresh_interval()
+	if is_visible_in_tree():
+		queue_redraw()
+
+
+func _get_refresh_interval() -> float:
+	if MobilePerformance != null and MobilePerformance.has_method("get_marker_refresh_interval"):
+		return float(MobilePerformance.get_marker_refresh_interval())
+	return 0.25

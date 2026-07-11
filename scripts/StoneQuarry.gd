@@ -26,6 +26,7 @@ var _mine_progress := 0.0
 
 func _ready() -> void:
 	add_to_group(&"scannable_resource")
+	add_to_group(&"harvestable_mines")
 	_build_visuals()
 	_build_interaction_area()
 	_build_label()
@@ -40,7 +41,7 @@ func _process(delta: float) -> void:
 		_stock = mini(_stock + REGEN_RATE, MAX_STOCK)
 		_refresh_label()
 
-	if _player_in_range and Input.is_action_just_pressed("fire_projectile") and _mine_cooldown_remaining <= 0.0 and _is_mouse_over_self():
+	if _player_in_range and Input.is_action_just_pressed("fire_projectile") and _mine_cooldown_remaining <= 0.0 and _can_consume_attack_input():
 		_do_mine()
 
 
@@ -172,7 +173,7 @@ func _refresh_label() -> void:
 		_label.text = "Stone Quarry\n[Depleted]"
 		_label.add_theme_color_override("font_color", Color(0.7, 0.5, 0.5))
 	else:
-		var key_hint := "Left Click"
+		var key_hint := "Tap Attack"
 		_label.text = "Stone Quarry  (%d)\n[%s] Mine" % [_stock, key_hint]
 		_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.85))
 
@@ -217,3 +218,34 @@ func _show_depleted_flash() -> void:
 		_label.add_theme_color_override("font_color", Color(0.9, 0.3, 0.3))
 		var timer := get_tree().create_timer(0.6)
 		timer.timeout.connect(func(): _refresh_label())
+
+
+func _can_consume_attack_input() -> bool:
+	if MobileInputRouter != null and MobileInputRouter.is_touch_mode():
+		return _is_preferred_interaction_target()
+	return _is_mouse_over_self()
+
+
+func _is_preferred_interaction_target() -> bool:
+	var player := GameManager.get_player() as Node2D
+	if player == null:
+		return false
+	var best_node: Node2D = null
+	var best_distance := INF
+	for node in get_tree().get_nodes_in_group(&"harvestable_mines"):
+		var harvestable := node as Node2D
+		if harvestable == null:
+			continue
+		if not harvestable.has_method("_is_player_in_range_for_touch"):
+			continue
+		if not harvestable.call("_is_player_in_range_for_touch"):
+			continue
+		var distance := player.global_position.distance_to(harvestable.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best_node = harvestable
+	return best_node == self
+
+
+func _is_player_in_range_for_touch() -> bool:
+	return _player_in_range

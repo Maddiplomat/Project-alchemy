@@ -15,7 +15,7 @@ func _get_container_title() -> String:
 
 
 func _get_prompt_text() -> String:
-	return "Press E to open Volatile Locker"
+	return "Tap Interact to open Volatile Locker" if MobileInputRouter.prefers_touch_controls() else "Press E to open Volatile Locker"
 
 
 func _get_storage_filter_id() -> StringName:
