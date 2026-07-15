@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/StyledPanel.gd" id="1_script"]
+[ext_resource type="Theme" path="res://assets/themes/game_theme.tres" id="2_theme"]
+
+[node name="StyledPanel" type="PanelContainer"]
+custom_minimum_size = Vector2(160, 80)
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Content" type="MarginContainer" parent="."]
+layout_mode = 2
+
+[node name="Layout" type="VBoxContainer" parent="Content"]
+layout_mode = 2
+theme_override_constants/separation = 8

@@ -1,6 +1,8 @@
 extends Panel
 
-const DebugLog = preload("res://scripts/DebugLog.gd")
+const GameplayData = preload("res://scripts/GameplayData.gd")
+
+const JOURNAL_ENTRY_CARD_SCENE := preload("res://scenes/UI/JournalEntryCard.tscn")
 
 signal close_requested
 
@@ -76,7 +78,7 @@ func _wire_events() -> void:
 	successes_button.pressed.connect(func() -> void: _set_filter(FILTER_SUCCESSES))
 	failures_button.pressed.connect(func() -> void: _set_filter(FILTER_FAILURES))
 	unknowns_button.pressed.connect(func() -> void: _set_filter(FILTER_UNKNOWNS))
-	DiscoveryLog.entry_added.connect(_on_log_changed)
+	EventBus.get_discovery_log().entry_added.connect(_on_log_changed)
 
 
 func _set_filter(filter_id: String) -> void:
@@ -94,7 +96,7 @@ func _refresh_entries() -> void:
 	_clear_entries()
 	_update_filter_button_states()
 
-	var entries := DiscoveryLog.get_entries()
+	var entries: Array = EventBus.get_discovery_log().get_entries()
 	var filtered_count := 0
 	for entry: Dictionary in entries:
 		if not _matches_filter(entry):
@@ -150,70 +152,15 @@ func _is_unknown(entry: Dictionary) -> bool:
 	return tier == "unknown" or output_id.is_empty()
 
 
-func _build_entry_card(entry: Dictionary) -> PanelContainer:
-	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(0.0, 142.0)
-	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-
-	var card_style := StyleBoxFlat.new()
-	card_style.bg_color = Color(0.95, 0.90, 0.79, 0.98)
-	card_style.border_color = Color(0.53, 0.38, 0.24, 0.92)
-	card_style.border_width_left = 1
-	card_style.border_width_top = 1
-	card_style.border_width_right = 1
-	card_style.border_width_bottom = 1
-	card_style.corner_radius_top_left = 10
-	card_style.corner_radius_top_right = 10
-	card_style.corner_radius_bottom_right = 10
-	card_style.corner_radius_bottom_left = 10
-	card.add_theme_stylebox_override("panel", card_style)
-
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 14)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_bottom", 12)
-	card.add_child(margin)
-
-	var layout := VBoxContainer.new()
-	layout.add_theme_constant_override("separation", 8)
-	margin.add_child(layout)
-
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 10)
-	layout.add_child(header)
-
-	var pair_label := Label.new()
-	pair_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pair_label.add_theme_color_override("font_color", MUTED_INK_COLOR)
-	pair_label.add_theme_font_size_override("font_size", 13)
-	pair_label.text = _format_pair(entry)
-	header.add_child(pair_label)
-
-	var badge_frame := PanelContainer.new()
-	badge_frame.add_theme_stylebox_override("panel", _build_badge_style(_get_badge_color(entry)))
-	header.add_child(badge_frame)
-
-	var badge := Label.new()
-	badge.text = _format_quality_badge(entry)
-	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	badge.add_theme_font_size_override("font_size", 13)
-	badge.add_theme_color_override("font_color", Color(0.98, 0.97, 0.93, 1.0))
-	badge_frame.add_child(badge)
-
-	var output_label := Label.new()
-	output_label.add_theme_font_size_override("font_size", 22)
-	output_label.add_theme_color_override("font_color", INK_COLOR)
-	output_label.text = str(entry.get("output_name", "Unknown"))
-	layout.add_child(output_label)
-
-	var conditions_label := Label.new()
-	conditions_label.add_theme_color_override("font_color", MUTED_INK_COLOR)
-	conditions_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	conditions_label.text = _format_conditions(entry)
-	layout.add_child(conditions_label)
-
+func _build_entry_card(entry: Dictionary) -> JournalEntryCard:
+	var card := JOURNAL_ENTRY_CARD_SCENE.instantiate() as JournalEntryCard
+	card.configure(
+		_format_pair(entry),
+		_format_quality_badge(entry),
+		str(entry.get("output_name", "Unknown")),
+		_format_conditions(entry),
+		_get_badge_color(entry)
+	)
 	return card
 
 
@@ -266,7 +213,7 @@ func _format_quality_badge(entry: Dictionary) -> String:
 func _get_display_name(item_id: StringName) -> String:
 	if item_id.is_empty():
 		return "Unknown"
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		return str(element_data.get("display_name", String(item_id).capitalize()))
 	return String(item_id).replace("_", " ").capitalize()
@@ -303,7 +250,7 @@ func _update_filter_button_states() -> void:
 
 
 func _apply_theme() -> void:
-	var panel_style := StyleBoxFlat.new()
+	var panel_style := UIFactory.panel_style()
 	panel_style.bg_color = PARCHMENT_BG
 	panel_style.border_color = PARCHMENT_EDGE
 	panel_style.shadow_color = PARCHMENT_SHADOW
@@ -332,7 +279,7 @@ func _apply_theme() -> void:
 
 
 func _build_filter_button_style(is_active: bool) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
+	var style := UIFactory.button_style()
 	style.bg_color = Color(0.76, 0.64, 0.46, 1.0) if is_active else Color(0.87, 0.79, 0.64, 1.0)
 	style.border_color = PARCHMENT_EDGE
 	style.border_width_left = 1
@@ -347,7 +294,7 @@ func _build_filter_button_style(is_active: bool) -> StyleBoxFlat:
 
 
 func _build_badge_style(color: Color) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
+	var style := UIFactory.panel_style()
 	style.bg_color = color
 	style.corner_radius_top_left = 8
 	style.corner_radius_top_right = 8

@@ -24,23 +24,16 @@ func _ready() -> void:
 		interaction_area.body_exited.connect(_on_body_exited)
 
 
-func _process(_delta: float) -> void:
-	_handle_interaction()
-
-
-func _handle_interaction() -> void:
-	if not _player_in_range:
-		return
-
-	var interact_pressed := Input.is_action_pressed("interact")
-	if not interact_pressed:
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_released("interact"):
 		_interact_locked_until_release = false
-
-	if Input.is_action_just_pressed("interact") and not _interact_locked_until_release:
+		return
+	if _player_in_range and event.is_action_pressed("interact") and not _interact_locked_until_release:
 		if _is_interacting:
 			_close_ui()
 		else:
 			_open_ui()
+		get_viewport().set_input_as_handled()
 
 
 func _open_ui() -> void:

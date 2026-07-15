@@ -1,6 +1,7 @@
 extends Node
 
-const WorldSaveDataScript = preload("res://scripts/WorldSaveData.gd")
+const GameplayData = preload("res://scripts/GameplayData.gd")
+const SaveSystemScript = preload("res://scripts/SaveSystem.gd")
 
 enum GameState { BOOT, LOGIN, MAIN_MENU, LOADING, PLAYING, PAUSED, GAME_OVER }
 enum GameplayPhase { SCAN, EXTRACT, COMBINE, STABILIZE, SURVIVE }
@@ -8,10 +9,6 @@ enum SessionMode { OFFLINE, ONLINE }
 enum SaveTrigger { MANUAL, AUTO_TIMER, BASE_ENTRY, DISCOVERY_UNLOCK, DEATH, QUIT }
 enum ScannerTier { BASIC, ADVANCED }
 
-const SAVE_DIRECTORY := "user://saves"
-const SAVE_FILE_TEMPLATE := "user://saves/slot_%d.json"
-const BACKUP_SAVE_FILE_TEMPLATE := "user://saves/slot_%d.bak.json"
-const LEGACY_SAVE_FILE_TEMPLATE := "user://saves/slot_%d.save"
 const PERSISTENCE_KEY := &"game_manager"
 
 signal game_state_changed(previous_state: GameState, new_state: GameState)
@@ -74,14 +71,16 @@ var _is_night: bool = false
 var _playtime_accumulator := 0.0
 var _automatic_saves_enabled := false
 var last_save_result: Dictionary = {}
+var _save_system
 
 func _ready() -> void:
+	_save_system = SaveSystemScript.new(self)
 	_is_night = _is_time_night(time_of_day)
 	if not save_requested.is_connected(_on_save_requested):
 		save_requested.connect(_on_save_requested)
-	if ResearchObjectives != null and ResearchObjectives.has_signal("objective_completed"):
-		if not ResearchObjectives.objective_completed.is_connected(_on_objective_completed):
-			ResearchObjectives.objective_completed.connect(_on_objective_completed)
+	if not EventBus.service_registered.is_connected(_on_service_registered):
+		EventBus.service_registered.connect(_on_service_registered)
+	_bind_research_objectives(EventBus.get_research_objectives())
 
 
 func _notification(what: int) -> void:
@@ -194,16 +193,16 @@ func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -
 	tutorial_hint_flags.clear()
 	if InventoryManager != null and InventoryManager.has_method("clear_inventory"):
 		InventoryManager.clear_inventory()
-	if DiscoveryLog != null and DiscoveryLog.has_method("clear"):
-		DiscoveryLog.clear()
-	if DiscoveryJournal != null and DiscoveryJournal.has_method("clear"):
-		DiscoveryJournal.clear()
-	if ElementDatabase != null:
-		ElementDatabase.clear_scanned_elements()
-	if RecipeDatabase != null and RecipeDatabase.has_method("reset_runtime_state"):
-		RecipeDatabase.reset_runtime_state()
-	if ResearchObjectives != null and ResearchObjectives.has_method("reset_for_new_game"):
-		ResearchObjectives.reset_for_new_game()
+	if EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("clear"):
+		EventBus.get_discovery_log().clear()
+	if EventBus.get_discovery_journal() != null and EventBus.get_discovery_journal().has_method("clear"):
+		EventBus.get_discovery_journal().clear()
+	if GameplayData.elements() != null:
+		GameplayData.elements().clear_scanned_elements()
+	if GameplayData.recipes() != null and GameplayData.recipes().has_method("reset_runtime_state"):
+		GameplayData.recipes().reset_runtime_state()
+	if EventBus.get_research_objectives() != null and EventBus.get_research_objectives().has_method("reset_for_new_game"):
+		EventBus.get_research_objectives().reset_for_new_game()
 	current_day = 1
 	day_changed.emit(current_day)
 	time_of_day = day_start_time
@@ -226,67 +225,31 @@ func start_new_game(mode: SessionMode = SessionMode.OFFLINE, slot_id: int = 1) -
 
 
 func request_load_game(slot_id: int) -> void:
-	set_active_save_slot(slot_id)
-	if not has_save_data(slot_id):
-		return
-	set_game_state(GameState.LOADING)
-	_load_game_from_slot(slot_id)
+	_save_system.request_load_game(slot_id)
 
 
 func request_save(trigger: SaveTrigger = SaveTrigger.MANUAL) -> Dictionary:
-	if _is_automatic_save_trigger(trigger) and not _automatic_saves_enabled:
-		return _set_save_result({
-			&"success": false,
-			&"trigger": trigger,
-			&"slot_id": active_save_slot,
-			&"path": _get_save_file_path(active_save_slot),
-			&"absolute_path": ProjectSettings.globalize_path(_get_save_file_path(active_save_slot)),
-			&"error": "Automatic saves are disabled until this session is manually saved or loaded.",
-			&"skipped": true,
-		})
-	_seconds_since_autosave_request = 0
-	var world_save_data := EventBus.get_world_save_data()
-	if world_save_data != null and world_save_data.has_method("sync_runtime_state"):
-		world_save_data.sync_runtime_state()
-	save_requested.emit(trigger)
-	return last_save_result.duplicate(true)
+	return _save_system.request_save(trigger)
+
+
+func is_saving() -> bool:
+	return _save_system != null and _save_system.is_saving()
 
 
 func has_save_data(slot_id: int = active_save_slot) -> bool:
-	return FileAccess.file_exists(_get_save_file_path(slot_id)) \
-		or FileAccess.file_exists(_get_legacy_save_file_path(slot_id))
+	return _save_system.has_save_data(slot_id)
 
 
 func get_save_metadata(slot_id: int = active_save_slot) -> Dictionary:
-	if not has_save_data(slot_id):
-		return {}
-	var save_data := _read_normalized_save_envelope(slot_id, true)
-	if save_data.is_empty():
-		return {}
-	return (save_data.get("metadata", {}) as Dictionary).duplicate(true)
+	return _save_system.get_save_metadata(slot_id)
 
 
 func has_any_save_data() -> bool:
-	for slot_id in range(1, max_save_slots + 1):
-		if has_save_data(slot_id):
-			return true
-	return false
+	return _save_system.has_any_save_data()
 
 
 func get_continue_slot() -> int:
-	var best_slot := -1
-	var best_saved_at := -1
-	for slot_id in range(1, max_save_slots + 1):
-		var metadata := get_save_metadata(slot_id)
-		if metadata.is_empty():
-			continue
-		var saved_at_unix := int(metadata.get("saved_at_unix", 0))
-		if saved_at_unix > best_saved_at:
-			best_saved_at = saved_at_unix
-			best_slot = slot_id
-	if best_slot != -1:
-		return best_slot
-	return active_save_slot if has_save_data(active_save_slot) else -1
+	return _save_system.get_continue_slot()
 
 
 func mark_dirty() -> void:
@@ -629,311 +592,20 @@ func _on_objective_completed(objective_id: StringName) -> void:
 		post_tutorial_loop_active = true
 
 
-func _on_save_requested(_trigger: SaveTrigger) -> void:
-	var world_save_data := EventBus.get_world_save_data()
-	if world_save_data == null or not world_save_data.has_method("capture_runtime_state"):
-		_set_save_result({
-			&"success": false,
-			&"trigger": _trigger,
-			&"slot_id": active_save_slot,
-			&"path": _get_save_file_path(active_save_slot),
-			&"absolute_path": ProjectSettings.globalize_path(_get_save_file_path(active_save_slot)),
-			&"error": "WorldSaveData service is unavailable.",
-		})
+func _on_service_registered(service_id: StringName, service: Node) -> void:
+	if service_id == EventBus.SERVICE_RESEARCH_OBJECTIVES:
+		_bind_research_objectives(service)
+
+
+func _bind_research_objectives(service: Node) -> void:
+	if service == null or not service.has_signal("objective_completed"):
 		return
-	var save_data: Dictionary = world_save_data.capture_runtime_state()
-	if save_data.is_empty():
-		_set_save_result({
-			&"success": false,
-			&"trigger": _trigger,
-			&"slot_id": active_save_slot,
-			&"path": _get_save_file_path(active_save_slot),
-			&"absolute_path": ProjectSettings.globalize_path(_get_save_file_path(active_save_slot)),
-			&"error": "WorldSaveData produced an empty save payload.",
-		})
-		return
-	var save_directory_path := ProjectSettings.globalize_path(SAVE_DIRECTORY)
-	if not DirAccess.dir_exists_absolute(save_directory_path):
-		var dir_error := DirAccess.make_dir_recursive_absolute(save_directory_path)
-		if dir_error != OK:
-			var directory_error := "Failed to create save directory: %s (%s)" % [SAVE_DIRECTORY, save_directory_path]
-			push_warning(directory_error)
-			_set_save_result({
-				&"success": false,
-				&"trigger": _trigger,
-				&"slot_id": active_save_slot,
-				&"path": _get_save_file_path(active_save_slot),
-				&"absolute_path": ProjectSettings.globalize_path(_get_save_file_path(active_save_slot)),
-				&"error": directory_error,
-				&"error_code": dir_error,
-			})
-			return
-	_write_backup_save_file(active_save_slot)
-	var save_path := _get_save_file_path(active_save_slot)
-	var absolute_save_path := ProjectSettings.globalize_path(save_path)
-	var file := FileAccess.open(save_path, FileAccess.WRITE)
-	if file == null:
-		var file_error_code := FileAccess.get_open_error()
-		var file_error := "Failed to open save file for writing: %s (%s)" % [save_path, absolute_save_path]
-		push_warning(file_error)
-		_set_save_result({
-			&"success": false,
-			&"trigger": _trigger,
-			&"slot_id": active_save_slot,
-			&"path": save_path,
-			&"absolute_path": absolute_save_path,
-			&"error": file_error,
-			&"error_code": file_error_code,
-		})
-		return
-	file.store_string(_stringify_save_data_for_storage(save_data, "\t"))
-	file.close()
-	if _trigger == SaveTrigger.MANUAL:
-		_automatic_saves_enabled = true
-	clear_dirty()
-	_set_save_result({
-		&"success": true,
-		&"trigger": _trigger,
-		&"slot_id": active_save_slot,
-		&"path": save_path,
-		&"absolute_path": absolute_save_path,
-		&"error": "",
-		&"saved_at_unix": Time.get_unix_time_from_system(),
-	})
+	if not service.objective_completed.is_connected(_on_objective_completed):
+		service.objective_completed.connect(_on_objective_completed)
 
 
-func _load_game_from_slot(slot_id: int) -> void:
-	var normalized_save_data := _read_normalized_save_envelope(slot_id, true)
-	var save_data := _extract_world_save_data(normalized_save_data)
-	if save_data.is_empty():
-		push_warning("Save payload is invalid for slot %d" % slot_id)
-		set_game_state(GameState.MAIN_MENU)
-		return
-	var current_scene_path := str((normalized_save_data.get("metadata", {}) as Dictionary).get("current_scene_path", "res://scenes/World.tscn"))
-	var world_data := save_data.get("world", {}) as Dictionary
-	if WorldSystem != null and WorldSystem.has_method("set_seed_for_scene") and not world_data.is_empty():
-		var saved_seed := str(world_data.get("seed", ""))
-		if not saved_seed.is_empty():
-			WorldSystem.set_seed_for_scene(current_scene_path, int(saved_seed))
-	if WorldSystem != null and WorldSystem.has_method("queue_pending_restore_state"):
-		WorldSystem.queue_pending_restore_state(save_data, {
-			&"skip_post_restore_save": true,
-			&"source": &"load_game",
-		})
-	var scene_error := get_tree().change_scene_to_file(current_scene_path)
-	if scene_error != OK:
-		push_warning("Failed to change scene while loading save slot %d" % slot_id)
-		set_game_state(GameState.MAIN_MENU)
-
-
-func _get_save_file_path(slot_id: int) -> String:
-	return SAVE_FILE_TEMPLATE % clampi(slot_id, 1, max_save_slots)
-
-
-func _get_backup_save_file_path(slot_id: int) -> String:
-	return BACKUP_SAVE_FILE_TEMPLATE % clampi(slot_id, 1, max_save_slots)
-
-
-func _get_legacy_save_file_path(slot_id: int) -> String:
-	return LEGACY_SAVE_FILE_TEMPLATE % clampi(slot_id, 1, max_save_slots)
-
-
-func _write_backup_save_file(slot_id: int) -> void:
-	var source_path := _get_save_file_path(slot_id)
-	if not FileAccess.file_exists(source_path):
-		return
-	var source_file := FileAccess.open(source_path, FileAccess.READ)
-	if source_file == null:
-		return
-	var source_text := source_file.get_as_text()
-	source_file.close()
-	var backup_file := FileAccess.open(_get_backup_save_file_path(slot_id), FileAccess.WRITE)
-	if backup_file == null:
-		return
-	backup_file.store_string(source_text)
-	backup_file.close()
-
-
-func _set_save_result(result: Dictionary) -> Dictionary:
-	last_save_result = result.duplicate(true)
-	save_completed.emit(last_save_result.duplicate(true))
-	return last_save_result.duplicate(true)
-
-
-func _read_save_file(slot_id: int) -> Dictionary:
-	var json_path := _get_save_file_path(slot_id)
-	if FileAccess.file_exists(json_path):
-		return _read_json_save_file(json_path)
-	var legacy_path := _get_legacy_save_file_path(slot_id)
-	if FileAccess.file_exists(legacy_path):
-		return _read_legacy_save_file(legacy_path)
-	return {}
-
-
-func _read_json_save_file(path: String) -> Dictionary:
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		return {}
-	var raw_text := file.get_as_text()
-	file.close()
-	var parsed: Variant = JSON.parse_string(raw_text)
-	if parsed == null:
-		return {}
-	var restored: Variant = _decode_save_data_from_storage(parsed)
-	return restored as Dictionary if restored is Dictionary else {}
-
-
-func _read_normalized_save_envelope(slot_id: int, rewrite_if_needed: bool = false) -> Dictionary:
-	var raw_save_data := _read_save_file(slot_id)
-	if raw_save_data.is_empty():
-		return {}
-	var normalized_save_data := _normalize_save_envelope(raw_save_data)
-	if rewrite_if_needed and _save_envelope_requires_rewrite(raw_save_data, normalized_save_data):
-		_write_normalized_save_envelope(slot_id, normalized_save_data)
-	return normalized_save_data
-
-
-func _read_legacy_save_file(path: String) -> Dictionary:
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		return {}
-	var payload: Variant = file.get_var()
-	file.close()
-	return payload as Dictionary if payload is Dictionary else {}
-
-
-func _extract_world_save_data(save_data: Dictionary) -> Dictionary:
-	return _with_world_save_data_codec(func(world_save_data: Node) -> Dictionary:
-		if world_save_data == null or not world_save_data.has_method("build_restore_payload"):
-			return {}
-		return world_save_data.build_restore_payload(save_data)
-	)
-
-
-func _normalize_save_envelope(save_data: Dictionary) -> Dictionary:
-	if save_data.is_empty():
-		return {}
-	return _with_world_save_data_codec(func(world_save_data: Node) -> Dictionary:
-		if world_save_data == null or not world_save_data.has_method("normalize_save_envelope"):
-			return {}
-		return world_save_data.normalize_save_envelope(save_data)
-	)
-
-
-func _save_envelope_requires_rewrite(raw_save_data: Dictionary, normalized_save_data: Dictionary) -> bool:
-	if raw_save_data.is_empty() or normalized_save_data.is_empty():
-		return false
-	return _stringify_save_data_for_storage(raw_save_data) != _stringify_save_data_for_storage(normalized_save_data)
-
-
-func _write_normalized_save_envelope(slot_id: int, normalized_save_data: Dictionary) -> void:
-	var save_path := _get_save_file_path(slot_id)
-	var file := FileAccess.open(save_path, FileAccess.WRITE)
-	if file == null:
-		return
-	file.store_string(_stringify_save_data_for_storage(normalized_save_data, "\t"))
-	file.close()
-
-
-func _with_world_save_data_codec(callback: Callable) -> Variant:
-	var world_save_data: Node = EventBus.get_world_save_data()
-	var owns_temporary_world_save_data := false
-	if world_save_data == null:
-		world_save_data = WorldSaveDataScript.new()
-		owns_temporary_world_save_data = true
-	var result: Variant = callback.call(world_save_data)
-	if owns_temporary_world_save_data and is_instance_valid(world_save_data):
-		world_save_data.free()
-	return result
-
-
-func _stringify_save_data_for_storage(save_data: Dictionary, indent: String = "") -> String:
-	return str(_with_world_save_data_codec(func(world_save_data: Node) -> String:
-		if world_save_data != null and world_save_data.has_method("stringify_save_data"):
-			return String(world_save_data.stringify_save_data(save_data, indent))
-		return JSON.stringify(_variant_to_json_value(save_data), indent)
-	))
-
-
-func _decode_save_data_from_storage(value: Variant) -> Variant:
-	return _with_world_save_data_codec(func(world_save_data: Node) -> Variant:
-		if world_save_data != null and world_save_data.has_method("decode_storage_value"):
-			return world_save_data.decode_storage_value(value)
-		return _json_value_to_variant(value)
-	)
-
-
-func _variant_to_json_value(value: Variant) -> Variant:
-	match typeof(value):
-		TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING:
-			return value
-		TYPE_STRING_NAME:
-			return {
-				"__type": "StringName",
-				"value": str(value),
-			}
-		TYPE_DICTIONARY:
-			var json_dict := {}
-			for raw_key in (value as Dictionary).keys():
-				json_dict[str(raw_key)] = _variant_to_json_value((value as Dictionary)[raw_key])
-			return json_dict
-		TYPE_ARRAY:
-			var json_array: Array = []
-			for item in (value as Array):
-				json_array.append(_variant_to_json_value(item))
-			return json_array
-		TYPE_VECTOR2:
-			var vector2 := value as Vector2
-			return {
-				"__type": "Vector2",
-				"x": vector2.x,
-				"y": vector2.y,
-			}
-		TYPE_VECTOR2I:
-			var vector2i := value as Vector2i
-			return {
-				"__type": "Vector2i",
-				"x": vector2i.x,
-				"y": vector2i.y,
-			}
-		_:
-			return {
-				"__type": "VariantString",
-				"value": var_to_str(value),
-			}
-
-
-func _json_value_to_variant(value: Variant) -> Variant:
-	if value is Array:
-		var restored_array: Array = []
-		for item in value:
-			restored_array.append(_json_value_to_variant(item))
-		return restored_array
-	if not (value is Dictionary):
-		return value
-	var value_dict := value as Dictionary
-	var type_name := str(value_dict.get("__type", ""))
-	match type_name:
-		"StringName":
-			return StringName(str(value_dict.get("value", "")))
-		"Vector2":
-			return Vector2(
-				float(value_dict.get("x", 0.0)),
-				float(value_dict.get("y", 0.0))
-			)
-		"Vector2i":
-			return Vector2i(
-				int(value_dict.get("x", 0)),
-				int(value_dict.get("y", 0))
-			)
-		"VariantString":
-			return str_to_var(str(value_dict.get("value", "")))
-		_:
-			var restored_dict := {}
-			for raw_key in value_dict.keys():
-				restored_dict[raw_key] = _json_value_to_variant(value_dict[raw_key])
-			return restored_dict
-
+func _on_save_requested(trigger: SaveTrigger) -> void:
+	_save_system.perform_save(trigger)
 
 func _is_time_night(value: float) -> bool:
 	if is_equal_approx(night_start_time, day_start_time):

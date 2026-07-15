@@ -1,6 +1,8 @@
 class_name FurnaceSlotController
 extends RefCounted
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+
 const SLOT_EMPTY_COLOR := Color(0.52, 0.55, 0.60, 1.0)
 
 var _placeholder_textures: Dictionary = {}
@@ -72,7 +74,7 @@ func withdraw_slot_to_inventory(bound_furnace: Node, slot_id: StringName, action
 	if item_id.is_empty() or quantity <= 0:
 		return
 
-	var item_data := ElementDatabase.get_element(item_id)
+	var item_data := GameplayData.elements().get_element(item_id)
 	if item_data.is_empty():
 		action_hint_label.text = "Cannot return %s from this slot." % get_item_label_callable.call(item_id)
 		return
@@ -106,10 +108,10 @@ func can_accept_drop_to_slot(slot_state: Dictionary, slot_id: StringName, item_i
 	if slot_id == &"fuel":
 		var fuel_state: Dictionary = slot_state.get(slot_id, {})
 		var current_fuel_id: StringName = fuel_state.get(&"item_id", &"")
-		return ChemistryEngine.get_fuel_value(String(item_id)) > 0.0 and (
+		return EventBus.get_chemistry_engine().get_fuel_value(String(item_id)) > 0.0 and (
 			current_fuel_id.is_empty() or current_fuel_id == item_id
 		)
-	if ElementDatabase.get_element(item_id).is_empty():
+	if GameplayData.elements().get_element(item_id).is_empty():
 		return false
 
 	var current_slot_state: Dictionary = slot_state.get(slot_id, {})
@@ -121,7 +123,7 @@ func get_item_label(item_id: StringName) -> String:
 	if item_id.is_empty():
 		return ""
 
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		return str(element_data.get(&"display_name", item_id))
 

@@ -6,11 +6,10 @@ const DOOR_WOOD_DARK := Color(0.30, 0.18, 0.09, 1.0)
 const DOOR_STONE := Color(0.60, 0.62, 0.68, 1.0)
 const DOOR_SHADOW := Color(0.18, 0.20, 0.24, 1.0)
 const DOOR_OPEN_ALPHA := 0.45
-const INTERACT_RANGE := 20.0
-
 @export var is_open := false
 
 @onready var prompt_label: Label = $PromptLabel
+@onready var interaction_area: Area2D = $InteractionArea
 
 var _player_in_range := false
 var _player: Node = null
@@ -21,24 +20,24 @@ func _ready() -> void:
 	object_type = "door"
 	save_bucket = SaveBucket.WALLS
 	super()
+	add_to_group(&"touch_interactable")
 	add_to_group(&"placed_doors")
 	_build_door_texture()
 	_apply_door_state()
 	_configure_prompt_label()
 	_hide_prompt()
+	interaction_area.body_entered.connect(_on_body_entered)
+	interaction_area.body_exited.connect(_on_body_exited)
 	call_deferred("_refresh_adjacent_walls")
 
 
-func _process(_delta: float) -> void:
-	_refresh_player_range_state()
-
-	if _interact_locked_until_release:
-		if not Input.is_action_pressed("interact"):
-			_interact_locked_until_release = false
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_released("interact"):
+		_interact_locked_until_release = false
 		return
-
-	if _player_in_range and Input.is_action_just_pressed("interact"):
+	if _player_in_range and not _interact_locked_until_release and event.is_action_pressed("interact"):
 		_toggle_door()
+		get_viewport().set_input_as_handled()
 
 
 func _toggle_door() -> void:
@@ -123,20 +122,19 @@ func _configure_prompt_label() -> void:
 	prompt_label.offset_bottom = -10.0
 
 
-func _refresh_player_range_state() -> void:
-	var player := _get_player()
-	if player == null:
-		_player = null
-		_player_in_range = false
-		_hide_prompt()
-		return
-
-	_player = player
-	_player_in_range = global_position.distance_to(player.global_position) <= INTERACT_RANGE
-	if _player_in_range:
+func _on_body_entered(body: Node) -> void:
+	if body is CharacterBody2D and body.is_in_group(&"player"):
+		_player = body
+		_player_in_range = true
 		_show_prompt(true)
-	else:
-		_hide_prompt()
+
+
+func _on_body_exited(body: Node) -> void:
+	if body != _player:
+		return
+	_player = null
+	_player_in_range = false
+	_hide_prompt()
 
 
 func _show_prompt(should_show: bool, override_text: String = "") -> void:
@@ -161,8 +159,21 @@ func _get_prompt_text() -> String:
 	return "Tap Interact to %s" % action_text if MobileInputRouter.prefers_touch_controls() else "Press E to %s" % action_text
 
 
-func _get_player() -> CharacterBody2D:
-	return GameManager.get_player() as CharacterBody2D
+func can_touch_interact(player: Node2D) -> bool:
+	return player != null and player == _player and _player_in_range
+
+
+func get_touch_interaction_prompt() -> String:
+	return "%s Door" % ("Close" if is_open else "Open")
+
+
+func get_touch_interaction_world_position() -> Vector2:
+	return global_position + Vector2(0.0, -22.0)
+
+
+func perform_touch_interaction() -> void:
+	if _player_in_range:
+		_toggle_door()
 
 
 func to_world_save_entry() -> Dictionary:

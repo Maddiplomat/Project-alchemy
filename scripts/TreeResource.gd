@@ -26,6 +26,7 @@ const CLICK_TARGET_RADIUS := 18.0
 @onready var canopy: Polygon2D = $Canopy
 @onready var trunk: Polygon2D = $Trunk
 @onready var shadow: Polygon2D = $Shadow
+@onready var interaction_area: Area2D = $InteractionArea
 @onready var health_bar_bg: Panel = $HealthBarBg
 @onready var health_bar_fill: ColorRect = $HealthBarBg/HealthBarFill
 
@@ -41,13 +42,40 @@ func _ready() -> void:
 	_build_visuals()
 	_health_bar_fill_max_width = health_bar_fill.size.x
 	_refresh_health_bar()
+	interaction_area.body_entered.connect(_on_interaction_body_entered)
+	interaction_area.body_exited.connect(_on_interaction_body_exited)
+	if EventBus.get_build_system() != null and EventBus.get_build_system().has_signal("build_mode_changed"):
+		EventBus.get_build_system().build_mode_changed.connect(_on_build_mode_changed)
 
 
-func _process(_delta: float) -> void:
-	_player = _resolve_player()
-	health_bar_bg.visible = _should_show_prompt()
-	if health_bar_bg.visible and Input.is_action_just_pressed("fire_projectile") and _can_consume_attack_input():
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("fire_projectile") and _should_show_prompt() and _can_consume_attack_input():
 		_harvest()
+		get_viewport().set_input_as_handled()
+
+
+func _on_interaction_body_entered(body: Node) -> void:
+	if body is Node2D and body.is_in_group(&"player"):
+		_player = body as Node2D
+		_refresh_nearby_tree_prompts()
+
+
+func _on_interaction_body_exited(body: Node) -> void:
+	if body != _player:
+		return
+	_player = null
+	_refresh_nearby_tree_prompts()
+
+
+func _on_build_mode_changed(_active: bool) -> void:
+	_refresh_nearby_tree_prompts()
+
+
+func _refresh_nearby_tree_prompts() -> void:
+	for node in get_tree().get_nodes_in_group(&"harvestable_trees"):
+		var tree := node as TreeResource
+		if tree != null and is_instance_valid(tree):
+			tree.health_bar_bg.visible = tree._should_show_prompt()
 
 
 func configure(coords: Vector2i, stock: int = MAX_WOOD) -> void:
@@ -119,13 +147,16 @@ func _get_yield_profile() -> Dictionary:
 func _can_player_harvest() -> bool:
 	if remaining_wood <= 0:
 		return false
-	if _player == null or not is_instance_valid(_player):
+	var nearby_player := _player
+	if nearby_player == null or not is_instance_valid(nearby_player):
+		nearby_player = GameManager.get_player()
+	if nearby_player == null or not is_instance_valid(nearby_player):
 		return false
-	return global_position.distance_to(_player.global_position) <= INTERACTION_RADIUS
+	return global_position.distance_to(nearby_player.global_position) <= INTERACTION_RADIUS
 
 
 func _should_show_prompt() -> bool:
-	if BuildSystem != null and BuildSystem.is_build_mode_active():
+	if EventBus.get_build_system() != null and EventBus.get_build_system().is_build_mode_active():
 		return false
 	if not _can_player_harvest():
 		return false
@@ -133,7 +164,10 @@ func _should_show_prompt() -> bool:
 
 
 func _is_preferred_interaction_target() -> bool:
-	if _player == null or not is_instance_valid(_player):
+	var nearby_player := _player
+	if nearby_player == null or not is_instance_valid(nearby_player):
+		nearby_player = GameManager.get_player()
+	if nearby_player == null or not is_instance_valid(nearby_player):
 		return false
 	var best_tree: TreeResource = null
 	var best_distance := INF
@@ -143,20 +177,11 @@ func _is_preferred_interaction_target() -> bool:
 			continue
 		if not tree._can_player_harvest():
 			continue
-		var distance := tree.global_position.distance_to(_player.global_position)
+		var distance := tree.global_position.distance_to(nearby_player.global_position)
 		if distance < best_distance:
 			best_distance = distance
 			best_tree = tree
 	return best_tree == self
-
-
-func _resolve_player() -> Node2D:
-	if _player != null and is_instance_valid(_player):
-		return _player
-	var player_nodes := get_tree().get_nodes_in_group(&"player")
-	if player_nodes.is_empty():
-		return null
-	return player_nodes[0] as Node2D
 
 
 func get_scannable_element_id() -> StringName:

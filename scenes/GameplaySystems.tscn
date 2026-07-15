@@ -1,0 +1,60 @@
+[gd_scene load_steps=16 format=3]
+
+[ext_resource type="Script" path="res://scripts/GameplaySystems.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/CraftingManager.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/WorldSystem.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/ChemistryEngine.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/WeatherSystem.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/DiscoveryLog.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/DiscoveryJournal.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/CombatSystem.gd" id="8"]
+[ext_resource type="Script" path="res://scripts/CarrierRiskSystem.gd" id="9"]
+[ext_resource type="Script" path="res://scripts/BuildSystem.gd" id="10"]
+[ext_resource type="Script" path="res://scripts/ResearchObjectives.gd" id="11"]
+[ext_resource type="Script" path="res://scripts/StorageManager.gd" id="12"]
+[ext_resource type="Script" path="res://scripts/BaseDefenseSystem.gd" id="13"]
+[ext_resource type="Script" path="res://scripts/BaseThreatDirector.gd" id="14"]
+[ext_resource type="Resource" path="res://data/config/base_threat_config.tres" id="15_config"]
+
+[node name="GameplaySystems" type="Node"]
+script = ExtResource("1")
+
+[node name="CraftingManager" type="Node" parent="."]
+script = ExtResource("2")
+
+[node name="WorldSystem" type="Node" parent="."]
+script = ExtResource("3")
+
+[node name="ChemistryEngine" type="Node" parent="."]
+script = ExtResource("4")
+
+[node name="WeatherSystem" type="Node" parent="."]
+script = ExtResource("5")
+
+[node name="DiscoveryLog" type="Node" parent="."]
+script = ExtResource("6")
+
+[node name="DiscoveryJournal" type="Node" parent="."]
+script = ExtResource("7")
+
+[node name="CombatSystem" type="Node" parent="."]
+script = ExtResource("8")
+
+[node name="CarrierRiskSystem" type="Node" parent="."]
+script = ExtResource("9")
+
+[node name="BuildSystem" type="Node" parent="."]
+script = ExtResource("10")
+
+[node name="ResearchObjectives" type="Node" parent="."]
+script = ExtResource("11")
+
+[node name="StorageManager" type="Node" parent="."]
+script = ExtResource("12")
+
+[node name="BaseDefenseSystem" type="Node" parent="."]
+script = ExtResource("13")
+
+[node name="BaseThreatDirector" type="Node" parent="."]
+script = ExtResource("14")
+config = ExtResource("15_config")

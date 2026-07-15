@@ -12,25 +12,9 @@ enum State {
 }
 
 const AcidSpitScript := preload("res://scripts/AcidSpit.gd")
-const DAY_PATROL_SPEED := 40.0
-const NIGHT_PATROL_SPEED := 48.0
-const DAY_BURROW_SPEED := 90.0
-const NIGHT_BURROW_SPEED := 104.0
-const PATROL_RADIUS := 64.0
-const DETECTION_RADIUS := 240.0
-const REBURROW_RADIUS := 200.0
-const MAX_PURSUIT_RADIUS := 320.0
-const ATTACK_RANGE := 96.0
-const PLAYER_EMERGE_OFFSET := 24.0
-const MIN_ATTACK_SEPARATION := 18.0
-const EMERGE_WARNING_SECONDS := 2.0
-const ATTACK_COOLDOWN_SECONDS := 1.35
-const HEALTH_BAR_HIDE_DELAY := 2.0
+const DEFAULT_CONFIG: EnemyConfig = preload("res://data/config/acid_crawler_config.tres")
 
-@export var health: int = 48
-@export var resistances: Dictionary = {
-	&"chemical": 0.0,
-}
+@export var config: EnemyConfig = DEFAULT_CONFIG
 
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
 @onready var sprite: Sprite2D = $Sprite2D
@@ -38,6 +22,8 @@ const HEALTH_BAR_HIDE_DELAY := 2.0
 @onready var enemy_health_bar: ProgressBar = $EnemyHealthBar
 @onready var scan_proxy: Area2D = $ScanProxy
 @onready var scan_proxy_shape: CollisionShape2D = $ScanProxy/CollisionShape2D
+@onready var emerge_warning_particles: GPUParticles2D = $EmergeWarningParticles
+@onready var death_particles: GPUParticles2D = $DeathParticles
 
 var current_state: State = State.IDLE
 var spawn_position := Vector2.ZERO
@@ -49,17 +35,23 @@ var _burrow_target_position := Vector2.ZERO
 var _emerge_warning_timer := 0.0
 var _attack_cooldown_timer := 0.0
 var _max_health := 0
+var health := 0
+var resistances: Dictionary = {}
 var _health_bar_hide_timer := 0.0
 var _subsurface_signal := false
 var _night_active := false
-var _patrol_speed := DAY_PATROL_SPEED
-var _burrow_speed := DAY_BURROW_SPEED
+var _patrol_speed := 0.0
+var _burrow_speed := 0.0
 var _returning_to_spawn := false
 
 
 func _ready() -> void:
 	add_to_group(&"enemy")
-	_max_health = health
+	if config == null:
+		config = DEFAULT_CONFIG
+	health = config.health
+	resistances = config.resistances.duplicate(true)
+	_max_health = config.health
 	spawn_position = global_position
 	target_position = global_position
 	_patrol_target = global_position
@@ -135,6 +127,7 @@ func die() -> void:
 	enemy_health_bar.visible = false
 	died.emit(self)
 	_drop_limestone()
+	_spawn_death_particles()
 
 	var tween := create_tween()
 	tween.set_parallel(true)
@@ -202,7 +195,7 @@ func _update_patrol_state(delta: float) -> void:
 func _update_burrow_state() -> void:
 	if _returning_to_spawn:
 		_burrow_target_position = spawn_position
-	elif _player_target != null and _player_target.global_position.distance_to(spawn_position) <= MAX_PURSUIT_RADIUS:
+	elif _player_target != null and _player_target.global_position.distance_to(spawn_position) <= config.max_pursuit_radius:
 		_burrow_target_position = _get_player_emerge_position()
 	else:
 		_burrow_target_position = spawn_position
@@ -238,31 +231,31 @@ func _update_attack_state() -> void:
 		_report_lit_zone_presence()
 		_begin_burrow(spawn_position, true)
 		return
-	if distance_to_player > REBURROW_RADIUS:
+	if distance_to_player > config.reburrow_radius:
 		_begin_burrow(spawn_position, true)
 		return
-	if global_position.distance_to(spawn_position) > MAX_PURSUIT_RADIUS:
+	if global_position.distance_to(spawn_position) > config.max_pursuit_radius:
 		_begin_burrow(spawn_position, true)
 		return
-	if _player_target.global_position.distance_to(spawn_position) > MAX_PURSUIT_RADIUS:
+	if _player_target.global_position.distance_to(spawn_position) > config.max_pursuit_radius:
 		_begin_burrow(spawn_position, true)
 		return
 
 	_face_target(_player_target.global_position)
-	if distance_to_player < MIN_ATTACK_SEPARATION:
+	if distance_to_player < config.min_attack_separation:
 		var separation_direction := _player_target.global_position.direction_to(global_position)
 		if separation_direction == Vector2.ZERO:
 			separation_direction = Vector2.UP
 		velocity = separation_direction * (_patrol_speed * 0.75)
 		return
-	if distance_to_player > ATTACK_RANGE:
+	if distance_to_player > config.attack_range:
 		velocity = global_position.direction_to(_player_target.global_position) * (_patrol_speed + 12.0)
 		return
 
 	velocity = Vector2.ZERO
 	if _attack_cooldown_timer <= 0.0:
 		_fire_acid_spit()
-		_attack_cooldown_timer = ATTACK_COOLDOWN_SECONDS
+		_attack_cooldown_timer = config.attack_cooldown_seconds
 
 
 func _begin_burrow(destination: Vector2, return_to_spawn: bool = false) -> void:
@@ -279,7 +272,7 @@ func _start_emerge_warning() -> void:
 	current_state = State.EMERGE
 	velocity = Vector2.ZERO
 	global_position = _burrow_target_position
-	_emerge_warning_timer = EMERGE_WARNING_SECONDS
+	_emerge_warning_timer = config.emerge_warning_seconds
 	_subsurface_signal = true
 	_set_surface_visible(false)
 	_sync_scan_proxy()
@@ -335,7 +328,7 @@ func _set_scan_proxy_enabled(enabled: bool) -> void:
 func _choose_patrol_target() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(Time.get_ticks_usec()) + int(global_position.x) * 17 + int(global_position.y) * 31
-	var offset := Vector2.from_angle(rng.randf_range(0.0, TAU)) * rng.randf_range(20.0, PATROL_RADIUS)
+	var offset := Vector2.from_angle(rng.randf_range(0.0, TAU)) * rng.randf_range(20.0, config.patrol_radius)
 	_patrol_target = spawn_position + offset
 
 
@@ -343,7 +336,7 @@ func _fire_acid_spit() -> void:
 	var parent := get_parent()
 	if parent == null:
 		return
-	var target := _player_target.global_position if _player_target != null else global_position + Vector2.RIGHT * ATTACK_RANGE
+	var target := _player_target.global_position if _player_target != null else global_position + Vector2.RIGHT * config.attack_range
 	var origin := global_position + Vector2(0.0, -12.0)
 	AcidSpitScript.spawn(parent, origin, target)
 
@@ -387,38 +380,38 @@ func _sync_player_collision_exception() -> void:
 
 
 func _get_effective_detection_radius() -> float:
-	if not _night_active or BaseDefenseSystem == null or not BaseDefenseSystem.has_method("get_detection_multiplier_at"):
-		return DETECTION_RADIUS
-	return DETECTION_RADIUS * float(BaseDefenseSystem.get_detection_multiplier_at(global_position))
+	if not _night_active or EventBus.get_base_defense_system() == null or not EventBus.get_base_defense_system().has_method("get_detection_multiplier_at"):
+		return config.detection_radius
+	return config.detection_radius * float(EventBus.get_base_defense_system().get_detection_multiplier_at(global_position))
 
 
 func _report_lit_zone_presence() -> void:
-	if not _night_active or BaseDefenseSystem == null or not BaseDefenseSystem.has_method("is_position_in_powered_light"):
+	if not _night_active or EventBus.get_base_defense_system() == null or not EventBus.get_base_defense_system().has_method("is_position_in_powered_light"):
 		return
-	if not BaseDefenseSystem.is_position_in_powered_light(global_position):
+	if not EventBus.get_base_defense_system().is_position_in_powered_light(global_position):
 		return
-	BaseDefenseSystem.report_night_threat(get_instance_id(), global_position)
+	EventBus.get_base_defense_system().report_night_threat(get_instance_id(), global_position)
 	_report_base_breach()
 
 
 func _get_base_attraction_target() -> Vector2:
-	if not _night_active or not has_node("/root/BaseThreatDirector"):
+	if not _night_active or EventBus.get_base_threat_director() == null:
 		return Vector2(INF, INF)
-	if not BaseThreatDirector.has_method("get_enemy_attraction_target"):
+	if not EventBus.get_base_threat_director().has_method("get_enemy_attraction_target"):
 		return Vector2(INF, INF)
-	return BaseThreatDirector.get_enemy_attraction_target(global_position)
+	return EventBus.get_base_threat_director().get_enemy_attraction_target(global_position)
 
 
 func _report_base_breach() -> void:
-	if not _night_active or not has_node("/root/BaseThreatDirector"):
+	if not _night_active or EventBus.get_base_threat_director() == null:
 		return
-	if BaseThreatDirector.has_method("report_enemy_base_breach"):
-		BaseThreatDirector.report_enemy_base_breach(self)
+	if EventBus.get_base_threat_director().has_method("report_enemy_base_breach"):
+		EventBus.get_base_threat_director().report_enemy_base_breach(self)
 
 
 func _unregister_from_base_defense() -> void:
-	if BaseDefenseSystem != null and BaseDefenseSystem.has_method("unregister_enemy"):
-		BaseDefenseSystem.unregister_enemy(get_instance_id())
+	if EventBus.get_base_defense_system() != null and EventBus.get_base_defense_system().has_method("unregister_enemy"):
+		EventBus.get_base_defense_system().unregister_enemy(get_instance_id())
 
 
 func _get_player_tile_center() -> Vector2:
@@ -441,7 +434,7 @@ func _get_player_emerge_position() -> Vector2:
 		approach_direction = spawn_position - player_center
 	if approach_direction.length_squared() <= 0.001:
 		approach_direction = Vector2.DOWN
-	return player_center + approach_direction.normalized() * PLAYER_EMERGE_OFFSET
+	return player_center + approach_direction.normalized() * config.player_emerge_offset
 
 
 func _get_navigation_step(destination: Vector2) -> Vector2:
@@ -463,8 +456,8 @@ func _drop_limestone() -> void:
 
 func _on_day_started() -> void:
 	_night_active = false
-	_patrol_speed = DAY_PATROL_SPEED
-	_burrow_speed = DAY_BURROW_SPEED
+	_patrol_speed = config.move_speed
+	_burrow_speed = config.burrow_speed
 	if current_state == State.DEAD:
 		return
 	if current_state == State.IDLE:
@@ -475,8 +468,8 @@ func _on_day_started() -> void:
 
 func _on_night_started() -> void:
 	_night_active = true
-	_patrol_speed = NIGHT_PATROL_SPEED
-	_burrow_speed = NIGHT_BURROW_SPEED
+	_patrol_speed = config.night_move_speed
+	_burrow_speed = config.night_burrow_speed
 	if current_state == State.DEAD:
 		return
 	if current_state == State.IDLE:
@@ -492,32 +485,19 @@ func _face_target(world_position: Vector2) -> void:
 
 
 func _spawn_emerge_warning_fx(world_position: Vector2) -> void:
-	var particles := GPUParticles2D.new()
-	particles.position = world_position
-	particles.one_shot = true
-	particles.emitting = false
-	particles.amount = 28
-	particles.lifetime = 0.7
-	particles.explosiveness = 1.0
-	particles.local_coords = false
+	if emerge_warning_particles == null:
+		return
+	emerge_warning_particles.global_position = world_position
+	emerge_warning_particles.restart()
+	emerge_warning_particles.emitting = true
 
-	var material := ParticleProcessMaterial.new()
-	material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
-	material.emission_ring_radius = 6.0
-	material.emission_ring_inner_radius = 2.0
-	material.direction = Vector3.UP
-	material.spread = 55.0
-	material.initial_velocity_min = 24.0
-	material.initial_velocity_max = 56.0
-	material.gravity = Vector3(0.0, 90.0, 0.0)
-	material.scale_min = 1.8
-	material.scale_max = 3.6
-	material.color = Color(0.71, 0.81, 0.46, 0.9)
-	particles.process_material = material
 
-	get_parent().add_child(particles)
-	particles.emitting = true
-	get_tree().create_timer(1.0).timeout.connect(particles.queue_free, CONNECT_ONE_SHOT)
+func _spawn_death_particles() -> void:
+	if death_particles == null:
+		return
+	death_particles.global_position = global_position
+	death_particles.restart()
+	death_particles.emitting = true
 
 
 func _build_crawler_texture() -> Texture2D:
@@ -560,22 +540,14 @@ func _setup_health_bar() -> void:
 	enemy_health_bar.value = float(health)
 	enemy_health_bar.show_percentage = false
 	enemy_health_bar.visible = false
-
-	var background := StyleBoxFlat.new()
-	background.bg_color = Color(0.09, 0.09, 0.08, 0.88)
-	background.corner_radius_top_left = 2
-	background.corner_radius_top_right = 2
-	background.corner_radius_bottom_left = 2
-	background.corner_radius_bottom_right = 2
-	enemy_health_bar.add_theme_stylebox_override("background", background)
-	enemy_health_bar.add_theme_stylebox_override("fill", _build_health_bar_fill_style(1.0))
+	_refresh_health_bar()
 
 
 func _show_health_bar_from_combat() -> void:
 	if enemy_health_bar == null:
 		return
 	enemy_health_bar.visible = sprite.visible
-	_health_bar_hide_timer = HEALTH_BAR_HIDE_DELAY
+	_health_bar_hide_timer = config.health_bar_hide_delay
 
 
 func _refresh_health_bar() -> void:
@@ -584,7 +556,9 @@ func _refresh_health_bar() -> void:
 	var ratio := clampf(float(maxi(health, 0)) / float(maxi(_max_health, 1)), 0.0, 1.0)
 	enemy_health_bar.max_value = float(_max_health)
 	enemy_health_bar.value = float(maxi(health, 0))
-	enemy_health_bar.add_theme_stylebox_override("fill", _build_health_bar_fill_style(ratio))
+	var fill_style := enemy_health_bar.get_theme_stylebox(&"fill") as StyleBoxFlat
+	if fill_style != null:
+		fill_style.bg_color = Color(0.91, 0.24, 0.18, 1.0).lerp(Color(0.66, 0.88, 0.25, 1.0), ratio)
 
 
 func _update_health_bar_visibility(delta: float) -> void:
@@ -596,13 +570,3 @@ func _update_health_bar_visibility(delta: float) -> void:
 	_health_bar_hide_timer = maxf(0.0, _health_bar_hide_timer - delta)
 	if _health_bar_hide_timer <= 0.0:
 		enemy_health_bar.visible = false
-
-
-func _build_health_bar_fill_style(health_ratio: float) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.91, 0.24, 0.18, 1.0).lerp(Color(0.66, 0.88, 0.25, 1.0), health_ratio)
-	style.corner_radius_top_left = 2
-	style.corner_radius_top_right = 2
-	style.corner_radius_bottom_left = 2
-	style.corner_radius_bottom_right = 2
-	return style

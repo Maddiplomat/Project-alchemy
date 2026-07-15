@@ -27,6 +27,8 @@ var _aim_touch_index := -1
 var _move_center := Vector2.ZERO
 var _move_stick_origin := Vector2.ZERO
 var _player: Node = null
+var _build_system: Node = null
+var _attack_feedback_timer: Timer = null
 
 
 func _ready() -> void:
@@ -44,7 +46,16 @@ func _ready() -> void:
 	confirm_button.pressed.connect(func() -> void: MobileInputRouter.tap_action(&"build_confirm"))
 	cancel_button.pressed.connect(func() -> void: MobileInputRouter.tap_action(&"build_cancel"))
 	rotate_button.pressed.connect(func() -> void: MobileInputRouter.tap_action(&"build_rotate"))
+	if not EventBus.service_registered.is_connected(_on_service_registered):
+		EventBus.service_registered.connect(_on_service_registered)
+	_bind_build_system()
+	_attack_feedback_timer = Timer.new()
+	_attack_feedback_timer.wait_time = 0.1
+	_attack_feedback_timer.timeout.connect(_refresh_attack_feedback)
+	add_child(_attack_feedback_timer)
+	_attack_feedback_timer.start()
 	_resolve_player()
+	_update_build_buttons()
 	_refresh_attack_feedback()
 
 
@@ -56,13 +67,6 @@ func _exit_tree() -> void:
 	MobileInputRouter.release_all_actions()
 
 
-func _process(_delta: float) -> void:
-	if not visible:
-		return
-	_update_build_buttons()
-	_refresh_attack_feedback()
-
-
 func _on_attack_button_pressed() -> void:
 	MobileInputRouter.tap_action(&"fire_projectile")
 
@@ -72,6 +76,7 @@ func _on_scan_button_toggled(pressed: bool) -> void:
 
 
 func _on_move_pad_gui_input(event: InputEvent) -> void:
+	accept_event()
 	if event is InputEventScreenTouch:
 		var touch_event := event as InputEventScreenTouch
 		if touch_event.pressed:
@@ -98,6 +103,7 @@ func _on_move_pad_gui_input(event: InputEvent) -> void:
 
 
 func _on_aim_pad_gui_input(event: InputEvent) -> void:
+	accept_event()
 	if event is InputEventScreenTouch:
 		var touch_event := event as InputEventScreenTouch
 		if touch_event.pressed:
@@ -168,11 +174,34 @@ func _get_pad_local_position(pad: Control, event_position: Vector2) -> Vector2:
 
 
 func _update_build_buttons() -> void:
-	var build_active := BuildSystem != null and BuildSystem.is_build_mode_active()
+	var build_active: bool = _build_system != null and _build_system.is_build_mode_active()
 	build_button.text = "Close Build" if build_active else "Build"
 	confirm_button.visible = build_active
 	cancel_button.visible = build_active
 	rotate_button.visible = build_active
+
+
+func _on_service_registered(service_id: StringName, _service: Node) -> void:
+	if service_id == EventBus.SERVICE_BUILD_SYSTEM:
+		_bind_build_system()
+
+
+func _bind_build_system() -> void:
+	var next_build_system := EventBus.get_build_system()
+	if next_build_system == _build_system:
+		return
+	if is_instance_valid(_build_system) and _build_system.has_signal("build_mode_changed"):
+		var previous_callback := Callable(self, "_on_build_mode_changed")
+		if _build_system.is_connected("build_mode_changed", previous_callback):
+			_build_system.disconnect("build_mode_changed", previous_callback)
+	_build_system = next_build_system
+	if is_instance_valid(_build_system) and _build_system.has_signal("build_mode_changed"):
+		_build_system.build_mode_changed.connect(_on_build_mode_changed)
+	_update_build_buttons()
+
+
+func _on_build_mode_changed(_active: bool) -> void:
+	_update_build_buttons()
 
 
 func _resolve_player() -> Node:

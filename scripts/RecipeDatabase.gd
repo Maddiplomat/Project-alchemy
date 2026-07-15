@@ -1,5 +1,5 @@
-extends Node
-# Autoload: RecipeDatabase
+class_name RecipeDatabaseResource
+extends Resource
 
 signal recipe_unlocked(recipe_id: StringName)
 signal database_ready(recipe_count: int)
@@ -10,18 +10,26 @@ const INVENTORY_STATION_ID := &"inventory"
 # Recipe dict: id -> {id, name, station, inputs: [{id, qty}], output: {id, qty},
 #                     unlocked: bool, requires_discovery: StringName}
 var recipes: Dictionary[StringName, Dictionary] = {}
+var _initialized := false
 
 
-func _ready() -> void:
+
+func init() -> RecipeDatabaseResource:
+	if _initialized:
+		return self
+	_initialized = true
 	_load_recipes()
 	database_ready.emit(recipes.size())
+	return self
 
 
 func has_recipe(recipe_id: StringName) -> bool:
+	init()
 	return recipes.has(recipe_id)
 
 
 func get_recipe(id: StringName) -> Dictionary:
+	init()
 	if not recipes.has(id):
 		return {}
 	var recipe := (recipes[id] as Dictionary).duplicate(true)
@@ -30,6 +38,7 @@ func get_recipe(id: StringName) -> Dictionary:
 
 
 func get_all_recipes() -> Dictionary[StringName, Dictionary]:
+	init()
 	var result: Dictionary[StringName, Dictionary] = {}
 	for recipe_id: StringName in recipes.keys():
 		result[recipe_id] = get_recipe(recipe_id)
@@ -37,6 +46,7 @@ func get_all_recipes() -> Dictionary[StringName, Dictionary]:
 
 
 func get_all_unlocked() -> Array[Dictionary]:
+	init()
 	var unlocked_recipes: Array[Dictionary] = []
 	for recipe_id: StringName in recipes.keys():
 		var recipe := get_recipe(recipe_id)
@@ -46,10 +56,12 @@ func get_all_unlocked() -> Array[Dictionary]:
 
 
 func reset_runtime_state() -> void:
+	init()
 	_load_recipes()
 
 
 func unlock_recipe(recipe_id: StringName) -> bool:
+	init()
 	if not recipes.has(recipe_id):
 		return false
 
@@ -64,6 +76,7 @@ func unlock_recipe(recipe_id: StringName) -> bool:
 
 
 func get_recipes_for_station(station_id: StringName) -> Array[Dictionary]:
+	init()
 	var station_recipes: Array[Dictionary] = []
 	for recipe_id: StringName in recipes.keys():
 		var recipe := get_recipe(recipe_id)
@@ -73,6 +86,7 @@ func get_recipes_for_station(station_id: StringName) -> Array[Dictionary]:
 
 
 func get_recipes_for_output(item_id: StringName) -> Array[Dictionary]:
+	init()
 	var result: Array[Dictionary] = []
 	for recipe_id: StringName in recipes.keys():
 		var recipe := get_recipe(recipe_id)
@@ -265,8 +279,9 @@ func _is_recipe_unlocked(recipe: Dictionary) -> bool:
 	if required_discovery.is_empty():
 		return false
 
-	if DiscoveryLog != null and DiscoveryLog.has_method("has_discovery"):
-		return bool(DiscoveryLog.has_discovery(required_discovery))
+	var discovery_log := EventBus.get_discovery_log()
+	if discovery_log != null and discovery_log.has_method("has_discovery"):
+		return bool(discovery_log.has_discovery(required_discovery))
 
 	return false
 

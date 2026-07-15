@@ -1,4 +1,7 @@
+class_name ChemistryEngine
 extends Node
+
+const GameplayData = preload("res://scripts/GameplayData.gd")
 
 ## ChemistryEngine Autoload
 ## Handles element reactions based on temperature and ratios.
@@ -325,12 +328,12 @@ func _get_element_data(element_ref) -> Dictionary:
 	if normalized_ref.is_empty():
 		return {}
 
-	var direct_lookup := ElementDatabase.get_element(StringName(normalized_ref.to_lower()))
+	var direct_lookup := GameplayData.elements().get_element(StringName(normalized_ref.to_lower()))
 	if not direct_lookup.is_empty():
 		return direct_lookup
 
-	for element_id: StringName in ElementDatabase.elements:
-		var element_data: Dictionary = ElementDatabase.elements[element_id]
+	for element_id: StringName in GameplayData.elements().elements:
+		var element_data: Dictionary = GameplayData.elements().elements[element_id]
 		var symbol := str(element_data.get(&"symbol", ""))
 		if symbol.to_lower() == normalized_ref.to_lower():
 			return element_data.duplicate(true)

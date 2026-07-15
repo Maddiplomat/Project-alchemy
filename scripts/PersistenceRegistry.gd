@@ -1,5 +1,7 @@
 extends Node
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+
 const PersistenceContractScript = preload("res://scripts/PersistenceContract.gd")
 
 const SECTION_GAME_MANAGER := &"game_manager"
@@ -154,11 +156,11 @@ func restore_flattened_state_from_entries(flat_state: Dictionary, entries: Array
 func _build_default_entries() -> Array[Dictionary]:
 	return [
 		_build_autoload_entry(&"game_manager", &"GameManager", SECTION_GAME_MANAGER),
-		_build_autoload_entry(&"world_system", &"WorldSystem", SECTION_WORLD_SYSTEM),
-		_build_autoload_entry(&"element_database", &"ElementDatabase", SECTION_GLOBAL_SYSTEMS),
-		_build_autoload_entry(&"discovery_log", &"DiscoveryLog", SECTION_GLOBAL_SYSTEMS),
-		_build_autoload_entry(&"research_objectives", &"ResearchObjectives", SECTION_GLOBAL_SYSTEMS),
-		_build_autoload_entry(&"weather_system", &"WeatherSystem", SECTION_GLOBAL_SYSTEMS),
+		_build_service_entry(&"world_system", EventBus.SERVICE_WORLD_SYSTEM, SECTION_WORLD_SYSTEM),
+		_build_direct_entry(&"element_database", GameplayData.elements(), SECTION_GLOBAL_SYSTEMS),
+		_build_service_entry(&"discovery_log", EventBus.SERVICE_DISCOVERY_LOG, SECTION_GLOBAL_SYSTEMS),
+		_build_service_entry(&"research_objectives", EventBus.SERVICE_RESEARCH_OBJECTIVES, SECTION_GLOBAL_SYSTEMS),
+		_build_service_entry(&"weather_system", EventBus.SERVICE_WEATHER_SYSTEM, SECTION_GLOBAL_SYSTEMS),
 		_build_service_entry(&"power_switchboard", EventBus.SERVICE_POWER_SWITCHBOARD, SECTION_GLOBAL_SYSTEMS),
 		_build_service_entry(&"cold_system", EventBus.SERVICE_COLD_SYSTEM, SECTION_GLOBAL_SYSTEMS),
 	]
@@ -179,6 +181,15 @@ func _build_service_entry(key: StringName, service_id: StringName, section: Stri
 		"section": section,
 		"provider_type": PROVIDER_TYPE_SERVICE,
 		"service_id": service_id,
+	}
+
+
+func _build_direct_entry(key: StringName, provider: Object, section: StringName) -> Dictionary:
+	return {
+		"key": key,
+		"section": section,
+		"provider_type": PROVIDER_TYPE_DIRECT,
+		"provider": provider,
 	}
 
 

@@ -1,5 +1,7 @@
 extends Panel
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+
 signal close_requested
 
 const TAB_DISCOVERIES := 0
@@ -54,6 +56,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		close_requested.emit()
 		get_viewport().set_input_as_handled()
+		return
+	get_viewport().set_input_as_handled()
 
 
 func _configure_tabs() -> void:
@@ -67,18 +71,18 @@ func _configure_tabs() -> void:
 func _wire_events() -> void:
 	tab_bar.tab_changed.connect(_on_tab_changed)
 	entry_list.item_selected.connect(_on_entry_selected)
-	if DiscoveryJournal != null and DiscoveryJournal.has_signal("journal_entry_added"):
-		DiscoveryJournal.journal_entry_added.connect(_on_journal_changed)
-	if DiscoveryJournal != null and DiscoveryJournal.has_signal("journal_entry_updated"):
-		DiscoveryJournal.journal_entry_updated.connect(_on_journal_changed)
-	if ResearchObjectives != null:
-		ResearchObjectives.objective_completed.connect(_on_objectives_changed)
-		ResearchObjectives.objective_activated.connect(_on_objectives_changed)
-		ResearchObjectives.objective_progressed.connect(_on_objective_progressed)
-		if ResearchObjectives.has_signal("objectives_restored"):
-			ResearchObjectives.objectives_restored.connect(_on_objectives_restored)
-	if RecipeDatabase != null and RecipeDatabase.has_signal("recipe_unlocked"):
-		RecipeDatabase.recipe_unlocked.connect(_on_recipe_unlocked)
+	if EventBus.get_discovery_journal() != null and EventBus.get_discovery_journal().has_signal("journal_entry_added"):
+		EventBus.get_discovery_journal().journal_entry_added.connect(_on_journal_changed)
+	if EventBus.get_discovery_journal() != null and EventBus.get_discovery_journal().has_signal("journal_entry_updated"):
+		EventBus.get_discovery_journal().journal_entry_updated.connect(_on_journal_changed)
+	if EventBus.get_research_objectives() != null:
+		EventBus.get_research_objectives().objective_completed.connect(_on_objectives_changed)
+		EventBus.get_research_objectives().objective_activated.connect(_on_objectives_changed)
+		EventBus.get_research_objectives().objective_progressed.connect(_on_objective_progressed)
+		if EventBus.get_research_objectives().has_signal("objectives_restored"):
+			EventBus.get_research_objectives().objectives_restored.connect(_on_objectives_restored)
+	if GameplayData.recipes() != null and GameplayData.recipes().has_signal("recipe_unlocked"):
+		GameplayData.recipes().recipe_unlocked.connect(_on_recipe_unlocked)
 
 
 func _on_tab_changed(_tab: int) -> void:
@@ -219,10 +223,10 @@ func _build_entries_for_tab(tab_index: int) -> Array[Dictionary]:
 
 func _build_discovery_entries() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if DiscoveryJournal == null or not DiscoveryJournal.has_method("get_entries"):
+	if EventBus.get_discovery_journal() == null or not EventBus.get_discovery_journal().has_method("get_entries"):
 		return result
 
-	var entries: Array[Dictionary] = DiscoveryJournal.get_entries()
+	var entries: Array[Dictionary] = EventBus.get_discovery_journal().get_entries()
 	for entry: Dictionary in entries:
 		result.append({
 			&"title": _format_item_name(StringName(entry.get(&"element_id", &""))),
@@ -236,10 +240,10 @@ func _build_discovery_entries() -> Array[Dictionary]:
 
 func _build_research_entries() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if ResearchObjectives == null or not ResearchObjectives.has_method("get_all_objectives"):
+	if EventBus.get_research_objectives() == null or not EventBus.get_research_objectives().has_method("get_all_objectives"):
 		return result
 
-	var objectives: Array[Dictionary] = ResearchObjectives.get_all_objectives()
+	var objectives: Array[Dictionary] = EventBus.get_research_objectives().get_all_objectives()
 	for objective: Dictionary in objectives:
 		if bool(objective.get(&"completed", false)):
 			continue
@@ -273,10 +277,10 @@ func _format_objective_progress_label(objective: Dictionary) -> String:
 
 func _build_hazard_entries() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if DiscoveryJournal == null or not DiscoveryJournal.has_method("get_entries"):
+	if EventBus.get_discovery_journal() == null or not EventBus.get_discovery_journal().has_method("get_entries"):
 		return result
 
-	var entries: Array[Dictionary] = DiscoveryJournal.get_entries()
+	var entries: Array[Dictionary] = EventBus.get_discovery_journal().get_entries()
 	for entry: Dictionary in entries:
 		var hazard_notes: String = str(entry.get(&"hazard_notes", "")).strip_edges()
 		if hazard_notes.is_empty():
@@ -293,10 +297,10 @@ func _build_hazard_entries() -> Array[Dictionary]:
 
 func _build_recipe_entries() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if RecipeDatabase == null or not RecipeDatabase.has_method("get_all_unlocked"):
+	if GameplayData.recipes() == null or not GameplayData.recipes().has_method("get_all_unlocked"):
 		return result
 
-	var recipes: Array[Dictionary] = RecipeDatabase.get_all_unlocked()
+	var recipes: Array[Dictionary] = GameplayData.recipes().get_all_unlocked()
 	for recipe: Dictionary in recipes:
 		var output: Dictionary = recipe.get(&"output", {})
 		var output_id: StringName = StringName(output.get(&"item_id", output.get(&"id", &"")))
@@ -304,8 +308,8 @@ func _build_recipe_entries() -> Array[Dictionary]:
 		var try_next: String = _build_recipe_try_next(recipe)
 		var hazard_notes: String = ""
 		var scanner_clue: String = ""
-		if DiscoveryJournal != null and DiscoveryJournal.has_method("get_entry"):
-			var journal_entry: Dictionary = DiscoveryJournal.get_entry(output_id)
+		if EventBus.get_discovery_journal() != null and EventBus.get_discovery_journal().has_method("get_entry"):
+			var journal_entry: Dictionary = EventBus.get_discovery_journal().get_entry(output_id)
 			if not journal_entry.is_empty():
 				try_next = str(journal_entry.get(&"next_hint", try_next))
 				hazard_notes = str(journal_entry.get(&"hazard_notes", ""))
@@ -327,8 +331,8 @@ func _format_unlock_chain(unlocks_recipe: Array) -> String:
 		if recipe_id.is_empty():
 			continue
 		var recipe_name: String = _format_item_name(recipe_id)
-		if RecipeDatabase != null and RecipeDatabase.has_method("get_recipe"):
-			var recipe: Dictionary = RecipeDatabase.get_recipe(recipe_id)
+		if GameplayData.recipes() != null and GameplayData.recipes().has_method("get_recipe"):
+			var recipe: Dictionary = GameplayData.recipes().get_recipe(recipe_id)
 			if not recipe.is_empty():
 				recipe_name = str(recipe.get(&"name", recipe_name))
 		names.append(recipe_name)
@@ -382,6 +386,6 @@ func _format_item_name(item_id: StringName) -> String:
 
 
 func _format_station(station_id: StringName) -> String:
-	if station_id.is_empty() or RecipeDatabase.is_inventory_station(station_id):
+	if station_id.is_empty() or GameplayData.recipes().is_inventory_station(station_id):
 		return "inventory"
 	return _format_item_name(station_id)

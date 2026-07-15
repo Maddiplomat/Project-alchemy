@@ -1,3 +1,4 @@
+class_name WorldSystem
 extends Node
 # Autoload: WorldSystem
 
@@ -12,6 +13,7 @@ var _pending_travel_context: Dictionary = {}
 
 
 func _ready() -> void:
+	_restore_scene_handoff(EventBus.consume_gameplay_handoff())
 	if GameManager != null and GameManager.has_signal("new_game_started"):
 		if not GameManager.new_game_started.is_connected(_on_new_game_started):
 			GameManager.new_game_started.connect(_on_new_game_started)
@@ -128,6 +130,7 @@ func travel_to_scene(target_scene_path: String, entry_point_id: StringName = &""
 	_pending_restore_state = _compose_travel_restore_state(source_state, target_state, target_scene_path)
 	_pending_restore_state[String(TRAVEL_CONTEXT_KEY)] = travel_context.duplicate(true)
 	_pending_travel_context = travel_context
+	_publish_scene_handoff()
 	return tree.change_scene_to_file(target_scene_path) == OK
 
 
@@ -148,10 +151,29 @@ func queue_pending_restore_state(restore_state: Dictionary, travel_context: Dict
 	if not travel_context.is_empty():
 		_pending_restore_state[String(TRAVEL_CONTEXT_KEY)] = travel_context.duplicate(true)
 	_pending_travel_context = travel_context.duplicate(true)
+	_publish_scene_handoff()
 
 
 func has_pending_restore_state() -> bool:
 	return not _pending_restore_state.is_empty() or not _pending_travel_context.is_empty()
+
+
+func _publish_scene_handoff() -> void:
+	EventBus.set_gameplay_handoff({
+		&"world_system_state": capture_persistent_state(),
+		&"pending_restore_state": _pending_restore_state.duplicate(true),
+		&"pending_travel_context": _pending_travel_context.duplicate(true),
+	})
+
+
+func _restore_scene_handoff(handoff: Dictionary) -> void:
+	if handoff.is_empty():
+		return
+	var world_system_state := handoff.get(&"world_system_state", {}) as Dictionary
+	if not world_system_state.is_empty():
+		restore_persistent_state(world_system_state)
+	_pending_restore_state = (handoff.get(&"pending_restore_state", {}) as Dictionary).duplicate(true)
+	_pending_travel_context = (handoff.get(&"pending_travel_context", {}) as Dictionary).duplicate(true)
 
 
 func _compose_travel_restore_state(source_state: Dictionary, target_state: Dictionary, target_scene_path: String) -> Dictionary:

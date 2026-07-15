@@ -77,7 +77,8 @@ func _ready() -> void:
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 	resized.connect(_on_resized)
-	set_process(true)
+	visibility_changed.connect(_sync_processing)
+	set_process(false)
 	_apply_background_style()
 
 
@@ -97,6 +98,7 @@ func _process(delta: float) -> void:
 		if held_seconds >= TOUCH_LONG_PRESS_SECONDS:
 			_touch_long_press_emitted = true
 			long_pressed.emit(slot_index)
+	_sync_processing()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -117,6 +119,7 @@ func _gui_input(event: InputEvent) -> void:
 			_touch_long_press_emitted = false
 			_touch_press_position = touch_event.position
 			_touch_press_started_msec = Time.get_ticks_msec()
+			_sync_processing()
 		elif _touch_press_active:
 			if _touch_drag_active:
 				drag_released.emit(slot_index)
@@ -137,6 +140,7 @@ func update_display() -> void:
 	is_equipped = is_active
 	is_drag_origin = false
 	_apply_visual_state()
+	_sync_processing()
 
 
 func update_slot(next_item_id: String, next_quantity: int, next_purity: float, durability = null, max_durability = null) -> void:
@@ -158,6 +162,7 @@ func clear() -> void:
 	is_drag_origin = false
 	is_equipped = false
 	_apply_visual_state()
+	_sync_processing()
 
 func has_item() -> bool:
 	return not item_id.is_empty() and quantity > 0
@@ -174,6 +179,7 @@ func set_carrier_risk_alert(active: bool) -> void:
 	if not active:
 		_carrier_risk_time = 0.0
 	_apply_background_style()
+	_sync_processing()
 
 func _apply_visual_state() -> void:
 	var has_stack := has_item()
@@ -220,6 +226,13 @@ func _reset_touch_press_state() -> void:
 	_touch_drag_active = false
 	_touch_long_press_emitted = false
 	_touch_press_started_msec = 0
+	_sync_processing()
+
+
+func _sync_processing() -> void:
+	var needs_animation := (_carrier_risk_active and has_item() and _supports_carrier_risk_visuals()) \
+		or (has_item() and _supports_passive_risk_pulse() and is_equipped)
+	set_process(is_visible_in_tree() and (needs_animation or _touch_press_active))
 
 func _update_touch_pointer(screen_position: Vector2, active: bool) -> void:
 	if MobileInputRouter != null:

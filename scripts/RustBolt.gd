@@ -9,13 +9,31 @@ const SPEED := 400.0
 
 @onready var trail: GPUParticles2D = $Trail
 
+var _visual_ready := false
+var _trail_ready := false
+
 func _ready() -> void:
 	super._ready()
 	damage_type = "oxidation"
 	damage = 15.0
 	pierce = false
-	_apply_rust_bolt_visual()
-	_setup_trail()
+	if not _visual_ready:
+		_apply_rust_bolt_visual()
+		_visual_ready = true
+	if not _trail_ready:
+		_setup_trail()
+		_trail_ready = true
+	if trail != null:
+		trail.restart()
+		trail.emitting = true
+
+
+func _pool_reset() -> void:
+	super._pool_reset()
+	damage_type = "oxidation"
+	damage = 15.0
+	if trail != null:
+		trail.emitting = false
 
 func _setup_trail() -> void:
 	if trail == null:
@@ -71,11 +89,9 @@ func _apply_rust_bolt_visual() -> void:
 
 
 static func spawn(parent: Node, origin: Vector2, target_pos: Vector2) -> RustBolt:
-	var scene: PackedScene = load("res://scenes/RustBolt.tscn")
-	if scene == null:
-		push_error("RustBolt: res://scenes/RustBolt.tscn not found")
+	var bolt := ObjectPool.get_instance_by_id(ObjectPool.SCENE_RUST_BOLT) as RustBolt
+	if bolt == null:
 		return null
-	var bolt := scene.instantiate() as RustBolt
 	parent.add_child(bolt)
 	bolt.global_position = origin
 	bolt.velocity = origin.direction_to(target_pos) * SPEED

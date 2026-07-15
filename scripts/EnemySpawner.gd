@@ -17,10 +17,10 @@ var _respawn_timers: Dictionary = {}
 
 func _ready() -> void:
 	if requires_post_tutorial_loop and not _is_post_tutorial_loop_active():
-		if ResearchObjectives != null and ResearchObjectives.has_signal("objective_completed"):
+		if EventBus.get_research_objectives() != null and EventBus.get_research_objectives().has_signal("objective_completed"):
 			var objective_callable := Callable(self, "_on_objective_completed")
-			if not ResearchObjectives.objective_completed.is_connected(objective_callable):
-				ResearchObjectives.objective_completed.connect(objective_callable)
+			if not EventBus.get_research_objectives().objective_completed.is_connected(objective_callable):
+				EventBus.get_research_objectives().objective_completed.connect(objective_callable)
 		return
 	for index: int in spawn_position.size():
 		_ensure_respawn_timer(index)

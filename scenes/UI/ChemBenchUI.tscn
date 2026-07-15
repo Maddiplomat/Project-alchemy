@@ -1,6 +1,23 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/ChemBenchUI.gd" id="1_cbui1"]
+[ext_resource type="Theme" path="res://assets/themes/game_theme.tres" id="2_theme"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxLessonBanner"]
+bg_color = Color(0.18, 0.12, 0.08, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.82, 0.56, 0.24, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
 
 [node name="ChemBenchUI" type="CanvasLayer"]
 layer = 11
@@ -15,6 +32,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+theme = ExtResource("2_theme")
 
 [node name="Backdrop" type="ColorRect" parent="Root"]
 layout_mode = 1
@@ -308,7 +326,41 @@ theme_override_font_sizes/font_size = 11
 text = "Bench outcomes depend on ratio, setpoint temperature, and catalyst choice."
 autowrap_mode = 3
 
+[node name="PowerColumn" type="VBoxContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow"]
+custom_minimum_size = Vector2(170, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+alignment = 1
+
+[node name="PowerStatusLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/PowerColumn"]
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="PowerButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/PowerColumn"]
+layout_mode = 2
+text = "Insert Energy Cell"
+
 [node name="CloseButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow"]
 layout_mode = 2
 custom_minimum_size = Vector2(120, 48)
 text = "Close"
+
+[node name="LessonBanner" type="PanelContainer" parent="Root"]
+visible = false
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 96.0
+offset_top = 22.0
+offset_right = -96.0
+offset_bottom = 78.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxLessonBanner")
+modulate = Color(1, 1, 1, 0)
+
+[node name="LessonBannerLabel" type="Label" parent="Root/LessonBanner"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+autowrap_mode = 2
+vertical_alignment = 1

@@ -7,13 +7,41 @@ const PATCH_LIFETIME_SECONDS := 1.5
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var particles: GPUParticles2D = $GPUParticles2D
 
+var _lifetime_timer: Timer = null
+var _particles_configured := false
 
 func _ready() -> void:
-	body_entered.connect(_on_body_entered)
-	_configure_particles()
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+	if not _particles_configured:
+		_configure_particles()
+		_particles_configured = true
 	particles.restart()
 	particles.emitting = true
-	get_tree().create_timer(PATCH_LIFETIME_SECONDS).timeout.connect(queue_free, CONNECT_ONE_SHOT)
+	_ensure_lifetime_timer()
+	_lifetime_timer.start(PATCH_LIFETIME_SECONDS)
+
+
+func _pool_reset() -> void:
+	monitoring = true
+	remove_meta(&"tile_coords")
+	if particles != null:
+		particles.emitting = false
+	if _lifetime_timer != null:
+		_lifetime_timer.stop()
+
+
+func _ensure_lifetime_timer() -> void:
+	if _lifetime_timer != null:
+		return
+	_lifetime_timer = Timer.new()
+	_lifetime_timer.one_shot = true
+	_lifetime_timer.timeout.connect(_release_to_pool)
+	add_child(_lifetime_timer)
+
+
+func _release_to_pool() -> void:
+	ObjectPool.release(self)
 
 
 func _on_body_entered(body: Node) -> void:

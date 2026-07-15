@@ -240,7 +240,6 @@ func _swing_melee_weapon(weapon_profile: Dictionary) -> void:
 	_melee_swing_active = true
 	_melee_hit_targets.clear()
 	melee_animation_player.play("steel_sword_swing")
-	_apply_melee_hits(weapon_profile)
 
 	var swing_timer := get_tree().create_timer(STEEL_SWORD_SWING_DURATION)
 	swing_timer.timeout.connect(_finish_melee_swing)
@@ -254,11 +253,6 @@ func _finish_melee_swing() -> void:
 	sword_arc_visual.rotation_degrees = 0.0
 	sword_arc_visual.visible = false
 	_melee_hit_targets.clear()
-
-
-func _apply_melee_hits(weapon_profile: Dictionary) -> void:
-	for body in _get_immediate_melee_targets():
-		_apply_melee_hit_to_body(body, weapon_profile)
 
 
 func _on_melee_hitbox_body_entered(body: Node) -> void:
@@ -359,26 +353,6 @@ func _setup_melee_animation() -> void:
 	var animation_library := AnimationLibrary.new()
 	animation_library.add_animation("steel_sword_swing", animation)
 	melee_animation_player.add_animation_library("", animation_library)
-
-
-func _get_immediate_melee_targets() -> Array:
-	var results: Array = []
-	if melee_hitbox_shape == null or melee_hitbox_shape.shape == null:
-		return results
-
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = melee_hitbox_shape.shape
-	query.transform = melee_hitbox_shape.global_transform
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	query.collision_mask = melee_hitbox.collision_mask
-
-	var space_state := get_world_2d().direct_space_state
-	for hit in space_state.intersect_shape(query):
-		var collider = hit.get("collider")
-		if collider != null:
-			results.append(collider)
-	return results
 
 
 func get_attack_cooldown_remaining() -> float:

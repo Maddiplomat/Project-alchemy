@@ -12,6 +12,7 @@ const DESKTOP_PANEL_HEIGHT := 560.0
 const MOBILE_PANEL_MAX_HEIGHT := 500.0
 const MOBILE_COMPACT_HEIGHT := 156.0
 const CARD_CORNER_RADIUS := 18
+const BUILDING_CARD_SCENE := preload("res://scenes/UI/BuildingCard.tscn")
 
 @onready var root: Control = $Root
 @onready var panel: PanelContainer = $Root/Panel
@@ -200,17 +201,12 @@ func _refresh_card_states(buildable_entries: Array) -> void:
 			continue
 		var entry := entry_variant as Dictionary
 		var buildable_id := StringName(entry.get(&"id", &""))
-		var card := _buildable_cards.get(buildable_id) as PanelContainer
+		var card := _buildable_cards.get(buildable_id) as BuildingCard
 		if card == null:
 			continue
 
-		var icon_rect := card.get_node("Margin/VBox/Icon") as TextureRect
-		var name_label := card.get_node("Margin/VBox/Name") as Label
-		var meta_label := card.get_node("Margin/VBox/Meta") as Label
 		var texture := entry.get(&"icon") as Texture2D
-		icon_rect.texture = texture
-		name_label.text = str(entry.get(&"label", "Unknown"))
-		meta_label.text = str(entry.get(&"subtitle", ""))
+		card.configure(texture, str(entry.get(&"label", "Unknown")), str(entry.get(&"subtitle", "")))
 		card.tooltip_text = str(entry.get(&"tooltip", ""))
 
 		var is_unlocked := bool(entry.get(&"unlocked", false))
@@ -224,9 +220,9 @@ func _refresh_card_states(buildable_entries: Array) -> void:
 		elif not affordable:
 			style = _card_unaffordable_style
 		card.add_theme_stylebox_override("panel", style)
-		icon_rect.modulate = Color(1.0, 1.0, 1.0, 1.0) if is_unlocked else Color(0.55, 0.55, 0.55, 1.0)
-		name_label.modulate = Color(1.0, 1.0, 1.0, 1.0) if is_unlocked else Color(0.82, 0.70, 0.70, 1.0)
-		meta_label.modulate = Color(0.88, 0.90, 0.94, 1.0) if is_unlocked else Color(0.78, 0.62, 0.62, 1.0)
+		card.icon.modulate = Color(1.0, 1.0, 1.0, 1.0) if is_unlocked else Color(0.55, 0.55, 0.55, 1.0)
+		card.name_label.modulate = Color(1.0, 1.0, 1.0, 1.0) if is_unlocked else Color(0.82, 0.70, 0.70, 1.0)
+		card.meta_label.modulate = Color(0.88, 0.90, 0.94, 1.0) if is_unlocked else Color(0.78, 0.62, 0.62, 1.0)
 
 
 func _refresh_selected_panel(selected: Dictionary) -> void:
@@ -249,50 +245,11 @@ func _refresh_selected_panel(selected: Dictionary) -> void:
 			preview_frame.add_theme_stylebox_override("panel", _card_default_style)
 
 
-func _create_card(buildable_id: StringName) -> PanelContainer:
-	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(0.0, 152.0)
+func _create_card(buildable_id: StringName) -> BuildingCard:
+	var card := BUILDING_CARD_SCENE.instantiate() as BuildingCard
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.focus_mode = Control.FOCUS_NONE
 	card.gui_input.connect(_on_card_gui_input.bind(buildable_id))
-
-	var margin := MarginContainer.new()
-	margin.name = "Margin"
-	margin.add_theme_constant_override("margin_left", 12)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_right", 12)
-	margin.add_theme_constant_override("margin_bottom", 10)
-	card.add_child(margin)
-
-	var vbox := VBoxContainer.new()
-	vbox.name = "VBox"
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 8)
-	margin.add_child(vbox)
-
-	var icon := TextureRect.new()
-	icon.name = "Icon"
-	icon.custom_minimum_size = Vector2(72.0, 72.0)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(icon)
-
-	var name_label := Label.new()
-	name_label.name = "Name"
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(name_label)
-
-	var meta_label := Label.new()
-	meta_label.name = "Meta"
-	meta_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	meta_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	meta_label.add_theme_font_size_override("font_size", 12)
-	meta_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(meta_label)
-
 	return card
 
 
@@ -340,7 +297,7 @@ func _build_palette_signature(buildable_entries: Array) -> String:
 
 
 func _make_panel_style(bg: Color, border: Color, border_width: int) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
+	var style := UIFactory.panel_style()
 	style.bg_color = bg
 	style.border_color = border
 	style.border_width_left = border_width

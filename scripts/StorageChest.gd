@@ -1,5 +1,7 @@
 extends "res://scripts/PlacedObject.gd"
 
+const StorageManager = preload("res://scripts/StorageManager.gd")
+
 const STORAGE_UI_SCENE := preload("res://scenes/UI/StorageUI.tscn")
 const CHEST_WOOD := Color(0.45, 0.27, 0.14, 1.0)
 const CHEST_WOOD_DARK := Color(0.29, 0.18, 0.10, 1.0)
@@ -18,11 +20,12 @@ var _interact_locked_until_release := false
 
 
 func _ready() -> void:
+	add_to_group(&"touch_interactable")
 	object_type = "storage_chest"
 	save_bucket = SaveBucket.STORAGE
 	if chest_id.is_empty():
-		chest_id = StorageManager.generate_chest_id()
-	StorageManager.ensure_container(chest_id, {
+		chest_id = EventBus.get_storage_manager().generate_chest_id()
+	EventBus.get_storage_manager().ensure_container(chest_id, {
 		&"slot_count": StorageManager.DEFAULT_SLOT_COUNT,
 		&"title": "Storage Chest",
 		&"filter_id": StorageManager.FILTER_ANY,
@@ -36,13 +39,13 @@ func _ready() -> void:
 	_hide_prompt()
 
 
-func _process(_delta: float) -> void:
-	if _interact_locked_until_release:
-		if not Input.is_action_pressed("interact"):
-			_interact_locked_until_release = false
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_released("interact"):
+		_interact_locked_until_release = false
 		return
-	if _player_in_range and not _is_interacting and Input.is_action_just_pressed("interact"):
+	if _player_in_range and not _is_interacting and not _interact_locked_until_release and event.is_action_pressed("interact"):
 		open_ui()
+		get_viewport().set_input_as_handled()
 
 
 func open_ui() -> void:
@@ -79,7 +82,7 @@ func restore_from_pickup(entry: Dictionary) -> void:
 	var restored_id := StringName(str(entry.get(&"chest_id", chest_id)))
 	if not restored_id.is_empty():
 		chest_id = restored_id
-	StorageManager.ensure_container(chest_id, {
+	EventBus.get_storage_manager().ensure_container(chest_id, {
 		&"slot_count": StorageManager.DEFAULT_SLOT_COUNT,
 		&"title": "Storage Chest",
 		&"filter_id": StorageManager.FILTER_ANY,
@@ -160,6 +163,23 @@ func _hide_prompt() -> void:
 		prompt_label.visible = false
 
 
+func can_touch_interact(player: Node2D) -> bool:
+	return player != null and player == _player and _player_in_range and not _is_interacting
+
+
+func get_touch_interaction_prompt() -> String:
+	return "Open Chest"
+
+
+func get_touch_interaction_world_position() -> Vector2:
+	return global_position + Vector2(0.0, -28.0)
+
+
+func perform_touch_interaction() -> void:
+	if _player_in_range and not _is_interacting:
+		open_ui()
+
+
 func _configure_prompt_label() -> void:
 	if prompt_label == null:
 		return
@@ -183,6 +203,6 @@ func _bind_storage_ui() -> void:
 
 
 func _is_sheltered_from_rain() -> bool:
-	return WeatherSystem != null \
-		and WeatherSystem.has_method("get_shelter_at") \
-		and bool(WeatherSystem.get_shelter_at(global_position))
+	return EventBus.get_weather_system() != null \
+		and EventBus.get_weather_system().has_method("get_shelter_at") \
+		and bool(EventBus.get_weather_system().get_shelter_at(global_position))

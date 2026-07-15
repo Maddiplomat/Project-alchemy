@@ -1,4 +1,7 @@
+class_name CraftingManager
 extends Node
+
+const GameplayData = preload("res://scripts/GameplayData.gd")
 # Autoload: CraftingManager
 
 signal crafting_started(recipe_id: StringName)
@@ -10,7 +13,7 @@ var first_craft_completed := false
 
 
 func can_craft(recipe_id: StringName) -> bool:
-	var recipe := RecipeDatabase.get_recipe(recipe_id)
+	var recipe := GameplayData.recipes().get_recipe(recipe_id)
 	if recipe.is_empty():
 		return false
 	if not _is_recipe_unlocked(recipe):
@@ -34,17 +37,17 @@ func can_craft(recipe_id: StringName) -> bool:
 
 func get_craftable_recipe() -> Dictionary:
 	var recipe_ids: Array[String] = []
-	for recipe_id: StringName in RecipeDatabase.get_all_recipes().keys():
+	for recipe_id: StringName in GameplayData.recipes().get_all_recipes().keys():
 		recipe_ids.append(String(recipe_id))
 	recipe_ids.sort()
 
 	for recipe_id_text: String in recipe_ids:
 		var recipe_id := StringName(recipe_id_text)
-		var recipe := RecipeDatabase.get_recipe(recipe_id)
+		var recipe := GameplayData.recipes().get_recipe(recipe_id)
 		if recipe.is_empty():
 			continue
 		var station_id := StringName(recipe.get(&"station", &""))
-		if not RecipeDatabase.is_inventory_station(station_id):
+		if not GameplayData.recipes().is_inventory_station(station_id):
 			continue
 		if can_craft(recipe_id):
 			return recipe
@@ -57,7 +60,7 @@ func has_any_craftable_recipe() -> bool:
 
 
 func craft(recipe_id: StringName, station_id: StringName = &"") -> bool:
-	var recipe := RecipeDatabase.get_recipe(recipe_id)
+	var recipe := GameplayData.recipes().get_recipe(recipe_id)
 	if recipe.is_empty():
 		crafting_failed.emit(recipe_id, "recipe_missing")
 		return false
@@ -169,13 +172,13 @@ func _format_item_name(item_id: StringName) -> String:
 
 
 func _is_recipe_unlocked(recipe: Dictionary) -> bool:
-	if DiscoveryLog != null and DiscoveryLog.has_method("is_recipe_unlocked"):
-		return bool(DiscoveryLog.is_recipe_unlocked(recipe))
+	if EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("is_recipe_unlocked"):
+		return bool(EventBus.get_discovery_log().is_recipe_unlocked(recipe))
 	return bool(recipe.get(&"unlocked", true))
 
 
 func _is_station_valid(recipe: Dictionary, station_id: StringName) -> bool:
 	var required_station := StringName(recipe.get(&"station", &""))
-	if RecipeDatabase.is_inventory_station(required_station):
-		return station_id.is_empty() or RecipeDatabase.is_inventory_station(station_id)
+	if GameplayData.recipes().is_inventory_station(required_station):
+		return station_id.is_empty() or GameplayData.recipes().is_inventory_station(station_id)
 	return station_id == required_station

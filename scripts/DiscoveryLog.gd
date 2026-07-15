@@ -1,6 +1,7 @@
+class_name DiscoveryLog
 extends Node
 
-const DebugLog = preload("res://scripts/DebugLog.gd")
+const GameplayData = preload("res://scripts/GameplayData.gd")
 
 ## DiscoveryLog Autoload
 ## Records every unique smelting outcome, broadcasts it as a signal,
@@ -211,8 +212,8 @@ func restore_persistent_state(data: Dictionary) -> void:
 func restore_discoveries(discoveries: Array) -> void:
 	_seen_outputs.clear()
 	_seen_discoveries.clear()
-	if ElementDatabase != null:
-		ElementDatabase.discovered_elements.clear()
+	if GameplayData.elements() != null:
+		GameplayData.elements().discovered_elements.clear()
 	for raw_entry_id in discoveries:
 		var entry_id := StringName(str(raw_entry_id))
 		if entry_id.is_empty():
@@ -226,8 +227,8 @@ func clear() -> void:
 	_seen_outputs.clear()
 	_seen_discoveries.clear()
 	_seen_environment_entries.clear()
-	if ElementDatabase != null:
-		ElementDatabase.discovered_elements.clear()
+	if GameplayData.elements() != null:
+		GameplayData.elements().discovered_elements.clear()
 
 
 func log_environment(entry_id: StringName, title: String, notes: String, one_time: bool = true) -> bool:
@@ -356,7 +357,7 @@ func seed_debug_entries(count: int, clear_existing: bool = true) -> void:
 func _pretty_name(output_id: StringName) -> String:
 	if output_id.is_empty():
 		return "Nothing"
-	var element_data := ElementDatabase.get_element(output_id)
+	var element_data := GameplayData.elements().get_element(output_id)
 	if not element_data.is_empty():
 		return str(element_data.get("display_name", String(output_id).capitalize()))
 	return String(output_id).replace("_", " ").capitalize()
@@ -412,5 +413,5 @@ func _record_discovery(entry_id: StringName) -> void:
 		return
 	_seen_discoveries[entry_id] = true
 	_seen_outputs[entry_id] = true
-	if ElementDatabase.has_element(entry_id):
-		ElementDatabase.discover_element(entry_id)
+	if GameplayData.elements().has_element(entry_id):
+		GameplayData.elements().discover_element(entry_id)

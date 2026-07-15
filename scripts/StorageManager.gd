@@ -1,4 +1,7 @@
+class_name StorageManager
 extends Node
+
+const GameplayData = preload("res://scripts/GameplayData.gd")
 
 signal chest_inventory_changed(chest_id: StringName)
 signal container_item_damaged(chest_id: StringName, item_id: StringName, quantity_lost: int, reason: StringName)
@@ -307,7 +310,7 @@ func can_store_item(chest_id: StringName, item_data: Dictionary) -> bool:
 	var filter_id := StringName(config.get(&"filter_id", FILTER_ANY))
 	if filter_id == FILTER_ANY:
 		return true
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if element_data.is_empty():
 		return false
 

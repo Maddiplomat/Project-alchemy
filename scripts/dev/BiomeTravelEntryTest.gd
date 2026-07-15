@@ -32,13 +32,13 @@ func _run() -> void:
 
 
 func _assert_travel_entry(target_scene_path: String, entry_point_id: StringName) -> void:
-	if WorldSystem != null and WorldSystem.has_method("clear_persistent_state"):
-		WorldSystem.clear_persistent_state()
+	if EventBus.get_world_system() != null and EventBus.get_world_system().has_method("clear_persistent_state"):
+		EventBus.get_world_system().clear_persistent_state()
 	if GameManager != null:
 		GameManager.start_new_game()
 	await _change_scene_and_wait(WORLD_SCENE_PATH)
 
-	var travel_started := bool(WorldSystem.travel_to_scene(target_scene_path, entry_point_id))
+	var travel_started := bool(EventBus.get_world_system().travel_to_scene(target_scene_path, entry_point_id))
 	_assert(travel_started, "Expected travel to start for %s." % target_scene_path)
 	if not travel_started:
 		return

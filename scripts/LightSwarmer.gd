@@ -197,9 +197,9 @@ func _apply_damage(amount: int, attacker_pos: Vector2) -> void:
 func _get_light_weighted_attraction_target() -> Vector2:
 	if GameManager == null or not GameManager.post_tutorial_loop_active:
 		return Vector2(INF, INF)
-	if BaseThreatDirector == null or not BaseThreatDirector.has_method("get_weighted_enemy_attraction_target"):
+	if EventBus.get_base_threat_director() == null or not EventBus.get_base_threat_director().has_method("get_weighted_enemy_attraction_target"):
 		return Vector2(INF, INF)
-	return BaseThreatDirector.get_weighted_enemy_attraction_target(
+	return EventBus.get_base_threat_director().get_weighted_enemy_attraction_target(
 		global_position,
 		LIGHT_WEIGHT,
 		HEAT_WEIGHT,
@@ -264,21 +264,21 @@ func _get_navigation_step(destination: Vector2) -> Vector2:
 
 
 func _report_lit_zone_presence() -> void:
-	if BaseDefenseSystem == null or not BaseDefenseSystem.has_method("is_position_in_powered_light"):
+	if EventBus.get_base_defense_system() == null or not EventBus.get_base_defense_system().has_method("is_position_in_powered_light"):
 		return
-	if not BaseDefenseSystem.is_position_in_powered_light(global_position):
+	if not EventBus.get_base_defense_system().is_position_in_powered_light(global_position):
 		return
-	BaseDefenseSystem.report_night_threat(get_instance_id(), global_position)
+	EventBus.get_base_defense_system().report_night_threat(get_instance_id(), global_position)
 
 
 func _report_base_breach() -> void:
-	if BaseThreatDirector != null and BaseThreatDirector.has_method("report_enemy_base_breach"):
-		BaseThreatDirector.report_enemy_base_breach(self)
+	if EventBus.get_base_threat_director() != null and EventBus.get_base_threat_director().has_method("report_enemy_base_breach"):
+		EventBus.get_base_threat_director().report_enemy_base_breach(self)
 
 
 func _unregister_from_base_defense() -> void:
-	if BaseDefenseSystem != null and BaseDefenseSystem.has_method("unregister_enemy"):
-		BaseDefenseSystem.unregister_enemy(get_instance_id())
+	if EventBus.get_base_defense_system() != null and EventBus.get_base_defense_system().has_method("unregister_enemy"):
+		EventBus.get_base_defense_system().unregister_enemy(get_instance_id())
 
 
 func _spawn_light_disrupt_fx(world_position: Vector2) -> void:

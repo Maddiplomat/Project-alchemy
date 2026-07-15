@@ -1,5 +1,8 @@
 extends Area2D
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+const WeatherSystem = preload("res://scripts/WeatherSystem.gd")
+
 signal picked_up(item_data: Dictionary, quantity: int)
 
 static var _shape_logged := false
@@ -48,6 +51,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event.is_action_pressed("interact"):
 		_attempt_pickup()
+		get_viewport().set_input_as_handled()
 
 
 func _on_body_entered(body: Node) -> void:
@@ -87,8 +91,8 @@ func _attempt_pickup() -> void:
 
 func _setup_weather_reactivity() -> void:
 	_ensure_pickup_payload()
-	if WeatherSystem != null and WeatherSystem.has_signal("weather_changed"):
-		WeatherSystem.weather_changed.connect(_on_weather_changed)
+	if EventBus.get_weather_system() != null and EventBus.get_weather_system().has_signal("weather_changed"):
+		EventBus.get_weather_system().weather_changed.connect(_on_weather_changed)
 	_acid_mist_degrade_timer = Timer.new()
 	_acid_mist_degrade_timer.one_shot = true
 	_acid_mist_degrade_timer.wait_time = SULFUR_ACID_MIST_DEGRADE_INTERVAL_SECONDS
@@ -99,8 +103,8 @@ func _setup_weather_reactivity() -> void:
 	_rain_degrade_timer.wait_time = RAIN_DEGRADE_INTERVAL_SECONDS
 	_rain_degrade_timer.timeout.connect(_on_rain_degrade_timeout)
 	add_child(_rain_degrade_timer)
-	if WeatherSystem != null and WeatherSystem.has_method("get_current_state"):
-		_on_weather_changed(int(WeatherSystem.get_current_state()))
+	if EventBus.get_weather_system() != null and EventBus.get_weather_system().has_method("get_current_state"):
+		_on_weather_changed(int(EventBus.get_weather_system().get_current_state()))
 
 
 func _on_weather_changed(new_state: int) -> void:
@@ -119,9 +123,9 @@ func _on_weather_changed(new_state: int) -> void:
 func _on_acid_mist_degrade_timeout() -> void:
 	if get_element_id() != &"sulfur":
 		return
-	if WeatherSystem == null or not WeatherSystem.has_method("get_current_state"):
+	if EventBus.get_weather_system() == null or not EventBus.get_weather_system().has_method("get_current_state"):
 		return
-	if int(WeatherSystem.get_current_state()) != WeatherSystem.WeatherState.ACID_MIST:
+	if int(EventBus.get_weather_system().get_current_state()) != WeatherSystem.WeatherState.ACID_MIST:
 		return
 
 	var item_data := _ensure_pickup_payload()
@@ -141,9 +145,9 @@ func _on_acid_mist_degrade_timeout() -> void:
 func _on_rain_degrade_timeout() -> void:
 	if not _is_rain_vulnerable():
 		return
-	if WeatherSystem == null or not WeatherSystem.has_method("get_current_state"):
+	if EventBus.get_weather_system() == null or not EventBus.get_weather_system().has_method("get_current_state"):
 		return
-	if int(WeatherSystem.get_current_state()) != WeatherSystem.WeatherState.RAIN:
+	if int(EventBus.get_weather_system().get_current_state()) != WeatherSystem.WeatherState.RAIN:
 		return
 	if _is_sheltered_from_rain():
 		_rain_degrade_timer.start()
@@ -219,9 +223,9 @@ func _is_resource_spawn_pickup() -> bool:
 
 
 func _is_sheltered_from_rain() -> bool:
-	return WeatherSystem != null \
-		and WeatherSystem.has_method("get_shelter_at") \
-		and bool(WeatherSystem.get_shelter_at(global_position))
+	return EventBus.get_weather_system() != null \
+		and EventBus.get_weather_system().has_method("get_shelter_at") \
+		and bool(EventBus.get_weather_system().get_shelter_at(global_position))
 
 
 func _get_pickup_item_data() -> Dictionary:
@@ -236,7 +240,7 @@ func _get_pickup_item_data() -> Dictionary:
 	if resolved_element_id.is_empty():
 		return {}
 
-	return ElementDatabase.get_element(resolved_element_id)
+	return GameplayData.elements().get_element(resolved_element_id)
 
 
 func _log_shape_size_once() -> void:
@@ -400,7 +404,7 @@ func _apply_visual_identity() -> void:
 
 
 func _get_pickup_modulate(item_data: Dictionary, item_id: StringName) -> Color:
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		return Color.WHITE
 

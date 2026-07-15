@@ -1,8 +1,13 @@
 extends Node
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+const FurnacePredictionScript = preload("res://scripts/FurnacePrediction.gd")
+
 const SAVE_STATE_VERSION := 2
 const CHECKSUM_ALGORITHM := "sha256"
 const CHECKSUM_SCOPE := "envelope_without_integrity"
+const DEFAULT_MAX_PLAYER_HEALTH := 100
+const MAX_INVENTORY_SLOTS := 5
 
 var placed_stations: Array[Dictionary] = []
 var walls: Array[Dictionary] = []
@@ -23,6 +28,7 @@ var player_active_slot_index: int = 0
 var defense_grid_charge: float = 0.0
 var discoveries: Array[StringName] = []
 var scanner_tier: int = 0
+var _validation_errors: Array[String] = []
 
 
 func _ready() -> void:
@@ -100,6 +106,123 @@ func build_restore_payload(data: Dictionary) -> Dictionary:
 	return _normalize_restore_payload(normalized_data)
 
 
+func validate(data: Dictionary) -> bool:
+	_validation_errors.clear()
+	if data.is_empty():
+		_add_validation_error("Save payload is empty.")
+		return false
+
+	var normalized_data := _migrate_save_data(data)
+	var restore_data := _normalize_restore_payload(normalized_data)
+	var player_value: Variant = restore_data.get("player", {})
+	if player_value is Dictionary:
+		_validate_player_state(player_value as Dictionary)
+	elif restore_data.has("player"):
+		_add_validation_error("Player state must be a dictionary.")
+
+	var game_manager_value: Variant = restore_data.get("game_manager", {})
+	if game_manager_value is Dictionary:
+		_validate_game_time(game_manager_value as Dictionary, restore_data.get("metadata", {}) as Dictionary)
+	elif restore_data.has("game_manager"):
+		_add_validation_error("GameManager state must be a dictionary.")
+
+	return _validation_errors.is_empty()
+
+
+func get_validation_errors() -> Array[String]:
+	return _validation_errors.duplicate()
+
+
+func _validate_player_state(player_data: Dictionary) -> void:
+	if player_data.has("health"):
+		var maximum_health := _get_validation_max_health()
+		_validate_number_in_range(player_data.get("health"), 0.0, float(maximum_health), "Player health")
+
+	if player_data.has("active_slot_index"):
+		var active_slot_value: Variant = player_data.get("active_slot_index")
+		if not _is_number(active_slot_value) or int(active_slot_value) != float(active_slot_value) \
+			or int(active_slot_value) < 0 or int(active_slot_value) >= MAX_INVENTORY_SLOTS:
+			_add_validation_error("Player active slot index is outside the inventory range.")
+
+	if not player_data.has("inventory"):
+		return
+	var inventory_value: Variant = player_data.get("inventory")
+	if not (inventory_value is Array):
+		_add_validation_error("Player inventory must be an array.")
+		return
+	if (inventory_value as Array).size() > MAX_INVENTORY_SLOTS:
+		_add_validation_error("Player inventory exceeds the available slot count.")
+	for slot_index in range((inventory_value as Array).size()):
+		var item_value: Variant = (inventory_value as Array)[slot_index]
+		if not (item_value is Dictionary):
+			_add_validation_error("Inventory slot %d must be a dictionary." % slot_index)
+			continue
+		var item_data := item_value as Dictionary
+		if item_data.is_empty():
+			continue
+		_validate_inventory_item(item_data, slot_index)
+
+
+func _validate_inventory_item(item_data: Dictionary, slot_index: int) -> void:
+	var raw_id: Variant = item_data.get("id", item_data.get("item_id", ""))
+	var item_id := StringName(str(raw_id))
+	if item_id.is_empty():
+		_add_validation_error("Inventory slot %d has no item ID." % slot_index)
+		return
+	if item_data.has("id") and item_data.has("item_id") \
+		and StringName(str(item_data.get("id"))) != StringName(str(item_data.get("item_id"))):
+		_add_validation_error("Inventory slot %d has conflicting item IDs." % slot_index)
+		return
+	if not _is_valid_inventory_item_id(item_id):
+		_add_validation_error("Inventory slot %d references unknown item '%s'." % [slot_index, String(item_id)])
+		return
+	if item_data.has("quantity"):
+		var quantity_value: Variant = item_data.get("quantity")
+		if not _is_number(quantity_value) or int(quantity_value) != float(quantity_value) or int(quantity_value) <= 0:
+			_add_validation_error("Inventory slot %d has an invalid quantity." % slot_index)
+
+
+func _validate_game_time(game_manager_data: Dictionary, metadata: Dictionary) -> void:
+	var day_value: Variant = game_manager_data.get("current_day", metadata.get("current_day", null))
+	if day_value != null:
+		if not _is_number(day_value) or int(day_value) != float(day_value) or int(day_value) <= 0:
+			_add_validation_error("Current day must be a positive integer.")
+	var time_value: Variant = game_manager_data.get("time_of_day", null)
+	if time_value != null:
+		_validate_number_in_range(time_value, 0.0, 1.0, "Time of day")
+
+
+func _validate_number_in_range(value: Variant, minimum: float, maximum: float, label: String) -> void:
+	if not _is_number(value):
+		_add_validation_error("%s must be numeric." % label)
+		return
+	var numeric_value := float(value)
+	if not is_finite(numeric_value) or numeric_value < minimum or numeric_value > maximum:
+		_add_validation_error("%s must be between %s and %s." % [label, minimum, maximum])
+
+
+func _is_valid_inventory_item_id(item_id: StringName) -> bool:
+	if GameplayData.elements().has_element(item_id):
+		return true
+	# Crafted equipment is stored in inventory but is not represented by ElementDatabase.
+	return FurnacePredictionScript.TOOL_RECIPE_DEFINITIONS.has(item_id) \
+		or item_id == FurnacePredictionScript.STEEL_SWORD_RECIPE_OUTPUT
+
+
+func _get_validation_max_health() -> int:
+	if GameManager != null:
+		return maxi(int(GameManager.max_player_health), 1)
+	return DEFAULT_MAX_PLAYER_HEALTH
+
+
+func _is_number(value: Variant) -> bool:
+	return typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT
+
+
+func _add_validation_error(message: String) -> void:
+	_validation_errors.append(message)
+
+
 func get_saved_scene_path(data: Dictionary) -> String:
 	if data.is_empty():
 		return "res://scenes/World.tscn"
@@ -116,7 +239,7 @@ func extract_save_metadata(data: Dictionary) -> Dictionary:
 
 
 func restore_pending_travel_state() -> void:
-	var world_system := get_node_or_null("/root/WorldSystem")
+	var world_system := EventBus.get_world_system()
 	if world_system == null or not world_system.has_method("consume_pending_restore_state"):
 		return
 	var restore_state: Dictionary = world_system.consume_pending_restore_state()
@@ -137,8 +260,8 @@ func restore_pending_travel_state() -> void:
 			scene_root = get_tree().current_scene
 		if scene_root != null and scene_root.has_method("move_player_to_travel_entry"):
 			scene_root.call("move_player_to_travel_entry", entry_point_id)
-	if ResearchObjectives != null and ResearchObjectives.has_method("sync_with_runtime_state"):
-		ResearchObjectives.sync_with_runtime_state()
+	if EventBus.get_research_objectives() != null and EventBus.get_research_objectives().has_method("sync_with_runtime_state"):
+		EventBus.get_research_objectives().sync_with_runtime_state()
 	if GameManager != null and GameManager.has_method("finish_load_game"):
 		GameManager.finish_load_game()
 	sync_runtime_state()
@@ -173,7 +296,7 @@ func deserialize(data: Dictionary) -> void:
 	data = _normalize_restore_payload(normalized_data)
 	var restored_discovery_log := false
 	if is_inside_tree():
-		var discovery_log = get_node_or_null("/root/DiscoveryLog")
+		var discovery_log = EventBus.get_discovery_log()
 		if PersistenceRegistry != null and PersistenceRegistry.has_method("restore_flattened_state"):
 			PersistenceRegistry.restore_flattened_state(data)
 		if discovery_log != null and data.has("discovery_log"):
@@ -247,10 +370,10 @@ func deserialize(data: Dictionary) -> void:
 			base_grid.restore_charge_level(defense_grid_charge)
 		
 		if is_inside_tree():
-			var build_sys = get_node_or_null("/root/BuildSystem")
+			var build_sys = EventBus.get_build_system()
 			if build_sys != null and build_sys.has_method("import_from_world_save_data"):
 				build_sys.import_from_world_save_data(self)
-			var storage_manager = get_node_or_null("/root/StorageManager")
+			var storage_manager = EventBus.get_storage_manager()
 			if storage_manager != null and storage_manager.has_method("import_from_world_save_data"):
 				storage_manager.import_from_world_save_data(self)
 
@@ -270,7 +393,7 @@ func deserialize(data: Dictionary) -> void:
 		for raw_discovery in data["discoveries"]:
 			discoveries.append(StringName(str(raw_discovery)))
 		if is_inside_tree():
-			var dlog = get_node_or_null("/root/DiscoveryLog")
+			var dlog = EventBus.get_discovery_log()
 			if dlog != null:
 				if dlog.has_method("restore_discoveries"):
 					dlog.restore_discoveries(discoveries)
@@ -324,7 +447,7 @@ func _migrate_save_data(data: Dictionary) -> Dictionary:
 
 
 func _sync_world_state() -> void:
-	var world_system := get_node_or_null("/root/WorldSystem")
+	var world_system := EventBus.get_world_system()
 	if world_system == null:
 		return
 	var current_scene := get_tree().current_scene
@@ -357,7 +480,7 @@ func _sync_player_state() -> void:
 
 
 func _sync_base_state() -> void:
-	var build_system := get_node_or_null("/root/BuildSystem")
+	var build_system := EventBus.get_build_system()
 	if build_system != null and build_system.has_method("export_to_world_save_data"):
 		build_system.export_to_world_save_data(self)
 	var base_grid := EventBus.get_base_grid()
@@ -370,13 +493,17 @@ func _sync_resource_state() -> void:
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("export_tree_state"):
 		var tree_state: Dictionary = current_scene.call("export_tree_state")
-		active_trees = (tree_state.get("active_trees", []) as Array).duplicate(true)
-		pending_tree_respawns = (tree_state.get("pending_tree_respawns", []) as Array).duplicate(true)
+		for entry in tree_state.get("active_trees", []):
+			if entry is Dictionary:
+				active_trees.append((entry as Dictionary).duplicate(true))
+		for entry in tree_state.get("pending_tree_respawns", []):
+			if entry is Dictionary:
+				pending_tree_respawns.append((entry as Dictionary).duplicate(true))
 
 
 func _sync_discoveries() -> void:
 	discoveries.clear()
-	var dlog := get_node_or_null("/root/DiscoveryLog")
+	var dlog := EventBus.get_discovery_log()
 	if dlog == null:
 		return
 	if dlog.has_method("get_all_discoveries"):
@@ -393,7 +520,7 @@ func _sync_progression_state() -> void:
 func _store_current_scene_state() -> void:
 	if not is_inside_tree():
 		return
-	var world_system := get_node_or_null("/root/WorldSystem")
+	var world_system := EventBus.get_world_system()
 	if world_system == null or not world_system.has_method("store_scene_state"):
 		return
 	var current_scene_path := _get_current_scene_path()

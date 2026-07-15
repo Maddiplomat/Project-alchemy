@@ -1,5 +1,8 @@
 extends Node
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+const WeatherSystem = preload("res://scripts/WeatherSystem.gd")
+
 const InventoryItemData = preload("res://scripts/InventoryItem.gd")
 
 signal inventory_changed(slot_index: int)
@@ -46,10 +49,10 @@ var _sulfur_heat_risk_active := false
 func _ready() -> void:
 	_initialize_slots()
 	_sync_weight_state()
-	if WeatherSystem != null and WeatherSystem.has_signal("weather_tick"):
-		WeatherSystem.weather_tick.connect(_on_weather_tick)
-	if ChemistryEngine != null and ChemistryEngine.has_signal("heat_event"):
-		ChemistryEngine.heat_event.connect(_on_heat_event)
+	if EventBus.get_weather_system() != null and EventBus.get_weather_system().has_signal("weather_tick"):
+		EventBus.get_weather_system().weather_tick.connect(_on_weather_tick)
+	if EventBus.get_chemistry_engine() != null and EventBus.get_chemistry_engine().has_signal("heat_event"):
+		EventBus.get_chemistry_engine().heat_event.connect(_on_heat_event)
 
 
 func _physics_process(_delta: float) -> void:
@@ -58,7 +61,7 @@ func _physics_process(_delta: float) -> void:
 
 
 func add_element(id: StringName, qty: int, purity: float) -> bool:
-	var item_data := ElementDatabase.get_element(id)
+	var item_data := GameplayData.elements().get_element(id)
 	if item_data.is_empty():
 		return false
 
@@ -335,7 +338,7 @@ func receive_world_pickup(item_data, quantity: int = 1) -> bool:
 
 	normalized_pickup["id"] = item_id
 	normalized_pickup["item_id"] = item_id
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		normalized_pickup["purity"] = clampf(pickup_item.purity, 0.0, 1.0)
 		normalized_pickup["category"] = InventoryItemCategory.ELEMENT
@@ -580,7 +583,7 @@ func _normalize_item_data(item_data, quantity: int):
 
 
 func _get_stack_unit_weight(item_id: StringName, item_data) -> float:
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		return maxf(0.0, float(element_data.get(&"weight", DEFAULT_ITEM_WEIGHT)))
 	var inventory_item = InventoryItemData.from_variant(item_data, {&"unit_weight": DEFAULT_ITEM_WEIGHT})
@@ -707,7 +710,7 @@ func _is_risky_item(item_id: StringName, item_data) -> bool:
 	if risk_level >= InventoryRiskLevel.MEDIUM:
 		return true
 
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if element_data.is_empty():
 		return false
 	if String(element_data.get(&"category", "")).to_lower() != "volatile":
@@ -785,10 +788,10 @@ func _is_player_exposed_to_rain() -> bool:
 	var player := GameManager.get_player()
 	if player == null:
 		return true
-	if BaseThreatDirector != null and BaseThreatDirector.has_method("is_rain_exposed_at"):
-		return bool(BaseThreatDirector.is_rain_exposed_at(player.global_position))
-	if WeatherSystem != null and WeatherSystem.has_method("get_shelter_at"):
-		return not bool(WeatherSystem.get_shelter_at(player.global_position))
+	if EventBus.get_base_threat_director() != null and EventBus.get_base_threat_director().has_method("is_rain_exposed_at"):
+		return bool(EventBus.get_base_threat_director().is_rain_exposed_at(player.global_position))
+	if EventBus.get_weather_system() != null and EventBus.get_weather_system().has_method("get_shelter_at"):
+		return not bool(EventBus.get_weather_system().get_shelter_at(player.global_position))
 	return true
 
 
@@ -837,8 +840,8 @@ func _set_sulfur_heat_risk_active(active: bool) -> void:
 	if _sulfur_heat_risk_active == active:
 		return
 	_sulfur_heat_risk_active = active
-	if CarrierRiskSystem != null and CarrierRiskSystem.has_method("set_external_trigger"):
-		CarrierRiskSystem.set_external_trigger(
+	if EventBus.get_carrier_risk_system() != null and EventBus.get_carrier_risk_system().has_method("set_external_trigger"):
+		EventBus.get_carrier_risk_system().set_external_trigger(
 			SULFUR_ITEM_ID,
 			active,
 			SULFUR_HEAT_REASON

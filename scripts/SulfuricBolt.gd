@@ -1,7 +1,6 @@
 class_name SulfuricBolt
 extends Projectile
 
-const ACID_PUDDLE_SCENE := preload("res://scenes/AcidPuddle.tscn")
 const SPEED := 350.0
 const SPLASH_RADIUS := 24.0
 
@@ -9,14 +8,24 @@ const SPLASH_RADIUS := 24.0
 
 @onready var trail: GPUParticles2D = $Trail
 
+var _visual_ready := false
+var _trail_ready := false
+
 
 func _ready() -> void:
 	super._ready()
 	damage_type = "chemical"
 	damage = 22.0
 	pierce = false
-	_apply_sulfuric_bolt_visual()
-	_setup_trail()
+	if not _visual_ready:
+		_apply_sulfuric_bolt_visual()
+		_visual_ready = true
+	if not _trail_ready:
+		_setup_trail()
+		_trail_ready = true
+	if trail != null:
+		trail.restart()
+		trail.emitting = true
 
 
 func _on_body_entered(body: Node) -> void:
@@ -28,7 +37,16 @@ func _on_body_entered(body: Node) -> void:
 
 	_apply_splash_damage(hit_position, hit_target)
 	_spawn_acid_puddle(hit_position)
-	queue_free()
+	ObjectPool.release(self)
+
+
+func _pool_reset() -> void:
+	super._pool_reset()
+	damage_type = "chemical"
+	damage = 22.0
+	splash_radius = SPLASH_RADIUS
+	if trail != null:
+		trail.emitting = false
 
 
 func _apply_splash_damage(hit_position: Vector2, primary_target: Node) -> void:
@@ -63,12 +81,12 @@ func _apply_splash_damage(hit_position: Vector2, primary_target: Node) -> void:
 
 
 func _spawn_acid_puddle(hit_position: Vector2) -> void:
-	if ACID_PUDDLE_SCENE == null:
-		return
 	var parent := get_parent()
 	if parent == null:
 		return
-	var puddle := ACID_PUDDLE_SCENE.instantiate()
+	var puddle := ObjectPool.get_instance_by_id(ObjectPool.SCENE_ACID_PUDDLE)
+	if puddle == null:
+		return
 	if puddle is Node2D:
 		(puddle as Node2D).global_position = hit_position
 	parent.call_deferred("add_child", puddle)
@@ -127,11 +145,9 @@ func _apply_sulfuric_bolt_visual() -> void:
 
 
 static func spawn(parent: Node, origin: Vector2, target_pos: Vector2) -> SulfuricBolt:
-	var scene: PackedScene = load("res://scenes/SulfuricBolt.tscn")
-	if scene == null:
-		push_error("SulfuricBolt: res://scenes/SulfuricBolt.tscn not found")
+	var bolt := ObjectPool.get_instance_by_id(ObjectPool.SCENE_SULFURIC_BOLT) as SulfuricBolt
+	if bolt == null:
 		return null
-	var bolt := scene.instantiate() as SulfuricBolt
 	parent.add_child(bolt)
 	bolt.global_position = origin
 	bolt.velocity = origin.direction_to(target_pos) * SPEED

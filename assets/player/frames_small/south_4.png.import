@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cp52g4f40qpjq"
-path="res://.godot/imported/south_4.png-507353f6d87ad6dce9cecb74564abd0a.ctex"
+path.s3tc="res://.godot/imported/south_4.png-507353f6d87ad6dce9cecb74564abd0a.s3tc.ctex"
+path.etc2="res://.godot/imported/south_4.png-507353f6d87ad6dce9cecb74564abd0a.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/player/frames_small/south_4.png"
-dest_files=["res://.godot/imported/south_4.png-507353f6d87ad6dce9cecb74564abd0a.ctex"]
+dest_files=["res://.godot/imported/south_4.png-507353f6d87ad6dce9cecb74564abd0a.s3tc.ctex", "res://.godot/imported/south_4.png-507353f6d87ad6dce9cecb74564abd0a.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

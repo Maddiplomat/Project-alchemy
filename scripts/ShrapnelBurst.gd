@@ -7,7 +7,15 @@ const SHRAPNEL_PROJECTILE_SCRIPT := preload("res://scripts/ShrapnelProjectile.gd
 
 func _ready() -> void:
 	_spawn_shards()
-	queue_free()
+	call_deferred("_release_to_pool")
+
+
+func _pool_reset() -> void:
+	rotation = 0.0
+
+
+func _release_to_pool() -> void:
+	ObjectPool.release(self)
 
 
 func _spawn_shards() -> void:

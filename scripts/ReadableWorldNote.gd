@@ -41,6 +41,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed("interact") or event.is_action_pressed("ui_cancel"):
 			_close_note()
 			get_viewport().set_input_as_handled()
+			return
+		get_viewport().set_input_as_handled()
 		return
 
 	if _player_in_range != null and not _is_player_still_in_range():
@@ -80,7 +82,7 @@ func _open_note() -> void:
 	prompt_label.visible = false
 	if _player_in_range != null and _player_in_range.has_method("pause_input"):
 		_player_in_range.pause_input()
-	DiscoveryLog.log_environment(discovery_entry_id, discovery_title, discovery_notes, true)
+	EventBus.get_discovery_log().log_environment(discovery_entry_id, discovery_title, discovery_notes, true)
 
 
 func _close_note() -> void:

@@ -14,30 +14,11 @@ enum State {
 	DEAD,
 }
 
-const PATROL_WAIT_SECONDS := 1.5
-const SCANNER_ALERT_RADIUS := 150.0
-const CHASE_REPATH_INTERVAL := 0.3
-const HEALTH_BAR_HIDE_DELAY := 3.0
-const HEALTH_BAR_FULL_COLOR := Color(0.31, 0.82, 0.38, 1.0)
-const HEALTH_BAR_MID_COLOR := Color(0.91, 0.79, 0.23, 1.0)
-const HEALTH_BAR_LOW_COLOR := Color(0.86, 0.24, 0.22, 1.0)
-const ALERT_INDICATOR_OFFSET := Vector2(0.0, -48.0)
-const ALERT_INDICATOR_DURATION := 1.5
+const DEFAULT_CONFIG: EnemyConfig = preload("res://data/config/iron_golem_config.tres")
 
-@export var patrol_radius: float = 96.0
-@export var detection_radius: float = 180.0
-@export var attack_range: float = 48.0
-@export var move_speed: float = 60.0
-@export var health: int = 120
+@export var config: EnemyConfig = DEFAULT_CONFIG
 @export var patrol_waypoint_a: Vector2 = Vector2(-48.0, 0.0)
 @export var patrol_waypoint_b: Vector2 = Vector2(48.0, 0.0)
-@export var resistances: Dictionary = {
-	&"physical_sharp": 0.4,
-	&"physical_blunt": 0.0,
-	&"oxidation": 3.0,
-	&"electrical": 1.5,
-	&"chemical": 1.2,
-}
 
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
 @onready var sprite: Sprite2D = $Sprite2D
@@ -57,16 +38,32 @@ var _player_target: CharacterBody2D = null
 var _attack_cooldown_timer := 0.0
 var _hit_timer := 0.0
 var _leash_timer := 0.0
-var _max_health: int = 120
+var _max_health: int = 0
 var _health_bar_hide_timer := 0.0
-var _base_move_speed: float = 0.0
 var _base_detection_radius: float = 0.0
+var patrol_radius := 0.0
+var detection_radius := 0.0
+var attack_range := 0.0
+var move_speed := 0.0
+var health := 0
+var resistances: Dictionary = {}
+
+
+func _apply_config() -> void:
+	if config == null:
+		config = DEFAULT_CONFIG
+	patrol_radius = config.patrol_radius
+	detection_radius = config.detection_radius
+	attack_range = config.attack_range
+	move_speed = config.move_speed
+	health = config.health
+	resistances = config.resistances.duplicate(true)
+	_max_health = config.health
+	_base_detection_radius = config.detection_radius
 
 
 func _ready() -> void:
-	_max_health = health
-	_base_move_speed = move_speed
-	_base_detection_radius = detection_radius
+	_apply_config()
 	
 	if GameManager.has_signal("day_started"):
 		GameManager.day_started.connect(_on_day_started)
@@ -95,13 +92,13 @@ func _ready() -> void:
 		_on_night_started()
 
 func _on_day_started() -> void:
-	move_speed = _base_move_speed
+	move_speed = config.move_speed
 	detection_radius = _base_detection_radius
 	_apply_detection_radius()
 
 func _on_night_started() -> void:
-	move_speed = 80.0
-	detection_radius = _base_detection_radius * 1.5
+	move_speed = config.night_move_speed
+	detection_radius = _base_detection_radius * config.night_detection_multiplier
 	_apply_detection_radius()
 
 func _physics_process(delta: float) -> void:
@@ -145,7 +142,7 @@ func set_state(new_state: State) -> void:
 		_set_patrol_destination(_current_patrol_index)
 	elif current_state == State.ALERT:
 		velocity = Vector2.ZERO
-		_chase_repath_timer = CHASE_REPATH_INTERVAL
+		_chase_repath_timer = config.chase_repath_interval
 		_show_alert_indicator()
 		_play_alert_sfx()
 	elif current_state == State.CHASE:
@@ -181,7 +178,7 @@ func _update_patrol_velocity(delta: float) -> void:
 		return
 
 	if global_position.distance_to(target_position) <= navigation_agent.path_desired_distance:
-		_patrol_wait_timer = PATROL_WAIT_SECONDS
+		_patrol_wait_timer = config.patrol_wait_seconds
 		patrol_waypoint_reached.emit(_current_patrol_index)
 		velocity = Vector2.ZERO
 		return
@@ -212,7 +209,7 @@ func _update_chase_velocity(delta: float) -> void:
 		return
 	if dist > effective_detection_radius * 1.5:
 		_leash_timer += delta
-		if _leash_timer >= 10.0:
+		if _leash_timer >= config.leash_seconds:
 			_retreat()
 			return
 	else:
@@ -228,7 +225,7 @@ func _update_chase_velocity(delta: float) -> void:
 	if _chase_repath_timer <= 0.0:
 		navigation_agent.target_position = _player_target.global_position
 		target_position = _player_target.global_position
-		_chase_repath_timer = CHASE_REPATH_INTERVAL
+		_chase_repath_timer = config.chase_repath_interval
 
 	var next_position := _get_navigation_step(target_position)
 	velocity = global_position.direction_to(next_position) * move_speed
@@ -259,7 +256,7 @@ func _retreat() -> void:
 func _update_attack_state(_delta: float) -> void:
 	if _attack_cooldown_timer <= 0.0:
 		_perform_ground_slam()
-		_attack_cooldown_timer = 0.8
+		_attack_cooldown_timer = config.attack_cooldown_seconds
 	
 	if not is_instance_valid(_player_target) or global_position.distance_to(_player_target.global_position) > attack_range:
 		set_state(State.CHASE)
@@ -278,9 +275,9 @@ func _perform_ground_slam() -> void:
 			var col = res.collider
 			if col is Node and col.is_in_group(&"player"):
 				if col.has_node("HealthSystem"):
-					col.get_node("HealthSystem").take_damage(12, "physical_blunt", "Iron Golem ground slam")
+					col.get_node("HealthSystem").take_damage(config.attack_damage, "physical_blunt", "Iron Golem ground slam")
 				elif col.has_method("take_damage"):
-					col.take_damage(12, "physical_blunt")
+					col.take_damage(config.attack_damage, "physical_blunt")
 
 
 func _update_hit_state(delta: float) -> void:
@@ -409,24 +406,24 @@ func _find_player() -> CharacterBody2D:
 
 func _get_effective_detection_radius() -> float:
 	var multiplier := 1.0
-	if GameManager.has_method("is_night") and GameManager.is_night() and BaseDefenseSystem != null and BaseDefenseSystem.has_method("get_detection_multiplier_at"):
-		multiplier = float(BaseDefenseSystem.get_detection_multiplier_at(global_position))
+	if GameManager.has_method("is_night") and GameManager.is_night() and EventBus.get_base_defense_system() != null and EventBus.get_base_defense_system().has_method("get_detection_multiplier_at"):
+		multiplier = float(EventBus.get_base_defense_system().get_detection_multiplier_at(global_position))
 	return detection_radius * multiplier
 
 
 func _report_lit_zone_presence() -> void:
 	if GameManager == null or not GameManager.has_method("is_night") or not GameManager.is_night():
 		return
-	if BaseDefenseSystem == null or not BaseDefenseSystem.has_method("is_position_in_powered_light"):
+	if EventBus.get_base_defense_system() == null or not EventBus.get_base_defense_system().has_method("is_position_in_powered_light"):
 		return
-	if not BaseDefenseSystem.is_position_in_powered_light(global_position):
+	if not EventBus.get_base_defense_system().is_position_in_powered_light(global_position):
 		return
-	BaseDefenseSystem.report_night_threat(get_instance_id(), global_position)
+	EventBus.get_base_defense_system().report_night_threat(get_instance_id(), global_position)
 
 
 func _unregister_from_base_defense() -> void:
-	if BaseDefenseSystem != null and BaseDefenseSystem.has_method("unregister_enemy"):
-		BaseDefenseSystem.unregister_enemy(get_instance_id())
+	if EventBus.get_base_defense_system() != null and EventBus.get_base_defense_system().has_method("unregister_enemy"):
+		EventBus.get_base_defense_system().unregister_enemy(get_instance_id())
 
 
 func _trigger_alert(reason: StringName, player: CharacterBody2D) -> void:
@@ -495,7 +492,7 @@ func _show_alert_indicator() -> void:
 	var indicator := Label.new()
 	indicator.name = "AlertIndicator"
 	indicator.text = "!"
-	indicator.position = ALERT_INDICATOR_OFFSET
+	indicator.position = config.alert_indicator_offset
 	indicator.modulate = Color(1.0, 0.93, 0.42, 0.0)
 	indicator.scale = Vector2(0.35, 0.35)
 	indicator.z_index = 10
@@ -513,8 +510,8 @@ func _show_alert_indicator() -> void:
 	tween.tween_property(indicator, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_property(indicator, "modulate:a", 1.0, 0.08)
 	tween.chain()
-	tween.tween_interval(ALERT_INDICATOR_DURATION - 0.44)
-	tween.tween_property(indicator, "position:y", ALERT_INDICATOR_OFFSET.y - 10.0, 0.3)
+	tween.tween_interval(config.alert_indicator_duration - 0.44)
+	tween.tween_property(indicator, "position:y", config.alert_indicator_offset.y - 10.0, 0.3)
 	tween.parallel().tween_property(indicator, "modulate:a", 0.0, 0.3)
 	tween.tween_callback(indicator.queue_free)
 
@@ -536,7 +533,7 @@ func _on_scanner_scan_started(origin: Vector2) -> void:
 	var player := _find_player()
 	if player == null:
 		return
-	if origin.distance_to(global_position) > SCANNER_ALERT_RADIUS:
+	if origin.distance_to(global_position) > config.scanner_alert_radius:
 		return
 	_trigger_alert(&"scanner_hum", player)
 
@@ -600,7 +597,7 @@ func _show_health_bar_from_combat() -> void:
 		enemy_health_bar.visible = true
 	else:
 		enemy_health_bar.visible = true
-	_health_bar_hide_timer = HEALTH_BAR_HIDE_DELAY
+	_health_bar_hide_timer = config.health_bar_hide_delay
 
 
 func _refresh_health_bar() -> void:
@@ -620,7 +617,7 @@ func _update_health_bar_visibility(delta: float) -> void:
 		enemy_health_bar.visible = false
 		return
 	if _is_in_active_combat_state():
-		_health_bar_hide_timer = HEALTH_BAR_HIDE_DELAY
+		_health_bar_hide_timer = config.health_bar_hide_delay
 		return
 
 	_health_bar_hide_timer = maxf(0.0, _health_bar_hide_timer - delta)
@@ -644,9 +641,9 @@ func _build_health_bar_fill_style(health_ratio: float) -> StyleBoxFlat:
 
 func _get_health_bar_color(health_ratio: float) -> Color:
 	if health_ratio <= 0.2:
-		return HEALTH_BAR_LOW_COLOR
+		return config.health_bar_low_color
 	if health_ratio <= 0.5:
 		var mid_ratio := inverse_lerp(0.2, 0.5, health_ratio)
-		return HEALTH_BAR_LOW_COLOR.lerp(HEALTH_BAR_MID_COLOR, mid_ratio)
+		return config.health_bar_low_color.lerp(config.health_bar_mid_color, mid_ratio)
 	var high_ratio := inverse_lerp(0.5, 1.0, health_ratio)
-	return HEALTH_BAR_MID_COLOR.lerp(HEALTH_BAR_FULL_COLOR, high_ratio)
+	return config.health_bar_mid_color.lerp(config.health_bar_full_color, high_ratio)

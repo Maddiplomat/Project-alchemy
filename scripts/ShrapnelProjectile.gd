@@ -10,11 +10,17 @@ const LIFETIME_SECONDS := 0.55
 
 @onready var sprite: Sprite2D = $Sprite2D
 
+var _lifetime_timer: Timer = null
+var _visual_ready := false
 
 func _ready() -> void:
-	body_entered.connect(_on_body_entered)
-	_apply_visual()
-	get_tree().create_timer(LIFETIME_SECONDS).timeout.connect(queue_free, CONNECT_ONE_SHOT)
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+	if not _visual_ready:
+		_apply_visual()
+		_visual_ready = true
+	_ensure_lifetime_timer()
+	_lifetime_timer.start(LIFETIME_SECONDS)
 
 
 func _physics_process(delta: float) -> void:
@@ -29,7 +35,7 @@ func _on_body_entered(body: Node) -> void:
 
 	var resolved_damage := int(DamageCalculator.calculate(DAMAGE, DAMAGE_TYPE, body, global_position))
 	if resolved_damage <= 0:
-		queue_free()
+		ObjectPool.release(self)
 		return
 
 	var health_system := body.get_node_or_null("HealthSystem")
@@ -38,7 +44,28 @@ func _on_body_entered(body: Node) -> void:
 	elif health_system != null and health_system.has_method("take_damage"):
 		health_system.take_damage(resolved_damage, StringName(DAMAGE_TYPE), "Shrapnel burst")
 
-	queue_free()
+	ObjectPool.release(self)
+
+
+func _pool_reset() -> void:
+	velocity = Vector2.ZERO
+	rotation = 0.0
+	monitoring = true
+	if _lifetime_timer != null:
+		_lifetime_timer.stop()
+
+
+func _ensure_lifetime_timer() -> void:
+	if _lifetime_timer != null:
+		return
+	_lifetime_timer = Timer.new()
+	_lifetime_timer.one_shot = true
+	_lifetime_timer.timeout.connect(_release_to_pool)
+	add_child(_lifetime_timer)
+
+
+func _release_to_pool() -> void:
+	ObjectPool.release(self)
 
 
 func _apply_visual() -> void:
@@ -59,11 +86,9 @@ func _apply_visual() -> void:
 
 
 static func spawn(parent: Node, origin: Vector2, direction: Vector2) -> Node2D:
-	var scene: PackedScene = load("res://scenes/ShrapnelProjectile.tscn")
-	if scene == null:
-		push_error("ShrapnelProjectile: res://scenes/ShrapnelProjectile.tscn not found")
+	var projectile := ObjectPool.get_instance_by_id(ObjectPool.SCENE_SHRAPNEL_PROJECTILE) as Area2D
+	if projectile == null:
 		return null
-	var projectile := scene.instantiate() as Area2D
 	parent.add_child(projectile)
 	projectile.global_position = origin
 	projectile.set("velocity", direction.normalized() * SPEED)

@@ -1,5 +1,9 @@
 extends Node
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+const WeatherSystem = preload("res://scripts/WeatherSystem.gd")
+const ResearchObjectives = preload("res://scripts/ResearchObjectives.gd")
+
 const WORLD_SCENE_PATH := "res://scenes/World.tscn"
 const MAIN_MENU_SCENE_PATH := "res://scenes/MainMenu.tscn"
 
@@ -52,7 +56,7 @@ func _run_test() -> void:
 	await _change_scene_and_wait(WORLD_SCENE_PATH)
 
 	await _seed_world_runtime_state()
-	var save_result := GameManager.request_save(GameManager.SaveTrigger.MANUAL)
+	var save_result := await _request_save_and_wait(GameManager.SaveTrigger.MANUAL)
 	_assert(bool(save_result.get(&"success", false)), "Expected the integration test save to succeed.")
 
 	await _change_scene_and_wait(MAIN_MENU_SCENE_PATH)
@@ -60,7 +64,7 @@ func _run_test() -> void:
 	await _wait_for_scene_reload(WORLD_SCENE_PATH)
 	await _assert_loaded_runtime_state()
 
-	WeatherSystem.restore_persistent_state({
+	EventBus.get_weather_system().restore_persistent_state({
 		"current_state": WeatherSystem.WeatherState.CLEAR,
 		"state_time_remaining": 12.0,
 		"next_state": WeatherSystem.WeatherState.ACID_MIST,
@@ -68,7 +72,7 @@ func _run_test() -> void:
 		"warning_active": true,
 		"rare_weather_unlocked": true,
 	})
-	var warning_save_result := GameManager.request_save(GameManager.SaveTrigger.MANUAL)
+	var warning_save_result := await _request_save_and_wait(GameManager.SaveTrigger.MANUAL)
 	_assert(bool(warning_save_result.get(&"success", false)), "Expected the warning-state save to succeed.")
 
 	await _change_scene_and_wait(MAIN_MENU_SCENE_PATH)
@@ -78,6 +82,24 @@ func _run_test() -> void:
 
 	if _failures == 0:
 		print("SaveLoadIntegrationTest passed.")
+
+
+func _request_save_and_wait(trigger: int) -> Dictionary:
+	var completed_results: Array[Dictionary] = []
+	var callback := func(result: Dictionary) -> void:
+		completed_results.append(result.duplicate(true))
+	GameManager.save_completed.connect(callback)
+	var request_result: Dictionary = GameManager.request_save(trigger)
+	_assert(bool(request_result.get(&"pending", false)), "Expected save requests to queue a background write.")
+	_assert(GameManager.is_saving(), "Expected GameManager to report the queued save as in progress.")
+	for _frame in 300:
+		if not completed_results.is_empty():
+			break
+		await get_tree().process_frame
+	if GameManager.save_completed.is_connected(callback):
+		GameManager.save_completed.disconnect(callback)
+	_assert(not completed_results.is_empty(), "Timed out waiting for asynchronous save completion.")
+	return completed_results[0] if not completed_results.is_empty() else request_result
 
 
 func _seed_world_runtime_state() -> void:
@@ -157,16 +179,16 @@ func _seed_world_runtime_state() -> void:
 			_harvested_tree_tile = tree.tile_coords
 			_harvested_tree_remaining = tree.remaining_wood
 
-	ElementDatabase.mark_element_scanned(&"wood")
-	ElementDatabase.mark_element_scanned(&"stone")
-	ElementDatabase.mark_element_scanned(&"iron")
-	if DiscoveryLog != null and DiscoveryLog.has_method("log_progression_discovery"):
-		DiscoveryLog.log_progression_discovery(
+	GameplayData.elements().mark_element_scanned(&"wood")
+	GameplayData.elements().mark_element_scanned(&"stone")
+	GameplayData.elements().mark_element_scanned(&"iron")
+	if EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("log_progression_discovery"):
+		EventBus.get_discovery_log().log_progression_discovery(
 			ResearchObjectives.SULFUR_FLATS_WEATHER_ENTRY_ID,
 			"Weather Shift Logged",
 			"Rare weather tracked for integration coverage."
 		)
-	ResearchObjectives.sync_with_runtime_state()
+	EventBus.get_research_objectives().sync_with_runtime_state()
 
 	var chest_item := {
 		"id": &"energy_cell",
@@ -181,10 +203,10 @@ func _seed_world_runtime_state() -> void:
 		"charge": 0.55,
 		"max_charge": 1.0,
 	}
-	StorageManager.call("_store_item_into_slot", chest.chest_id, chest_item, 1, 0)
+	EventBus.get_storage_manager().call("_store_item_into_slot", chest.chest_id, chest_item, 1, 0)
 	GameManager.mark_dirty()
 	_expected_chest_id = chest.chest_id
-	_expected_chest_slot_item = _normalize_storage_item(StorageManager.get_slot_item(chest.chest_id, 0))
+	_expected_chest_slot_item = _normalize_storage_item(EventBus.get_storage_manager().get_slot_item(chest.chest_id, 0))
 
 	var inventory_payload: Array = [
 		{
@@ -251,7 +273,7 @@ func _seed_world_runtime_state() -> void:
 	if base_grid != null and base_grid.has_method("restore_charge_level"):
 		base_grid.restore_charge_level(18.0)
 
-	WeatherSystem.restore_persistent_state({
+	EventBus.get_weather_system().restore_persistent_state({
 		"current_state": WeatherSystem.WeatherState.RAIN,
 		"state_time_remaining": 30.0,
 		"next_state": WeatherSystem.WeatherState.CLEAR,
@@ -276,9 +298,9 @@ func _assert_loaded_runtime_state() -> void:
 	if world == null:
 		return
 
-	_assert(int(WeatherSystem.get_current_state()) == WeatherSystem.WeatherState.RAIN, "Expected rain to remain active after load.")
-	_assert(_is_approx_equal(float(WeatherSystem.get_state_time_remaining()), 30.0, 2.5), "Expected rain remaining time to survive load.")
-	_assert(not bool(WeatherSystem.is_transition_warning_active()), "Expected the rain save to reload without a warning state.")
+	_assert(int(EventBus.get_weather_system().get_current_state()) == WeatherSystem.WeatherState.RAIN, "Expected rain to remain active after load.")
+	_assert(_is_approx_equal(float(EventBus.get_weather_system().get_state_time_remaining()), 30.0, 2.5), "Expected rain remaining time to survive load.")
+	_assert(not bool(EventBus.get_weather_system().is_transition_warning_active()), "Expected the rain save to reload without a warning state.")
 
 	var cold_state: Dictionary = EventBus.get_cold_system().capture_persistent_state() if EventBus.get_cold_system() != null else {}
 	_assert(_is_approx_equal(float(cold_state.get("cold_level", 0.0)), 99.0, 0.1), "Expected cold level to survive load.")
@@ -287,7 +309,7 @@ func _assert_loaded_runtime_state() -> void:
 	_assert(_snapshot_inventory_state() == _expected_inventory_snapshot, "Expected inventory slots, held item, weight, and volatile risk to restore exactly.")
 	_assert(not _expected_chest_id.is_empty(), "Expected the integration test chest id to be captured.")
 	if not _expected_chest_id.is_empty():
-		var actual_chest_slot_item := _normalize_storage_item(StorageManager.get_slot_item(_expected_chest_id, 0))
+		var actual_chest_slot_item := _normalize_storage_item(EventBus.get_storage_manager().get_slot_item(_expected_chest_id, 0))
 		_assert(actual_chest_slot_item == _expected_chest_slot_item, "Expected chest inventory contents to survive save/load.")
 
 	var power_switchboard := EventBus.get_power_switchboard()
@@ -300,10 +322,10 @@ func _assert_loaded_runtime_state() -> void:
 	var base_grid := EventBus.get_base_grid()
 	_assert(base_grid != null and _is_approx_equal(float(base_grid.get_charge_state()), 18.0, 0.1), "Expected base charge to survive load.")
 
-	_assert(ElementDatabase.is_element_scanned(&"wood"), "Expected scanned wood to survive load.")
-	_assert(ElementDatabase.is_element_scanned(&"stone"), "Expected scanned stone to survive load.")
-	_assert(ElementDatabase.is_element_scanned(&"iron"), "Expected scanned iron to survive load.")
-	_assert(bool(ResearchObjectives.get_objective(&"scan_starters").get("completed", false)), "Expected the first objective to remain completed after load.")
+	_assert(GameplayData.elements().is_element_scanned(&"wood"), "Expected scanned wood to survive load.")
+	_assert(GameplayData.elements().is_element_scanned(&"stone"), "Expected scanned stone to survive load.")
+	_assert(GameplayData.elements().is_element_scanned(&"iron"), "Expected scanned iron to survive load.")
+	_assert(bool(EventBus.get_research_objectives().get_objective(&"scan_starters").get("completed", false)), "Expected the first objective to remain completed after load.")
 
 	if _harvested_tree_tile != Vector2i(-1, -1):
 		var restored_tree := _find_tree_at_tile(_harvested_tree_tile)
@@ -324,10 +346,10 @@ func _assert_loaded_runtime_state() -> void:
 
 
 func _assert_loaded_warning_state() -> void:
-	_assert(int(WeatherSystem.get_current_state()) == WeatherSystem.WeatherState.CLEAR, "Expected clear weather to restore for the warning-state save.")
-	_assert(bool(WeatherSystem.is_transition_warning_active()), "Expected warning state to remain active after load.")
-	_assert(int(WeatherSystem.get_transition_warning_state()) == WeatherSystem.WeatherState.ACID_MIST, "Expected warning target state to survive load.")
-	_assert(_is_approx_equal(float(WeatherSystem.get_transition_warning_seconds_remaining()), 12.0, 2.0), "Expected warning remaining time to survive load.")
+	_assert(int(EventBus.get_weather_system().get_current_state()) == WeatherSystem.WeatherState.CLEAR, "Expected clear weather to restore for the warning-state save.")
+	_assert(bool(EventBus.get_weather_system().is_transition_warning_active()), "Expected warning state to remain active after load.")
+	_assert(int(EventBus.get_weather_system().get_transition_warning_state()) == WeatherSystem.WeatherState.ACID_MIST, "Expected warning target state to survive load.")
+	_assert(_is_approx_equal(float(EventBus.get_weather_system().get_transition_warning_seconds_remaining()), 12.0, 2.0), "Expected warning remaining time to survive load.")
 	_assert(_snapshot_inventory_state() == _expected_inventory_snapshot, "Expected inventory restore to remain stable across repeated loads.")
 
 

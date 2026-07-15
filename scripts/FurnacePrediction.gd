@@ -278,7 +278,7 @@ func evaluate_alloy_prediction(input_a_id: StringName, input_b_id: StringName, c
 	if not evaluator.is_valid():
 		var main_loop := Engine.get_main_loop()
 		if main_loop is SceneTree:
-			var chemistry_engine := (main_loop as SceneTree).root.get_node_or_null("/root/ChemistryEngine")
+			var chemistry_engine := EventBus.get_chemistry_engine()
 			if chemistry_engine != null and chemistry_engine.has_method("evaluate_reaction"):
 				evaluator = Callable(chemistry_engine, "evaluate_reaction")
 	if not evaluator.is_valid():

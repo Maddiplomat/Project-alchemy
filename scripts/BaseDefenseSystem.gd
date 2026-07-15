@@ -1,3 +1,4 @@
+class_name BaseDefenseSystem
 extends Node
 
 signal night_threat_detected(world_position: Vector2, stack_count: int)

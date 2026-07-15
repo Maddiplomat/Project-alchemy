@@ -54,11 +54,14 @@ func _ready() -> void:
 		EventBus.service_registered.connect(_on_service_registered)
 
 
-func _process(_delta: float) -> void:
+func _unhandled_input(event: InputEvent) -> void:
 	if not _is_open:
 		return
-	if Input.is_action_just_pressed("ui_cancel"):
+	if event.is_action_pressed("ui_cancel"):
 		close()
+		get_viewport().set_input_as_handled()
+		return
+	get_viewport().set_input_as_handled()
 
 
 func open() -> void:

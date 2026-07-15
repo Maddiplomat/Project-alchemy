@@ -10,15 +10,42 @@ const PUDDLE_SIZE := Vector2(8.0, 8.0)
 @onready var puddle_visual: ColorRect = $ColorRect
 
 var _tracked_bodies: Dictionary[int, Node] = {}
+var _lifetime_timer: Timer = null
 
 
 func _ready() -> void:
-	body_entered.connect(_on_body_entered)
-	body_exited.connect(_on_body_exited)
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+	if not body_exited.is_connected(_on_body_exited):
+		body_exited.connect(_on_body_exited)
 	damage_timer.wait_time = DAMAGE_TICK_SECONDS
-	damage_timer.timeout.connect(_on_damage_timer_timeout)
+	if not damage_timer.timeout.is_connected(_on_damage_timer_timeout):
+		damage_timer.timeout.connect(_on_damage_timer_timeout)
 	_configure_visual()
-	get_tree().create_timer(PUDDLE_DURATION_SECONDS).timeout.connect(queue_free, CONNECT_ONE_SHOT)
+	_ensure_lifetime_timer()
+	_lifetime_timer.start(PUDDLE_DURATION_SECONDS)
+
+
+func _pool_reset() -> void:
+	_tracked_bodies.clear()
+	monitoring = true
+	if damage_timer != null:
+		damage_timer.stop()
+	if _lifetime_timer != null:
+		_lifetime_timer.stop()
+
+
+func _ensure_lifetime_timer() -> void:
+	if _lifetime_timer != null:
+		return
+	_lifetime_timer = Timer.new()
+	_lifetime_timer.one_shot = true
+	_lifetime_timer.timeout.connect(_release_to_pool)
+	add_child(_lifetime_timer)
+
+
+func _release_to_pool() -> void:
+	ObjectPool.release(self)
 
 
 func _on_body_entered(body: Node) -> void:

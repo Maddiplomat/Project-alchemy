@@ -1,10 +1,13 @@
-[gd_scene format=3 uid="uid://b7yay03kq2cde"]
+[gd_scene load_steps=4 format=3 uid="uid://b7yay03kq2cde"]
 
 [ext_resource type="Script" uid="uid://cs7fusvxb03kd" path="res://scripts/FurnaceUI.gd" id="1_abc123"]
+[ext_resource type="PackedScene" path="res://scenes/UI/FurnaceRatioGraph.tscn" id="2_ratio_graph"]
+[ext_resource type="Resource" path="res://data/config/furnace_config.tres" id="3_config"]
 
 [node name="FurnaceUI" type="CanvasLayer" unique_id=2132913568]
 layer = 11
 script = ExtResource("1_abc123")
+config = ExtResource("3_config")
 
 [node name="Root" type="Control" parent="." unique_id=2027247790]
 layout_mode = 3
@@ -343,8 +346,23 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(1, 0.55, 0.35, 0.7)
 
+[node name="CarbonSlagZone" type="ColorRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame"]
+visible = false
+z_index = -1
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 0.65
+offset_left = 28.0
+offset_top = 6.0
+offset_right = -28.0
+offset_bottom = -2.0
+grow_horizontal = 2
+color = Color(0.89, 0.29, 0.24, 0.24)
+
 [node name="CarbonOptimalZone" type="ColorRect" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer/GaugeFrame" unique_id=1171402894]
 visible = false
+z_index = -1
 layout_mode = 1
 anchors_preset = -1
 anchor_top = 0.65
@@ -369,6 +387,9 @@ visible = false
 layout_mode = 2
 text = "Danger above 1600°C"
 horizontal_alignment = 1
+
+[node name="RatioContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/TemperatureColumn/MarginContainer/VBoxContainer" instance=ExtResource("2_ratio_graph")]
+layout_mode = 2
 
 [node name="OutputSlot" type="PanelContainer" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow" unique_id=1521137346]
 custom_minimum_size = Vector2(0, 190)
@@ -497,6 +518,14 @@ autowrap_mode = 3
 layout_mode = 2
 text = "Fuel cost: waiting"
 autowrap_mode = 3
+
+[node name="PowerStatusLabel" type="Label" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="PowerButton" type="Button" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Insert Energy Cell"
 
 [node name="SpacerBottom" type="Control" parent="Root/PanelContainer/MarginContainer/VBoxContainer/FurnaceRow/ActionColumn/MarginContainer/VBoxContainer" unique_id=117979327]
 layout_mode = 2

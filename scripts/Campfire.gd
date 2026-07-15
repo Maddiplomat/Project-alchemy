@@ -1,5 +1,8 @@
 extends "res://scripts/PlacedObject.gd"
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+const WeatherSystem = preload("res://scripts/WeatherSystem.gd")
+
 const BURN_DURATION_SECONDS := 600.0
 const CHARCOAL_CYCLE_SECONDS := 120.0
 const CHARCOAL_STATUS_SHOW_SECONDS := 1.6
@@ -197,7 +200,7 @@ func _handle_charcoal_collect_input() -> void:
 		_set_charcoal_status(_build_charcoal_status_text())
 		return
 
-	var charcoal_data := ElementDatabase.get_element(CHARCOAL_ITEM_ID)
+	var charcoal_data := GameplayData.elements().get_element(CHARCOAL_ITEM_ID)
 	if charcoal_data.is_empty():
 		return
 	if not InventoryManager.can_add_item(charcoal_data, _pending_output_charcoal):
@@ -219,10 +222,10 @@ func _handle_pickup_input() -> void:
 		return
 	if not Input.is_key_pressed(KEY_G):
 		return
-	CarrierRiskSystem.set_sheltered(get_instance_id(), false)
+	EventBus.get_carrier_risk_system().set_sheltered(get_instance_id(), false)
 	if GameManager != null and GameManager.has_method("set_player_warmed"):
 		GameManager.set_player_warmed(false)
-	var build_system := get_node_or_null("/root/BuildSystem")
+	var build_system := EventBus.get_build_system()
 	if build_system != null and build_system.has_method("enter_build_mode_for_existing"):
 		build_system.call("enter_build_mode_for_existing", scene_file_path, _build_restore_payload())
 	queue_free()
@@ -242,14 +245,14 @@ func _handle_healing(delta: float) -> void:
 
 
 func _update_shelter_state() -> void:
-	if not has_node("/root/CarrierRiskSystem"):
+	if EventBus.get_carrier_risk_system() == null:
 		return
 	var sheltered := false
 	var weather_system := _get_rain_system()
 	if weather_system != null and weather_system.has_method("get_shelter_at"):
 		sheltered = bool(weather_system.call("get_shelter_at", global_position))
 	_set_shelter_bonus(sheltered)
-	CarrierRiskSystem.set_sheltered(get_instance_id(), sheltered and is_lit and _player_in_range)
+	EventBus.get_carrier_risk_system().set_sheltered(get_instance_id(), sheltered and is_lit and _player_in_range)
 
 func _update_warmth_state() -> void:
 	if GameManager != null and GameManager.has_method("set_player_warmed"):
@@ -522,7 +525,7 @@ func _build_restore_payload() -> Dictionary:
 
 
 func _get_rain_system() -> Node:
-	var weather_system := get_node_or_null("/root/WeatherSystem")
+	var weather_system := EventBus.get_weather_system()
 	if weather_system != null:
 		return weather_system
 	var current_scene := get_tree().current_scene
@@ -533,9 +536,9 @@ func _get_rain_system() -> Node:
 
 func _is_rain_exposed() -> bool:
 	return is_lit \
-		and WeatherSystem != null \
-		and WeatherSystem.has_method("get_current_state") \
-		and int(WeatherSystem.get_current_state()) == WeatherSystem.WeatherState.RAIN \
+		and EventBus.get_weather_system() != null \
+		and EventBus.get_weather_system().has_method("get_current_state") \
+		and int(EventBus.get_weather_system().get_current_state()) == WeatherSystem.WeatherState.RAIN \
 		and not _is_sheltered
 
 
@@ -563,7 +566,7 @@ func _clear_player_in_range() -> void:
 	_player = null
 	_player_in_range = false
 	_heal_accumulator = 0.0
-	CarrierRiskSystem.set_sheltered(get_instance_id(), false)
+	EventBus.get_carrier_risk_system().set_sheltered(get_instance_id(), false)
 	if GameManager != null and GameManager.has_method("set_player_warmed"):
 		GameManager.set_player_warmed(false)
 	_hide_prompt()

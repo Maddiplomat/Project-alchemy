@@ -6,6 +6,7 @@ var _base_grid: Node = null
 var _power_switchboard: Node = null
 var _registered_with_defense := false
 var _disrupted_until_msec := 0
+var _disruption_timer: Timer = null
 
 @export var defense_radius := 96.0
 @export var drain_units_per_minute := 1.0
@@ -19,7 +20,10 @@ func _ready() -> void:
 	_bind_power_services()
 	if _base_grid == null:
 		energy = 0.0
-	set_process(false)
+	_disruption_timer = Timer.new()
+	_disruption_timer.one_shot = true
+	_disruption_timer.timeout.connect(_on_disruption_timeout)
+	add_child(_disruption_timer)
 
 	_configure_light_texture()
 	if GameManager != null:
@@ -29,15 +33,6 @@ func _ready() -> void:
 			GameManager.day_started.connect(_refresh_power_state)
 	if not EventBus.service_registered.is_connected(_on_service_registered):
 		EventBus.service_registered.connect(_on_service_registered)
-	_refresh_power_state()
-
-
-func _process(_delta: float) -> void:
-	if _disrupted_until_msec <= 0:
-		return
-	if Time.get_ticks_msec() < _disrupted_until_msec:
-		return
-	_disrupted_until_msec = 0
 	_refresh_power_state()
 
 
@@ -55,7 +50,16 @@ func disrupt(duration_seconds: float) -> void:
 		_disrupted_until_msec,
 		Time.get_ticks_msec() + int(maxf(duration_seconds, 0.0) * 1000.0)
 	)
-	set_process(true)
+	_disruption_timer.start(maxf(float(_disrupted_until_msec - Time.get_ticks_msec()) / 1000.0, 0.001))
+	_refresh_power_state()
+
+
+func _on_disruption_timeout() -> void:
+	var remaining_seconds := float(_disrupted_until_msec - Time.get_ticks_msec()) / 1000.0
+	if remaining_seconds > 0.0:
+		_disruption_timer.start(remaining_seconds)
+		return
+	_disrupted_until_msec = 0
 	_refresh_power_state()
 
 
@@ -86,7 +90,6 @@ func _refresh_power_state() -> void:
 		_register_with_defense()
 	else:
 		_unregister_with_defense()
-	set_process(_is_disrupted())
 
 
 func _should_show_visual_light() -> bool:
@@ -117,16 +120,16 @@ func _is_defense_light_source() -> bool:
 
 
 func _register_with_defense() -> void:
-	if _registered_with_defense or BaseDefenseSystem == null or not BaseDefenseSystem.has_method("register_light"):
+	if _registered_with_defense or EventBus.get_base_defense_system() == null or not EventBus.get_base_defense_system().has_method("register_light"):
 		return
-	BaseDefenseSystem.register_light(self, defense_radius, drain_units_per_minute)
+	EventBus.get_base_defense_system().register_light(self, defense_radius, drain_units_per_minute)
 	_registered_with_defense = true
 
 
 func _unregister_with_defense() -> void:
-	if not _registered_with_defense or BaseDefenseSystem == null or not BaseDefenseSystem.has_method("unregister_light"):
+	if not _registered_with_defense or EventBus.get_base_defense_system() == null or not EventBus.get_base_defense_system().has_method("unregister_light"):
 		return
-	BaseDefenseSystem.unregister_light(self)
+	EventBus.get_base_defense_system().unregister_light(self)
 	_registered_with_defense = false
 
 

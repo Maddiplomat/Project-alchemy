@@ -1,0 +1,91 @@
+[gd_scene format=3]
+
+[node name="RatioContainer" type="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="RatioTitleLabel" type="Label" parent="."]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "RATIO"
+horizontal_alignment = 1
+
+[node name="RatioGraphFrame" type="Control" parent="."]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="RatioGraphBackground" type="ColorRect" parent="RatioGraphFrame"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 2.0
+offset_bottom = -2.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.18, 0.2, 0.23, 0.82)
+
+[node name="RatioIronFill" type="ColorRect" parent="RatioGraphFrame"]
+layout_mode = 1
+anchors_preset = 13
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 2.0
+offset_bottom = -2.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.34, 0.44, 0.52, 0.92)
+
+[node name="RatioCarbonFill" type="ColorRect" parent="RatioGraphFrame"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 2.0
+offset_bottom = -2.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.54, 0.31, 0.12, 0.96)
+
+[node name="RatioTargetZone" type="ColorRect" parent="RatioGraphFrame"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 1.0
+offset_bottom = -1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.34, 0.82, 0.45, 0.32)
+
+[node name="RatioCurrentMarker" type="ColorRect" parent="RatioGraphFrame"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -1.0
+offset_right = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.97, 0.97, 0.97, 0.95)
+
+[node name="RatioSlider" type="HSlider" parent="."]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 10.0
+step = 0.1
+value = 1.0
+
+[node name="RatioValueLabel" type="Label" parent="."]
+layout_mode = 2
+text = "C: 1%"
+horizontal_alignment = 1

@@ -1,7 +1,5 @@
 extends Node
 
-const DebugLog = preload("res://scripts/DebugLog.gd")
-
 signal health_changed(current: int, max: int)
 signal player_died(cause_of_death: StringName)
 signal status_effects_changed(status_effects: Array[StringName])

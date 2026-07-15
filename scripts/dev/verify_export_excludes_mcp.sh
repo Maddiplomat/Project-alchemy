@@ -15,8 +15,8 @@ check_path() {
   fi
 
   if [ -d "$target" ]; then
-    if find "$target" -path '*addons/godot_mcp*' | grep -q .; then
-      echo "MCP addon files found in export directory: $target" >&2
+	if find "$target" \( -path '*addons/godot_mcp*' -o -path '*scripts/MCPRuntime.gd*' \) | grep -q .; then
+	  echo "MCP development files found in export directory: $target" >&2
       return 1
     fi
     return 0
@@ -24,20 +24,20 @@ check_path() {
 
   case "$target" in
     *.log)
-      if grep -E -q 'Storing File: res://addons/godot_mcp/|Storing File: res://addons/godot_mcp\.|Storing File: res://addons/godot_mcp' "$target"; then
-        echo "MCP addon files were exported according to build log: $target" >&2
+	  if grep -E -q 'Storing File: res://(addons/godot_mcp|scripts/MCPRuntime\.gd)' "$target"; then
+		echo "MCP development files were exported according to build log: $target" >&2
         return 1
       fi
       ;;
     *.zip)
-      if unzip -Z -1 "$target" | grep -q '^addons/godot_mcp/'; then
-        echo "MCP addon files found in export archive: $target" >&2
+	  if unzip -Z -1 "$target" | grep -E -q '^(addons/godot_mcp/|scripts/MCPRuntime\.gd)'; then
+		echo "MCP development files found in export archive: $target" >&2
         return 1
       fi
       ;;
     *)
-      if find "$target" -path '*addons/godot_mcp*' 2>/dev/null | grep -q .; then
-        echo "MCP addon files found in export artifact: $target" >&2
+	  if find "$target" \( -path '*addons/godot_mcp*' -o -path '*scripts/MCPRuntime.gd*' \) 2>/dev/null | grep -q .; then
+		echo "MCP development files found in export artifact: $target" >&2
         return 1
       fi
       ;;
@@ -48,4 +48,4 @@ for target in "$@"; do
   check_path "$target"
 done
 
-echo "verified: exported artifacts do not contain addons/godot_mcp"
+echo "verified: exported artifacts do not contain MCP development tooling"

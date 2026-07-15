@@ -1,5 +1,7 @@
 extends Node2D
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+
 ## ScannerTool — attached to the Player node.
 ## Press and hold Q to reveal floating info panels for nearby pickups and enemies.
 
@@ -59,6 +61,7 @@ var _space_state: PhysicsDirectSpaceState2D
 func _ready() -> void:
 	add_to_group(&"scanner_tool")
 	_space_state = get_world_2d().direct_space_state
+	set_process(false)
 	_setup_animations()
 
 
@@ -87,18 +90,17 @@ func _setup_animations() -> void:
 
 func _input(event: InputEvent) -> void:
 	var runtime := get_tree().root.get_node_or_null("MCPRuntime")
-	if event.is_action_pressed("scan"):
+	if event.is_action_pressed("scan") and not _scanning:
 		if runtime:
 			runtime.push_runtime_log("info", "ScannerTool: Scan Pressed")
 		_begin_scan()
+		get_viewport().set_input_as_handled()
 	elif event.is_action_released("scan"):
 		_end_scan()
+		get_viewport().set_input_as_handled()
 
 
 func _process(delta: float) -> void:
-	if not _scanning:
-		return
-
 	var expired: Array = []
 	for target in _timers.keys():
 		if not is_instance_valid(target):
@@ -116,6 +118,7 @@ func _process(delta: float) -> void:
 
 func _begin_scan() -> void:
 	_scanning = true
+	set_process(true)
 	_clear_all_panels()
 
 	var player := get_parent() as Node2D
@@ -132,6 +135,7 @@ func _begin_scan() -> void:
 
 func _end_scan() -> void:
 	_scanning = false
+	set_process(false)
 	_clear_all_panels()
 
 
@@ -178,7 +182,7 @@ func _collect_scannable_resource_nodes(player_pos: Vector2, scanned_this_pass: D
 			continue
 		var element_id: StringName = StringName(raw_element_id)
 
-		var data := ElementDatabase.get_element(element_id)
+		var data := GameplayData.elements().get_element(element_id)
 		if data.is_empty():
 			continue
 
@@ -192,8 +196,8 @@ func _complete_scan(element_id: StringName, scanned_this_pass: Dictionary[String
 		return
 
 	scanned_this_pass[element_id] = true
-	if ElementDatabase != null and ElementDatabase.has_method("mark_element_scanned"):
-		ElementDatabase.mark_element_scanned(element_id)
+	if GameplayData.elements() != null and GameplayData.elements().has_method("mark_element_scanned"):
+		GameplayData.elements().mark_element_scanned(element_id)
 	scan_completed.emit(element_id)
 	resource_scanned.emit(element_id)
 
@@ -267,6 +271,7 @@ func _collect_scannable_enemy_nodes(
 
 
 func _intersect_circle(origin: Vector2, radius: float, collision_mask: int) -> Array:
+	# Scan queries are one-shot work initiated by _begin_scan(), never by _process().
 	var query := PhysicsShapeQueryParameters2D.new()
 	var circle_shape := CircleShape2D.new()
 	circle_shape.radius = radius
@@ -561,7 +566,7 @@ func _build_composition_bar(composition: Variant) -> Control:
 		if is_zero_approx(normalized_pct):
 			continue
 
-		var element_data := ElementDatabase.get_element(element_id)
+		var element_data := GameplayData.elements().get_element(element_id)
 		var segment_color := _get_element_scan_colour(element_id, element_data)
 
 		var segment := ColorRect.new()
@@ -708,7 +713,7 @@ func _resolve_scannable_pickup_data(pickup: Node) -> Dictionary:
 	var element_id := _resolve_element_id(pickup)
 	if element_id.is_empty():
 		return {}
-	return ElementDatabase.get_element(element_id)
+	return GameplayData.elements().get_element(element_id)
 
 
 func _find_enemy_target(node: Node) -> Node2D:

@@ -1,5 +1,7 @@
 extends "res://scripts/PlacedObject.gd"
 
+const StorageManager = preload("res://scripts/StorageManager.gd")
+
 const STORAGE_UI_SCENE := preload("res://scenes/UI/StorageUI.tscn")
 
 @export var container_id: StringName = &""
@@ -19,7 +21,7 @@ func _ready() -> void:
 	object_type = _get_object_type()
 	save_bucket = SaveBucket.STORAGE
 	if container_id.is_empty():
-		container_id = StorageManager.generate_chest_id()
+		container_id = EventBus.get_storage_manager().generate_chest_id()
 	_ensure_storage_container()
 	_build_storage_texture()
 	super()
@@ -78,7 +80,7 @@ func restore_from_pickup(entry: Dictionary) -> void:
 
 
 func _ensure_storage_container() -> void:
-	StorageManager.ensure_container(container_id, {
+	EventBus.get_storage_manager().ensure_container(container_id, {
 		&"slot_count": _get_slot_count(),
 		&"title": _get_container_title(),
 		&"filter_id": _get_storage_filter_id(),
@@ -200,6 +202,6 @@ func _build_storage_ui_context() -> Dictionary:
 
 
 func _is_sheltered_from_rain() -> bool:
-	return WeatherSystem != null \
-		and WeatherSystem.has_method("get_shelter_at") \
-		and bool(WeatherSystem.get_shelter_at(global_position))
+	return EventBus.get_weather_system() != null \
+		and EventBus.get_weather_system().has_method("get_shelter_at") \
+		and bool(EventBus.get_weather_system().get_shelter_at(global_position))

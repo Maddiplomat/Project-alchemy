@@ -1,5 +1,8 @@
 extends CanvasLayer
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+const WeatherSystem = preload("res://scripts/WeatherSystem.gd")
+
 @onready var panel = $InventoryPanel
 @onready var grid = $InventoryPanel/PanelContent/InventoryColumn/Grid
 @onready var weight_bar: ProgressBar = $InventoryPanel/PanelContent/InventoryColumn/WeightRow/WeightBar
@@ -35,7 +38,7 @@ extends CanvasLayer
 @onready var crafting_highlight: Panel = $InventoryPanel/PanelContent/CraftingPanel/CraftingHighlight
 @onready var crafting_pulse_player: AnimationPlayer = $InventoryPanel/PanelContent/CraftingPanel/CraftingPulsePlayer
 
-const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
+const SLOT_SCENE = preload("res://scenes/InventorySlot.tscn")
 const SLOT_COUNT := InventoryManager.MAX_SLOTS
 const TOOLTIP_DELAY := 0.3
 const TOOLTIP_OFFSET := Vector2(18, 18)
@@ -101,10 +104,10 @@ func _ready():
 			_build_recipe_rows()
 			_refresh_recipe_states()
 		)
-	if has_node("/root/CarrierRiskSystem"):
-		CarrierRiskSystem.carrier_risk_warning.connect(_on_carrier_risk_warning)
-		CarrierRiskSystem.carrier_risk_cleared.connect(_on_carrier_risk_cleared)
-		CarrierRiskSystem.carrier_risk_ignition.connect(_on_carrier_risk_ignition)
+	if EventBus.get_carrier_risk_system() != null:
+		EventBus.get_carrier_risk_system().carrier_risk_warning.connect(_on_carrier_risk_warning)
+		EventBus.get_carrier_risk_system().carrier_risk_cleared.connect(_on_carrier_risk_cleared)
+		EventBus.get_carrier_risk_system().carrier_risk_ignition.connect(_on_carrier_risk_ignition)
 	if crafting_panel != null:
 		crafting_panel.visible = false
 	use_button.pressed.connect(_on_use_button_pressed)
@@ -125,6 +128,7 @@ func _ready():
 	_update_weight_display(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	_refresh_touch_layout()
 	_update_drag_hint_label()
+	set_process(false)
 	get_viewport().size_changed.connect(func() -> void:
 		_position_inventory_panel()
 		_position_touch_panels()
@@ -137,8 +141,27 @@ func _setup_panel():
 	panel.visible = false
 	tooltip_panel.visible = false
 	_position_touch_panels()
+	_sync_ui_processing()
 
 func _input(event):
+	if panel.visible:
+		if event.is_action_pressed("toggle_inventory"):
+			if not _is_inventory_toggle_blocked():
+				toggle_inventory()
+			get_viewport().set_input_as_handled()
+			return
+		if not _prefers_touch_ui():
+			for i in range(1, mini(SLOT_COUNT, 9) + 1):
+				if event.is_action_pressed("slot_%d" % i):
+					_select_slot(i - 1, true)
+					get_viewport().set_input_as_handled()
+					return
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed and _is_dragging():
+			var release_position := get_viewport().get_mouse_position()
+			_finish_drag(_get_slot_index_at_position(release_position), release_position)
+		get_viewport().set_input_as_handled()
+		return
+
 	if event.is_action_pressed("toggle_inventory"):
 		if _is_inventory_toggle_blocked():
 			return
@@ -146,15 +169,6 @@ func _input(event):
 		get_viewport().set_input_as_handled()
 		return
 
-	if not _prefers_touch_ui():
-		for i in range(1, mini(SLOT_COUNT, 9) + 1):
-			if event.is_action_pressed("slot_%d" % i):
-				_select_slot(i - 1, true)
-				return
-
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed and _is_dragging():
-		var release_position := get_viewport().get_mouse_position()
-		_finish_drag(_get_slot_index_at_position(release_position), release_position)
 
 func _process(_delta: float) -> void:
 	if drag_ghost != null:
@@ -162,7 +176,6 @@ func _process(_delta: float) -> void:
 		drag_ghost.global_position = pointer_position - (drag_ghost.size / 2.0)
 	if tooltip_panel.visible:
 		_update_tooltip_position()
-	_refresh_touch_layout()
 
 func toggle_inventory():
 	var vp_size = get_viewport().get_visible_rect().size
@@ -170,6 +183,7 @@ func toggle_inventory():
 
 	if not panel.visible or panel.position.x >= vp_size.x - 1:
 		panel.visible = true
+		_sync_ui_processing()
 		_position_inventory_panel()
 		target_x = panel.position.x
 		refresh_grid()
@@ -178,6 +192,7 @@ func toggle_inventory():
 		_hide_mobile_action_panel()
 		_close_quantity_modal()
 		target_x = vp_size.x + 16.0
+		_sync_ui_processing()
 
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -185,11 +200,14 @@ func toggle_inventory():
 	tween.tween_property(panel, "position:x", target_x, 0.4)
 
 	if target_x >= vp_size.x - 1:
-		tween.tween_callback(func(): panel.visible = false)
+		tween.tween_callback(func() -> void:
+			panel.visible = false
+			_sync_ui_processing()
+		)
 
 
 func _is_inventory_toggle_blocked() -> bool:
-	var build_system := get_node_or_null("/root/BuildSystem")
+	var build_system := EventBus.get_build_system()
 	if build_system != null and build_system.has_method("is_build_mode_active"):
 		if bool(build_system.call("is_build_mode_active")):
 			return true
@@ -367,6 +385,7 @@ func _create_drag_ghost(source_slot: InventorySlot) -> void:
 
 	add_child(drag_ghost)
 	_update_drag_ghost_quantity()
+	_sync_ui_processing()
 
 func _finish_drag(drop_slot_index: int, release_mouse_position: Vector2) -> void:
 	_drag_pointer_position = release_mouse_position
@@ -409,6 +428,7 @@ func _clear_drag_ghost() -> void:
 	if drag_ghost != null:
 		drag_ghost.queue_free()
 		drag_ghost = null
+	_sync_ui_processing()
 
 func _is_dragging() -> bool:
 	return drag_origin_index != -1 and drag_ghost != null
@@ -559,7 +579,7 @@ func _show_tooltip_for_slot(slot_index: int) -> void:
 		return
 
 	var item_id := StringName(str(data.get("id", "")))
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	tooltip_name_label.text = _get_tooltip_item_name(data, element_data, item_id)
 	tooltip_weight_label.text = "Weight: %.1f" % _get_tooltip_item_weight(data, element_data)
 	tooltip_category_label.text = "Category: %s" % _format_category_value(data.get("category", element_data.get("category", "")))
@@ -568,6 +588,7 @@ func _show_tooltip_for_slot(slot_index: int) -> void:
 	tooltip_slot_index = slot_index
 	tooltip_panel.visible = true
 	_update_tooltip_position()
+	_sync_ui_processing()
 
 func _hide_tooltip() -> void:
 	tooltip_delay_timer = null
@@ -576,6 +597,11 @@ func _hide_tooltip() -> void:
 	tooltip_durability_label.visible = false
 	if _tooltip_hint_label != null:
 		_tooltip_hint_label.visible = false
+	_sync_ui_processing()
+
+
+func _sync_ui_processing() -> void:
+	set_process(panel != null and panel.visible and (drag_ghost != null or tooltip_panel.visible))
 
 func _update_tooltip_position() -> void:
 	var viewport_rect := get_viewport().get_visible_rect()
@@ -716,7 +742,7 @@ func _refresh_mobile_action_panel() -> void:
 		return
 	var slot_data := InventoryManager.get_slot_data(selected_slot_index)
 	var has_item := StringName(slot_data.get("item_id", &"")) != &""
-	selected_item_label.text = _get_tooltip_item_name(slot_data, ElementDatabase.get_element(StringName(slot_data.get("id", &""))), StringName(slot_data.get("id", &""))) if has_item else "Empty Slot"
+	selected_item_label.text = _get_tooltip_item_name(slot_data, GameplayData.elements().get_element(StringName(slot_data.get("id", &""))), StringName(slot_data.get("id", &""))) if has_item else "Empty Slot"
 	use_button.disabled = not has_item
 	transfer_button.disabled = not has_item
 	split_button.disabled = not has_item or int(slot_data.get("quantity", 0)) <= 1
@@ -857,14 +883,14 @@ func _update_tooltip_hint(item_data: Dictionary, element_data: Dictionary, item_
 		if not primary_use.is_empty():
 			tooltip_hint = primary_use
 
-	if item_id == SULFUR_ITEM_ID and WeatherSystem != null and WeatherSystem.has_method("get_current_state"):
-		if int(WeatherSystem.get_current_state()) == WeatherSystem.WeatherState.ACID_MIST:
+	if item_id == SULFUR_ITEM_ID and EventBus.get_weather_system() != null and EventBus.get_weather_system().has_method("get_current_state"):
+		if int(EventBus.get_weather_system().get_current_state()) == WeatherSystem.WeatherState.ACID_MIST:
 			if not tooltip_hint.is_empty():
 				tooltip_hint += "\n\n"
 			tooltip_hint += "[NOTICE] Acid Mist is active: exposed sulfur nodes in the world are degrading."
 			
-	if item_id == _carrier_risk_item_id and CarrierRiskSystem.has_method("get_active_risk_reason"):
-		var active_risk_reason = CarrierRiskSystem.get_active_risk_reason(item_id)
+	if item_id == _carrier_risk_item_id and EventBus.get_carrier_risk_system().has_method("get_active_risk_reason"):
+		var active_risk_reason = EventBus.get_carrier_risk_system().get_active_risk_reason(item_id)
 		if not active_risk_reason.is_empty():
 			if tooltip_hint.is_empty():
 				tooltip_hint = "[DANGER] " + active_risk_reason
@@ -897,17 +923,17 @@ func _build_recipe_rows() -> void:
 	recipe_row_refs.clear()
 
 	var recipe_ids: Array[String] = []
-	for recipe_id: StringName in RecipeDatabase.get_all_recipes().keys():
+	for recipe_id: StringName in GameplayData.recipes().get_all_recipes().keys():
 		recipe_ids.append(String(recipe_id))
 	recipe_ids.sort()
 
 	for recipe_id_text: String in recipe_ids:
 		var recipe_id := StringName(recipe_id_text)
-		var recipe := RecipeDatabase.get_recipe(recipe_id)
+		var recipe := GameplayData.recipes().get_recipe(recipe_id)
 		if recipe.is_empty():
 			continue
 		var station_id := StringName(recipe.get(&"station", &""))
-		if recipe.get(&"station", null) != null and not RecipeDatabase.is_inventory_station(station_id):
+		if recipe.get(&"station", null) != null and not GameplayData.recipes().is_inventory_station(station_id):
 			continue
 
 		var row := PanelContainer.new()
@@ -1069,7 +1095,7 @@ func _refresh_recipe_states() -> void:
 		var availability_label: Label = row_ref.get("availability_label")
 		var payoff_tag_label: Label = row_ref.get("payoff_tag_label")
 		var row_style: StyleBoxFlat = row_ref.get("style")
-		var recipe := RecipeDatabase.get_recipe(recipe_id)
+		var recipe := GameplayData.recipes().get_recipe(recipe_id)
 		var is_unlocked := _is_recipe_unlocked(recipe)
 		if title_label != null:
 			title_label.text = _get_recipe_display_name(recipe_id) if is_unlocked else _get_recipe_locked_name(recipe)
@@ -1086,7 +1112,7 @@ func _refresh_recipe_states() -> void:
 				payoff_tag_label.text = ""
 				payoff_tag_label.visible = false
 			continue
-		var can_craft_now := CraftingManager.can_craft(recipe_id)
+		var can_craft_now: bool = EventBus.get_crafting_manager().can_craft(recipe_id)
 		availability_label.text = "Materials\nReady" if can_craft_now else "Materials\nMissing"
 		availability_label.modulate = CRAFT_READY_COLOR if can_craft_now else CRAFT_LOCKED_COLOR
 		row_style.border_color = CRAFT_READY_COLOR if can_craft_now else RECIPE_ROW_BORDER_COLOR
@@ -1097,7 +1123,7 @@ func _refresh_recipe_states() -> void:
 
 
 func _update_crafting_highlight() -> void:
-	if CraftingManager.first_craft_completed or not panel.visible or not CraftingManager.has_any_craftable_recipe():
+	if EventBus.get_crafting_manager().first_craft_completed or not panel.visible or not EventBus.get_crafting_manager().has_any_craftable_recipe():
 		_stop_highlight()
 		return
 
@@ -1177,30 +1203,30 @@ func _get_recipe_payoff_tag(recipe_id: StringName) -> String:
 
 
 func _is_recipe_unlocked(recipe: Dictionary) -> bool:
-	if DiscoveryLog != null and DiscoveryLog.has_method("is_recipe_unlocked"):
-		return bool(DiscoveryLog.is_recipe_unlocked(recipe))
+	if EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("is_recipe_unlocked"):
+		return bool(EventBus.get_discovery_log().is_recipe_unlocked(recipe))
 	return true
 
 
 func _get_recipe_gate_hint(recipe: Dictionary) -> String:
-	if DiscoveryLog != null and DiscoveryLog.has_method("get_recipe_gate_hint"):
-		return str(DiscoveryLog.get_recipe_gate_hint(recipe))
+	if EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("get_recipe_gate_hint"):
+		return str(EventBus.get_discovery_log().get_recipe_gate_hint(recipe))
 	return ""
 
 
 func _get_recipe_locked_name(recipe: Dictionary) -> String:
-	if DiscoveryLog != null and DiscoveryLog.has_method("get_recipe_locked_name"):
-		return str(DiscoveryLog.get_recipe_locked_name(recipe))
+	if EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("get_recipe_locked_name"):
+		return str(EventBus.get_discovery_log().get_recipe_locked_name(recipe))
 	return "???"
 
 
 func _get_recipe_display_name(recipe_id: StringName) -> String:
-	var recipe := RecipeDatabase.get_recipe(recipe_id)
+	var recipe := GameplayData.recipes().get_recipe(recipe_id)
 	var output: Dictionary = recipe.get(&"output", {})
 	var item_id := StringName(output.get(&"item_id", &""))
 	if item_id.is_empty():
 		return "Unknown"
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		return str(element_data.get(&"display_name", item_id))
 	var words := String(item_id).split("_", false)

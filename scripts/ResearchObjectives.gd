@@ -1,4 +1,7 @@
+class_name ResearchObjectives
 extends Node
+
+const GameplayData = preload("res://scripts/GameplayData.gd")
 # Autoload: ResearchObjectives
 
 signal objective_completed(objective_id: StringName)
@@ -138,8 +141,8 @@ func restore_persistent_state(data: Dictionary) -> void:
 
 
 func _connect_completion_hooks() -> void:
-	if ElementDatabase != null and not ElementDatabase.element_discovered.is_connected(_on_element_discovered):
-		ElementDatabase.element_discovered.connect(_on_element_discovered)
+	if GameplayData.elements() != null and not GameplayData.elements().element_discovered.is_connected(_on_element_discovered):
+		GameplayData.elements().element_discovered.connect(_on_element_discovered)
 	if EventBus != null and EventBus.has_signal("crafting_completed") and not EventBus.crafting_completed.is_connected(_on_crafting_completed):
 		EventBus.crafting_completed.connect(_on_crafting_completed)
 	if InventoryManager != null and not InventoryManager.inventory_changed.is_connected(_on_inventory_changed):
@@ -480,15 +483,15 @@ func _apply_reward(objective: Dictionary) -> void:
 
 	match reward_type:
 		"unlock_recipe":
-			if RecipeDatabase != null:
-				RecipeDatabase.unlock_recipe(reward_target)
+			if GameplayData.recipes() != null:
+				GameplayData.recipes().unlock_recipe(reward_target)
 		"unlock_journal":
-			if DiscoveryLog != null and DiscoveryLog.has_method("log_progression_discovery"):
+			if EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("log_progression_discovery"):
 				var title := str(objective.get(&"reward_entry_title", objective.get(&"title", "Objective Reward")))
 				var notes := str(objective.get(&"reward_entry_notes", ""))
 				if notes.is_empty():
 					notes = "Research objective reward unlocked: %s" % String(reward_target).replace("_", " ").capitalize()
-				DiscoveryLog.log_progression_discovery(reward_target, title, notes)
+				EventBus.get_discovery_log().log_progression_discovery(reward_target, title, notes)
 		"unlock_upgrade":
 			pass
 
@@ -511,11 +514,11 @@ func _refresh_active_objective() -> void:
 				_complete_objective(objective_id)
 		&"first_smelt":
 			for output_id: StringName in FIRST_SMELT_OUTPUTS:
-				if ElementDatabase != null and ElementDatabase.is_element_discovered(output_id):
+				if GameplayData.elements() != null and GameplayData.elements().is_element_discovered(output_id):
 					_complete_objective(objective_id)
 					return
 		&"discover_steel":
-			if ElementDatabase != null and ElementDatabase.is_element_discovered(&"steel"):
+			if GameplayData.elements() != null and GameplayData.elements().is_element_discovered(&"steel"):
 				_complete_objective(objective_id)
 		&"build_chem_bench":
 			if _has_placed_buildable(&"chem_bench"):
@@ -524,7 +527,7 @@ func _refresh_active_objective() -> void:
 			if InventoryManager != null and InventoryManager.get_stack(&"distillation_kit").quantity >= 1:
 				_complete_objective(objective_id)
 		&"reach_sulfur_flats":
-			if DiscoveryLog != null and DiscoveryLog.has_method("has_discovery") and DiscoveryLog.has_discovery(SULFUR_FLATS_WEATHER_ENTRY_ID):
+			if EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("has_discovery") and EventBus.get_discovery_log().has_discovery(SULFUR_FLATS_WEATHER_ENTRY_ID):
 				_complete_objective(objective_id)
 		&"sulfur_run":
 			if InventoryManager != null and InventoryManager.get_stack(&"sulfur").quantity >= 1:
@@ -535,7 +538,7 @@ func _refresh_active_objective() -> void:
 		&"recover_lithium":
 			if InventoryManager != null and InventoryManager.get_stack(&"lithium").quantity >= 1:
 				_complete_objective(objective_id)
-			elif ElementDatabase != null and ElementDatabase.is_element_discovered(&"lithium"):
+			elif GameplayData.elements() != null and GameplayData.elements().is_element_discovered(&"lithium"):
 				_complete_objective(objective_id)
 		&"build_dry_box":
 			if _has_placed_buildable(&"dry_box"):
@@ -543,12 +546,12 @@ func _refresh_active_objective() -> void:
 		&"recover_sodium":
 			if InventoryManager != null and InventoryManager.get_stack(&"sodium").quantity >= 1:
 				_complete_objective(objective_id)
-			elif ElementDatabase != null and ElementDatabase.is_element_discovered(&"sodium"):
+			elif GameplayData.elements() != null and GameplayData.elements().is_element_discovered(&"sodium"):
 				_complete_objective(objective_id)
 		&"recover_mercury":
 			if InventoryManager != null and InventoryManager.get_stack(&"mercury").quantity >= 1:
 				_complete_objective(objective_id)
-			elif ElementDatabase != null and ElementDatabase.is_element_discovered(&"mercury"):
+			elif GameplayData.elements() != null and GameplayData.elements().is_element_discovered(&"mercury"):
 				_complete_objective(objective_id)
 		&"charge_base":
 			if GameManager != null and GameManager.scanner_tier == GameManager.ScannerTier.ADVANCED:
@@ -796,15 +799,15 @@ func _get_objective_target_count(objective_id: StringName) -> int:
 func _should_count_night_defense_uptime() -> bool:
 	if GameManager == null or not GameManager.has_method("is_night") or not GameManager.is_night():
 		return false
-	if BaseDefenseSystem == null or not BaseDefenseSystem.has_method("get_total_drain_per_second"):
+	if EventBus.get_base_defense_system() == null or not EventBus.get_base_defense_system().has_method("get_total_drain_per_second"):
 		return false
-	return float(BaseDefenseSystem.get_total_drain_per_second()) > 0.0
+	return float(EventBus.get_base_defense_system().get_total_drain_per_second()) > 0.0
 
 
 func _get_scan_progress() -> int:
 	var total := 0
 	for element_id: StringName in STARTER_SCAN_TARGETS:
-		if ElementDatabase != null and ElementDatabase.has_method("is_element_scanned") and ElementDatabase.is_element_scanned(element_id):
+		if GameplayData.elements() != null and GameplayData.elements().has_method("is_element_scanned") and GameplayData.elements().is_element_scanned(element_id):
 			total += 1
 	return total
 

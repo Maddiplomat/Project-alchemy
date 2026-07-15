@@ -1,24 +1,16 @@
+class_name BaseThreatDirector
 extends Node
+
+const GameplayData = preload("res://scripts/GameplayData.gd")
+const WeatherSystem = preload("res://scripts/WeatherSystem.gd")
+const StorageManager = preload("res://scripts/StorageManager.gd")
+const DEFAULT_CONFIG: BaseThreatConfig = preload("res://data/config/base_threat_config.tres")
 
 signal threat_lesson_triggered(lesson_id: StringName, message: String)
 
-const CHECK_INTERVAL_SECONDS := 1.0
-const EXPOSED_STORAGE_DAMAGE_SECONDS := 12.0
-const RAIN_STORAGE_PURITY_LOSS := 0.25
-const RAIN_STORAGE_LITHIUM_CHARGE_LOSS := 0.35
-const RAIN_STATION_WARNING_SECONDS := 5.0
-const VOLATILE_CHECK_SECONDS := 1.5
-const VOLATILE_DANGER_DISTANCE_PIXELS := 72.0
-const VOLATILE_SAFE_DISTANCE_PIXELS := 128.0
-const ENCLOSURE_RADIUS_TILES := 5
-const BREACH_REPORT_COOLDOWN_SECONDS := 4.0
-const NIGHT_ATTRACTION_RADIUS_PIXELS := 300.0
-const POST_TUTORIAL_ESCALATION_DAY_TIER_ONE := 3
-const POST_TUTORIAL_ESCALATION_DAY_TIER_TWO := 5
-const POST_TUTORIAL_NIGHT_ATTRACTION_RADIUS_TIER_ONE_PIXELS := 380.0
-const POST_TUTORIAL_NIGHT_ATTRACTION_RADIUS_TIER_TWO_PIXELS := 440.0
 const WET_STATUS_ID := &"wet"
-const WET_STATUS_REFRESH_SECONDS := 3.0
+
+@export var config: BaseThreatConfig = DEFAULT_CONFIG
 
 const LESSON_RAIN_ROOF := &"rain_roof"
 const LESSON_RAIN_ROOF_FAILURE := &"rain_roof_failure"
@@ -49,20 +41,22 @@ var _loop_escalation_tier := 0
 
 
 func _ready() -> void:
+	if config == null:
+		config = DEFAULT_CONFIG
 	if GameManager != null and GameManager.has_signal("night_started"):
 		GameManager.night_started.connect(_on_night_started)
 	if GameManager != null and GameManager.has_signal("day_started"):
 		GameManager.day_started.connect(_on_day_started)
 	if GameManager != null and GameManager.has_signal("day_changed"):
 		GameManager.day_changed.connect(_on_day_changed)
-	if BuildSystem != null and BuildSystem.has_signal("buildable_placed"):
-		BuildSystem.buildable_placed.connect(_on_buildable_placed)
-	if WeatherSystem != null and WeatherSystem.has_signal("weather_changed"):
-		WeatherSystem.weather_changed.connect(_on_weather_changed)
-	if ResearchObjectives != null and ResearchObjectives.has_signal("objective_completed"):
-		ResearchObjectives.objective_completed.connect(_on_objective_completed)
-	if WeatherSystem != null and WeatherSystem.has_method("get_current_state"):
-		_rain_was_active = int(WeatherSystem.get_current_state()) == WeatherSystem.WeatherState.RAIN
+	if EventBus.get_build_system() != null and EventBus.get_build_system().has_signal("buildable_placed"):
+		EventBus.get_build_system().buildable_placed.connect(_on_buildable_placed)
+	if EventBus.get_weather_system() != null and EventBus.get_weather_system().has_signal("weather_changed"):
+		EventBus.get_weather_system().weather_changed.connect(_on_weather_changed)
+	if EventBus.get_research_objectives() != null and EventBus.get_research_objectives().has_signal("objective_completed"):
+		EventBus.get_research_objectives().objective_completed.connect(_on_objective_completed)
+	if EventBus.get_weather_system() != null and EventBus.get_weather_system().has_method("get_current_state"):
+		_rain_was_active = int(EventBus.get_weather_system().get_current_state()) == WeatherSystem.WeatherState.RAIN
 	_loop_escalation_tier = _get_loop_escalation_tier()
 
 
@@ -71,13 +65,13 @@ func _physics_process(delta: float) -> void:
 		return
 	_check_elapsed += delta
 	_breach_report_elapsed = maxf(0.0, _breach_report_elapsed - delta)
-	if _check_elapsed < CHECK_INTERVAL_SECONDS:
+	if _check_elapsed < config.check_interval_seconds:
 		return
 	_check_elapsed = 0.0
 	_process_player_wet_status()
-	_process_weather_storage(CHECK_INTERVAL_SECONDS)
-	_process_rain_station_pressure(CHECK_INTERVAL_SECONDS)
-	_process_volatile_storage(CHECK_INTERVAL_SECONDS)
+	_process_weather_storage(config.check_interval_seconds)
+	_process_rain_station_pressure(config.check_interval_seconds)
+	_process_volatile_storage(config.check_interval_seconds)
 	_process_night_pressure()
 	_process_expedition_return()
 
@@ -184,9 +178,9 @@ func get_weighted_enemy_attraction_target(
 func report_enemy_base_breach(enemy: Node2D) -> void:
 	if enemy == null or _breach_report_elapsed > 0.0:
 		return
-	_breach_report_elapsed = BREACH_REPORT_COOLDOWN_SECONDS
+	_breach_report_elapsed = config.breach_report_cooldown_seconds
 	var has_wall := not get_tree().get_nodes_in_group(&"placed_walls").is_empty()
-	var has_light := BaseDefenseSystem != null and BaseDefenseSystem.has_method("get_active_light_count") and BaseDefenseSystem.get_active_light_count() > 0
+	var has_light: bool = EventBus.get_base_defense_system() != null and EventBus.get_base_defense_system().has_method("get_active_light_count") and EventBus.get_base_defense_system().get_active_light_count() > 0
 	var has_trap := not get_tree().get_nodes_in_group(&"electric_trap").is_empty()
 	if has_wall and has_light and has_trap:
 		_emit_lesson(
@@ -213,7 +207,7 @@ func is_position_in_walled_enclosure(world_position: Vector2) -> bool:
 	visited[start] = true
 	while not frontier.is_empty():
 		var current: Vector2i = frontier.pop_front()
-		if abs(current.x - start.x) > ENCLOSURE_RADIUS_TILES or abs(current.y - start.y) > ENCLOSURE_RADIUS_TILES:
+		if abs(current.x - start.x) > config.enclosure_radius_tiles or abs(current.y - start.y) > config.enclosure_radius_tiles:
 			return false
 		for offset in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
 			var next_tile: Vector2i = current + offset
@@ -230,7 +224,7 @@ func _process_weather_storage(delta: float) -> void:
 		_exposed_storage_elapsed = 0.0
 		return
 	_exposed_storage_elapsed += delta
-	if _exposed_storage_elapsed < EXPOSED_STORAGE_DAMAGE_SECONDS:
+	if _exposed_storage_elapsed < config.exposed_storage_damage_seconds:
 		return
 	_exposed_storage_elapsed = 0.0
 
@@ -241,19 +235,19 @@ func _process_weather_storage(delta: float) -> void:
 		var container_id := _get_storage_container_id(node)
 		if container_id.is_empty():
 			continue
-		var filter_id := StorageManager.get_container_filter_id(container_id)
+		var filter_id: StringName = EventBus.get_storage_manager().get_container_filter_id(container_id)
 		var sheltered := _is_sheltered(node.global_position)
-		var items := StorageManager.get_container_items(container_id)
+		var items: Dictionary = EventBus.get_storage_manager().get_container_items(container_id)
 		if state == WeatherSystem.WeatherState.RAIN:
 			if items.has(&"lithium"):
 				if filter_id == StorageManager.FILTER_WATER_REACTIVE_ELEMENTS and sheltered:
 					continue
 				var lithium_stack: Dictionary = items.get(&"lithium", {})
 				var current_charge := clampf(float(lithium_stack.get(&"charge", InventoryManager.DEFAULT_LITHIUM_CHARGE)), 0.0, 1.0)
-				var next_charge := clampf(current_charge - RAIN_STORAGE_LITHIUM_CHARGE_LOSS, 0.0, 1.0)
-				StorageManager.set_container_item_charge(container_id, &"lithium", next_charge)
+				var next_charge := clampf(current_charge - config.rain_storage_lithium_charge_loss, 0.0, 1.0)
+				EventBus.get_storage_manager().set_container_item_charge(container_id, &"lithium", next_charge)
 				if next_charge <= 0.0:
-					StorageManager.damage_container_item(container_id, &"lithium", 1, LESSON_DRY_BOX)
+					EventBus.get_storage_manager().damage_container_item(container_id, &"lithium", 1, LESSON_DRY_BOX)
 					_emit_lesson(LESSON_DRY_BOX_FAILURE, "Lithium spoiled in wet storage. A Dry Box under a Shelter Roof protects it completely.")
 				else:
 					_emit_lesson(LESSON_DRY_BOX_FAILURE, "Lithium charge is draining in wet storage. A roofed Dry Box stops the loss.")
@@ -262,16 +256,16 @@ func _process_weather_storage(delta: float) -> void:
 				var damaged_item := _pick_weather_damage_item(items)
 				if damaged_item.is_empty():
 					continue
-				var next_purity := StorageManager.adjust_container_item_purity(container_id, damaged_item, -RAIN_STORAGE_PURITY_LOSS)
+				var next_purity: float = EventBus.get_storage_manager().adjust_container_item_purity(container_id, damaged_item, -config.rain_storage_purity_loss)
 				if next_purity <= 0.0:
-					StorageManager.damage_container_item(container_id, damaged_item, 1, LESSON_RAIN_ROOF)
+					EventBus.get_storage_manager().damage_container_item(container_id, damaged_item, 1, LESSON_RAIN_ROOF)
 					_emit_lesson(LESSON_RAIN_ROOF_FAILURE, "Rain ruined an uncovered storage item. A Shelter Roof over stations and chests prevents this.")
 				else:
 					_emit_lesson(LESSON_RAIN_ROOF_FAILURE, "Rain lowered the quality of uncovered storage. Roofed chests stay intact.")
 				return
 		elif state == WeatherSystem.WeatherState.ACID_MIST and not sheltered and filter_id == StorageManager.FILTER_ANY:
 			var acid_item := &"sulfur" if items.has(&"sulfur") else _pick_weather_damage_item(items)
-			if not acid_item.is_empty() and StorageManager.damage_container_item(container_id, acid_item, 1, LESSON_RAIN_ROOF) > 0:
+			if not acid_item.is_empty() and EventBus.get_storage_manager().damage_container_item(container_id, acid_item, 1, LESSON_RAIN_ROOF) > 0:
 				_emit_lesson(LESSON_RAIN_ROOF_FAILURE, "Acid mist ate into uncovered storage. Roofed work areas keep stations and chests out of the weather.")
 				return
 
@@ -281,7 +275,7 @@ func _process_rain_station_pressure(delta: float) -> void:
 		_rain_station_elapsed = 0.0
 		return
 	_rain_station_elapsed += delta
-	if _rain_station_elapsed < RAIN_STATION_WARNING_SECONDS:
+	if _rain_station_elapsed < config.rain_station_warning_seconds:
 		return
 	_rain_station_elapsed = 0.0
 	for station_node in get_tree().get_nodes_in_group(&"placed_stations"):
@@ -306,13 +300,13 @@ func _process_player_wet_status() -> void:
 	var health_system := player.get_node_or_null("HealthSystem")
 	if health_system == null or not health_system.has_method("add_status_effect"):
 		return
-	health_system.add_status_effect(WET_STATUS_ID, 0, WET_STATUS_REFRESH_SECONDS, "Rain exposure")
+	health_system.add_status_effect(WET_STATUS_ID, 0, config.wet_status_refresh_seconds, "Rain exposure")
 	_emit_lesson(LESSON_WET_STATUS, "Rain soaked you. Wet hands make cold worse and reactive chemistry less reliable.")
 
 
 func _process_volatile_storage(delta: float) -> void:
 	_volatile_elapsed += delta
-	if _volatile_elapsed < VOLATILE_CHECK_SECONDS:
+	if _volatile_elapsed < config.volatile_check_seconds:
 		return
 	_volatile_elapsed = 0.0
 	var heat_sources := _get_heat_sources()
@@ -323,17 +317,17 @@ func _process_volatile_storage(delta: float) -> void:
 		if node == null:
 			continue
 		var container_id := _get_storage_container_id(node)
-		if container_id.is_empty() or StorageManager.get_container_quantity(container_id, &"sulfur") <= 0:
+		if container_id.is_empty() or EventBus.get_storage_manager().get_container_quantity(container_id, &"sulfur") <= 0:
 			continue
-		var filter_id := StorageManager.get_container_filter_id(container_id)
+		var filter_id: StringName = EventBus.get_storage_manager().get_container_filter_id(container_id)
 		var nearest_heat := _nearest_distance_to_nodes(node.global_position, heat_sources)
-		if nearest_heat <= VOLATILE_DANGER_DISTANCE_PIXELS:
-			var lost := StorageManager.damage_container_item(container_id, &"sulfur", 1, LESSON_VOLATILE_SEPARATION)
+		if nearest_heat <= config.volatile_danger_distance_pixels:
+			var lost: int = EventBus.get_storage_manager().damage_container_item(container_id, &"sulfur", 1, LESSON_VOLATILE_SEPARATION)
 			if lost > 0:
 				_emit_lesson(LESSON_VOLATILE_FAILURE, "Sulfur flashed beside heat. Keep volatile lockers separated from furnaces and campfires.")
 				_spawn_small_warning_flash(node.global_position)
 				return
-		if filter_id == StorageManager.FILTER_VOLATILE_ELEMENTS and nearest_heat >= VOLATILE_SAFE_DISTANCE_PIXELS:
+		if filter_id == StorageManager.FILTER_VOLATILE_ELEMENTS and nearest_heat >= config.volatile_safe_distance_pixels:
 			_emit_lesson(LESSON_VOLATILE_SEPARATION, "Separated sulfur stayed stable in the Volatile Locker. Distance from heat is the protection.")
 
 
@@ -437,9 +431,9 @@ func _is_active() -> bool:
 
 
 func _get_weather_state() -> int:
-	if WeatherSystem == null or not WeatherSystem.has_method("get_current_state"):
+	if EventBus.get_weather_system() == null or not EventBus.get_weather_system().has_method("get_current_state"):
 		return -1
-	return int(WeatherSystem.get_current_state())
+	return int(EventBus.get_weather_system().get_current_state())
 
 
 func _get_storage_container_id(node: Node) -> StringName:
@@ -453,9 +447,9 @@ func _get_storage_container_id(node: Node) -> StringName:
 
 
 func _is_sheltered(world_position: Vector2) -> bool:
-	return WeatherSystem != null \
-		and WeatherSystem.has_method("get_shelter_at") \
-		and bool(WeatherSystem.get_shelter_at(world_position))
+	return EventBus.get_weather_system() != null \
+		and EventBus.get_weather_system().has_method("get_shelter_at") \
+		and bool(EventBus.get_weather_system().get_shelter_at(world_position))
 
 
 func _pick_weather_damage_item(items: Dictionary) -> StringName:
@@ -507,7 +501,7 @@ func _get_attraction_sources() -> Array[Node2D]:
 		if node_2d == null:
 			continue
 		var container_id := _get_storage_container_id(node_2d)
-		if not container_id.is_empty() and StorageManager.get_container_quantity(container_id, &"sulfur") > 0:
+		if not container_id.is_empty() and EventBus.get_storage_manager().get_container_quantity(container_id, &"sulfur") > 0:
 			sources.append(node_2d)
 	return sources
 
@@ -528,7 +522,7 @@ func _get_attraction_source_weight(
 		return powered_light_weight
 	if source_node.is_in_group(&"placed_storage"):
 		var container_id := _get_storage_container_id(source_node)
-		if not container_id.is_empty() and StorageManager.get_container_quantity(container_id, &"sulfur") > 0:
+		if not container_id.is_empty() and EventBus.get_storage_manager().get_container_quantity(container_id, &"sulfur") > 0:
 			return sulfur_storage_weight
 	if source_node.is_in_group(&"heat_source"):
 		return heat_weight
@@ -564,7 +558,7 @@ func _is_near_any_storage(world_position: Vector2) -> bool:
 func _has_storage_filter(filter_id: StringName) -> bool:
 	for storage_node in get_tree().get_nodes_in_group(&"placed_storage"):
 		var container_id := _get_storage_container_id(storage_node as Node)
-		if container_id.is_empty() or StorageManager.get_container_filter_id(container_id) != filter_id:
+		if container_id.is_empty() or EventBus.get_storage_manager().get_container_filter_id(container_id) != filter_id:
 			continue
 		return true
 	return false
@@ -610,7 +604,7 @@ func _get_player() -> Node2D:
 
 
 func _display_item_name(item_id: StringName) -> String:
-	var data := ElementDatabase.get_element(item_id)
+	var data := GameplayData.elements().get_element(item_id)
 	if not data.is_empty():
 		return str(data.get(&"display_name", item_id))
 	return String(item_id).replace("_", " ").capitalize()
@@ -619,11 +613,11 @@ func _display_item_name(item_id: StringName) -> String:
 func _get_night_attraction_radius() -> float:
 	match _get_loop_escalation_tier():
 		2:
-			return POST_TUTORIAL_NIGHT_ATTRACTION_RADIUS_TIER_TWO_PIXELS
+			return config.night_attraction_radius_tier_two_pixels
 		1:
-			return POST_TUTORIAL_NIGHT_ATTRACTION_RADIUS_TIER_ONE_PIXELS
+			return config.night_attraction_radius_tier_one_pixels
 		_:
-			return NIGHT_ATTRACTION_RADIUS_PIXELS
+			return config.night_attraction_radius_pixels
 
 
 func _get_loop_escalation_tier() -> int:
@@ -631,9 +625,9 @@ func _get_loop_escalation_tier() -> int:
 		return 0
 	if not GameManager.post_tutorial_loop_active:
 		return 0
-	if GameManager.current_day >= POST_TUTORIAL_ESCALATION_DAY_TIER_TWO:
+	if GameManager.current_day >= config.escalation_day_tier_two:
 		return 2
-	if GameManager.current_day >= POST_TUTORIAL_ESCALATION_DAY_TIER_ONE:
+	if GameManager.current_day >= config.escalation_day_tier_one:
 		return 1
 	return 0
 

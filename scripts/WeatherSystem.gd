@@ -1,3 +1,4 @@
+class_name WeatherSystem
 extends Node
 
 enum WeatherState { CLEAR, RAIN, ACID_MIST, ELECTRICAL_STORM }
@@ -320,8 +321,8 @@ func _check_sulfur_flats_unlock() -> void:
 		return
 
 	_rare_weather_unlocked = true
-	if DiscoveryLog != null and DiscoveryLog.has_method("log_progression_discovery"):
-		DiscoveryLog.log_progression_discovery(
+	if EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("log_progression_discovery"):
+		EventBus.get_discovery_log().log_progression_discovery(
 			SULFUR_FLATS_UNLOCK_ENTRY_ID,
 			SULFUR_FLATS_UNLOCK_TITLE,
 			SULFUR_FLATS_UNLOCK_NOTES
@@ -332,9 +333,9 @@ func _check_sulfur_flats_unlock() -> void:
 func _refresh_saved_unlock_state() -> void:
 	if _rare_weather_unlocked:
 		return
-	if DiscoveryLog == null or not DiscoveryLog.has_method("has_discovery"):
+	if EventBus.get_discovery_log() == null or not EventBus.get_discovery_log().has_method("has_discovery"):
 		return
-	_rare_weather_unlocked = bool(DiscoveryLog.has_discovery(SULFUR_FLATS_UNLOCK_ENTRY_ID))
+	_rare_weather_unlocked = bool(EventBus.get_discovery_log().has_discovery(SULFUR_FLATS_UNLOCK_ENTRY_ID))
 
 
 func _is_weather_active() -> bool:

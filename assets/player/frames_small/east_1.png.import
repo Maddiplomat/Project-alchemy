@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://jnddat6apwg8"
-path="res://.godot/imported/east_1.png-6bdd8d75f3d3b627b38f7f01385c7180.ctex"
+path.s3tc="res://.godot/imported/east_1.png-6bdd8d75f3d3b627b38f7f01385c7180.s3tc.ctex"
+path.etc2="res://.godot/imported/east_1.png-6bdd8d75f3d3b627b38f7f01385c7180.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/player/frames_small/east_1.png"
-dest_files=["res://.godot/imported/east_1.png-6bdd8d75f3d3b627b38f7f01385c7180.ctex"]
+dest_files=["res://.godot/imported/east_1.png-6bdd8d75f3d3b627b38f7f01385c7180.s3tc.ctex", "res://.godot/imported/east_1.png-6bdd8d75f3d3b627b38f7f01385c7180.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

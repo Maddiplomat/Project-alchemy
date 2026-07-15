@@ -10,6 +10,8 @@ const LIFETIME_SECONDS := 0.8
 @onready var particles: GPUParticles2D = $GPUParticles2D
 
 var _activated := false
+var _lifetime_timer: Timer = null
+var _particles_configured := false
 
 
 func _ready() -> void:
@@ -23,10 +25,38 @@ func _activate_explosion() -> void:
 	_apply_explosion_damage()
 	if destroy_inventory_slot:
 		_destroy_random_inventory_slot()
-	_configure_particles()
+	if not _particles_configured:
+		_configure_particles()
+		_particles_configured = true
 	particles.restart()
 	particles.emitting = true
-	get_tree().create_timer(LIFETIME_SECONDS).timeout.connect(queue_free, CONNECT_ONE_SHOT)
+	_ensure_lifetime_timer()
+	_lifetime_timer.start(LIFETIME_SECONDS)
+
+
+func _pool_reset() -> void:
+	_activated = false
+	damage_radius_pixels = 32.0
+	damage_amount = 30
+	damage_type = "chemical"
+	destroy_inventory_slot = true
+	if particles != null:
+		particles.emitting = false
+	if _lifetime_timer != null:
+		_lifetime_timer.stop()
+
+
+func _ensure_lifetime_timer() -> void:
+	if _lifetime_timer != null:
+		return
+	_lifetime_timer = Timer.new()
+	_lifetime_timer.one_shot = true
+	_lifetime_timer.timeout.connect(_release_to_pool)
+	add_child(_lifetime_timer)
+
+
+func _release_to_pool() -> void:
+	ObjectPool.release(self)
 
 
 func _apply_explosion_damage() -> void:

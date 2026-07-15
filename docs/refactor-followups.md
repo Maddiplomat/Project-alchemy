@@ -63,16 +63,16 @@ Acceptance:
 - Notifications can be triggered without exercising unrelated HUD state.
 - Input routing is isolated from status rendering.
 
-## Ticket RF-003: Split `inventory_grid.gd`
+## Ticket RF-003: Split `InventoryGrid.gd`
 
 Current size: `966` lines
 
 Problem:
-`inventory_grid.gd` mixes rendering, drag state, slot movement rules, crafting hints, and inventory interaction side effects.
+`InventoryGrid.gd` mixes rendering, drag state, slot movement rules, crafting hints, and inventory interaction side effects.
 
 Target split:
 
-- `inventory_grid.gd`
+- `InventoryGrid.gd`
   - scene wiring, node references, top-level refresh flow
 - `InventoryGridRenderer.gd`
   - grid visuals, slot visuals, tooltip display
@@ -194,7 +194,7 @@ Acceptance:
 
 Recommended order after the furnace split settles:
 
-1. `inventory_grid.gd`
+1. `InventoryGrid.gd`
 2. `HUD.gd`
 3. `ChemBenchUI.gd`
 4. `BuildSystem.gd`

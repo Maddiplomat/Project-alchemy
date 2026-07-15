@@ -20,7 +20,7 @@ func _ready() -> void:
 
 
 func _run_test() -> void:
-	WorldSystem.clear_persistent_state()
+	EventBus.get_world_system().clear_persistent_state()
 	_power_switchboard = PowerSwitchboardScript.new()
 	_world_save_data = WorldSaveDataScript.new()
 	add_child(_power_switchboard)
@@ -80,7 +80,7 @@ func _run_world_snapshot_regression() -> void:
 		]
 	)
 
-	WorldSystem.store_scene_state(WORLD_SCENE_PATH, world_scene_state)
+	EventBus.get_world_system().store_scene_state(WORLD_SCENE_PATH, world_scene_state)
 	_power_switchboard.set_consumer_enabled(_power_switchboard.CONSUMER_TRAP_NETWORK, false)
 	_power_switchboard.set_consumer_enabled(_power_switchboard.CONSUMER_FURNACE_BOOST, false)
 	_apply_scene_state_to_world_save_data(_world_save_data, sodium_scene_state)
@@ -157,16 +157,16 @@ func _run_world_snapshot_regression() -> void:
 	_power_switchboard.set_consumer_enabled(_power_switchboard.CONSUMER_FURNACE_BOOST, true)
 	_switchboard_restore_signals = 0
 	_power_switchboard.switchboard_changed.connect(_on_switchboard_changed)
-	WorldSystem.clear_persistent_state()
+	EventBus.get_world_system().clear_persistent_state()
 	_world_save_data.deserialize(extracted_full)
 	_power_switchboard.switchboard_changed.disconnect(_on_switchboard_changed)
 
 	_assert(
-		_scene_states_match(world_scene_state, WorldSystem.get_scene_state(WORLD_SCENE_PATH)),
+		_scene_states_match(world_scene_state, EventBus.get_world_system().get_scene_state(WORLD_SCENE_PATH)),
 		"Expected WorldSystem to restore the World snapshot from the save payload."
 	)
 	_assert(
-		_scene_states_match(sodium_scene_state, WorldSystem.get_scene_state(SODIUM_SHOALS_SCENE_PATH)),
+		_scene_states_match(sodium_scene_state, EventBus.get_world_system().get_scene_state(SODIUM_SHOALS_SCENE_PATH)),
 		"Expected WorldSystem to restore the Sodium Shoals snapshot from the save payload."
 	)
 	_assert(

@@ -1,4 +1,7 @@
+class_name BuildSystem
 extends Node
+
+const GameplayData = preload("res://scripts/GameplayData.gd")
 
 signal buildable_placed(buildable_id: StringName)
 signal build_mode_changed(active: bool)
@@ -27,6 +30,8 @@ var _placement_sprite_offset := Vector2.ZERO
 var _selected_rotation_degrees := 0.0
 var _last_tile_coords := Vector2i.ZERO
 var _last_world_position := Vector2.ZERO
+var _last_preview_rotation_degrees := 0.0
+var _has_preview_state := false
 var _last_placement_valid := false
 var _last_can_confirm := false
 var _last_placement_reason := ""
@@ -90,19 +95,29 @@ func _input(event: InputEvent) -> void:
 	if not build_mode:
 		return
 
+	if event is InputEventMouseMotion:
+		var mouse_motion := event as InputEventMouseMotion
+		if not _is_pointer_over_build_menu(mouse_motion.position):
+			_update_build_preview(_get_build_context())
+		return
+
 	if event is InputEventScreenTouch:
 		var touch_event := event as InputEventScreenTouch
 		if _is_pointer_over_build_menu(touch_event.position):
+			get_viewport().set_input_as_handled()
 			return
 		MobileInputRouter.set_touch_pointer_screen_position(touch_event.position, true)
+		_update_build_preview(_get_build_context())
 		get_viewport().set_input_as_handled()
 		return
 
 	if event is InputEventScreenDrag:
 		var drag_event := event as InputEventScreenDrag
 		if _is_pointer_over_build_menu(drag_event.position):
+			get_viewport().set_input_as_handled()
 			return
 		MobileInputRouter.set_touch_pointer_screen_position(drag_event.position, true)
+		_update_build_preview(_get_build_context())
 		get_viewport().set_input_as_handled()
 		return
 
@@ -126,22 +141,11 @@ func _input(event: InputEvent) -> void:
 		var mouse_event := event as InputEventMouseButton
 		if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
 			if _is_pointer_over_build_menu(mouse_event.position):
+				get_viewport().set_input_as_handled()
 				return
 			if _last_can_confirm:
 				_confirm_selected_placement()
 			get_viewport().set_input_as_handled()
-
-
-func _process(_delta: float) -> void:
-	if not build_mode:
-		return
-
-	var context := _get_build_context()
-	if context.is_empty():
-		_exit_build_mode()
-		return
-
-	_update_build_preview(context)
 
 
 func is_build_mode_active() -> bool:
@@ -185,7 +189,7 @@ func _enter_build_mode() -> void:
 		return
 	_set_build_mode(true)
 	_prime_touch_pointer()
-	_update_build_preview(_get_build_context())
+	_update_build_preview(_get_build_context(), true)
 
 
 func _exit_build_mode() -> void:
@@ -195,7 +199,8 @@ func _exit_build_mode() -> void:
 func _set_build_mode(enabled: bool) -> void:
 	build_mode = enabled
 	build_mode_changed.emit(build_mode)
-	set_process(enabled)
+	set_process(false)
+	_has_preview_state = false
 	if not enabled:
 		_last_placement_valid = false
 		_last_can_confirm = false
@@ -242,6 +247,8 @@ func _select_prefab_by_index(index: int) -> void:
 		_ghost.texture = _ghost_texture
 		_ghost.offset = _placement_sprite_offset
 		_ghost.rotation_degrees = _selected_rotation_degrees
+	if build_mode:
+		_update_build_preview(_get_build_context(), true)
 
 
 func _rotate_selected_prefab() -> void:
@@ -250,6 +257,7 @@ func _rotate_selected_prefab() -> void:
 	_selected_rotation_degrees = fposmod(_selected_rotation_degrees + 90.0, 180.0)
 	if is_instance_valid(_ghost):
 		_ghost.rotation_degrees = _selected_rotation_degrees
+	_update_build_preview(_get_build_context(), true)
 	_refresh_build_menu()
 
 
@@ -289,7 +297,10 @@ func _get_build_context() -> Dictionary:
 	}
 
 
-func _update_build_preview(context: Dictionary) -> void:
+func _update_build_preview(context: Dictionary, force: bool = false) -> void:
+	if context.is_empty():
+		_exit_build_mode()
+		return
 	_ensure_ghost()
 	if _ghost == null:
 		return
@@ -298,9 +309,15 @@ func _update_build_preview(context: Dictionary) -> void:
 	var pointer_world := _get_pointer_world_position(ground)
 	var tile_coords := ground.local_to_map(ground.to_local(pointer_world))
 	var snapped_world_position := ground.to_global(ground.map_to_local(tile_coords))
+	if not force and _has_preview_state \
+		and tile_coords == _last_tile_coords \
+		and is_equal_approx(_selected_rotation_degrees, _last_preview_rotation_degrees):
+		return
 
 	_last_tile_coords = tile_coords
 	_last_world_position = snapped_world_position
+	_last_preview_rotation_degrees = _selected_rotation_degrees
+	_has_preview_state = true
 	var placement_state := _evaluate_placement(context, tile_coords, snapped_world_position)
 	_last_placement_valid = bool(placement_state.get(&"valid", false))
 	_last_placement_reason = str(placement_state.get(&"reason", ""))
@@ -386,8 +403,8 @@ func export_to_world_save_data(world_save_data) -> void:
 			continue
 		if node.has_method("export_to_world_save_data"):
 			node.call("export_to_world_save_data", world_save_data)
-	if has_node("/root/StorageManager"):
-		StorageManager.export_to_world_save_data(world_save_data)
+	if EventBus.get_storage_manager() != null:
+		EventBus.get_storage_manager().export_to_world_save_data(world_save_data)
 
 
 func build_world_save_data():
@@ -561,6 +578,8 @@ func _place_selected_prefab_with_restore(restore_payload: Dictionary) -> void:
 	if EventBus != null and EventBus.has_method("emit_buildable_placed"):
 		EventBus.emit_buildable_placed(selected_buildable_id)
 	GameManager.mark_dirty()
+	if build_mode:
+		_update_build_preview(context, true)
 
 
 func _ensure_ghost() -> void:
@@ -762,20 +781,20 @@ func _instantiate_saved_entries(entries: Array, scene_root: Node, ground: TileMa
 
 
 func _get_buildable_order_source() -> Array[StringName]:
-	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_order"):
-		return BuildingDatabase.get_buildable_order()
+	if GameplayData.buildings() != null and GameplayData.buildings().has_method("get_buildable_order"):
+		return GameplayData.buildings().get_buildable_order()
 	return []
 
 
 func _has_buildable(buildable_id: StringName) -> bool:
-	if BuildingDatabase != null and BuildingDatabase.has_method("has_buildable"):
-		return bool(BuildingDatabase.has_buildable(buildable_id))
+	if GameplayData.buildings() != null and GameplayData.buildings().has_method("has_buildable"):
+		return bool(GameplayData.buildings().has_buildable(buildable_id))
 	return false
 
 
 func _get_buildable_entry(buildable_id: StringName) -> Dictionary:
-	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_entry"):
-		return BuildingDatabase.get_buildable_entry(buildable_id)
+	if GameplayData.buildings() != null and GameplayData.buildings().has_method("get_buildable_entry"):
+		return GameplayData.buildings().get_buildable_entry(buildable_id)
 	return {}
 
 
@@ -791,14 +810,14 @@ func _format_cost(cost: Dictionary) -> String:
 
 
 func _is_buildable_unlocked(buildable_id: StringName) -> bool:
-	if BuildingDatabase != null and BuildingDatabase.has_method("is_buildable_unlocked"):
-		return bool(BuildingDatabase.is_buildable_unlocked(buildable_id))
+	if GameplayData.buildings() != null and GameplayData.buildings().has_method("is_buildable_unlocked"):
+		return bool(GameplayData.buildings().is_buildable_unlocked(buildable_id))
 	return true
 
 
 func _get_buildable_category_label(category_id: StringName) -> String:
-	if BuildingDatabase != null and BuildingDatabase.has_method("get_category_label"):
-		return str(BuildingDatabase.get_category_label(category_id))
+	if GameplayData.buildings() != null and GameplayData.buildings().has_method("get_category_label"):
+		return str(GameplayData.buildings().get_category_label(category_id))
 	return String(category_id).capitalize()
 
 
@@ -807,19 +826,19 @@ func _get_buildable_description(buildable_id: StringName) -> String:
 
 
 func _get_buildable_gate_hint(buildable_id: StringName) -> String:
-	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_gate_hint"):
-		return str(BuildingDatabase.get_buildable_gate_hint(buildable_id))
+	if GameplayData.buildings() != null and GameplayData.buildings().has_method("get_buildable_gate_hint"):
+		return str(GameplayData.buildings().get_buildable_gate_hint(buildable_id))
 	return ""
 
 
 func _get_buildable_locked_name(buildable_id: StringName) -> String:
-	if BuildingDatabase != null and BuildingDatabase.has_method("get_buildable_locked_name"):
-		return str(BuildingDatabase.get_buildable_locked_name(buildable_id))
+	if GameplayData.buildings() != null and GameplayData.buildings().has_method("get_buildable_locked_name"):
+		return str(GameplayData.buildings().get_buildable_locked_name(buildable_id))
 	return "???"
 
 
 func _format_resource_name(item_id: StringName) -> String:
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		return str(element_data.get(&"display_name", item_id))
 	var words := String(item_id).split("_", false)

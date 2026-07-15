@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="EnemyConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/EnemyConfig.gd" id="1_enemy"]
+
+[resource]
+script = ExtResource("1_enemy")
+health = 48
+resistances = {
+"chemical": 0.0,
+}
+move_speed = 40.0
+night_move_speed = 48.0
+burrow_speed = 90.0
+night_burrow_speed = 104.0
+patrol_radius = 64.0
+detection_radius = 240.0
+night_detection_multiplier = 1.0
+attack_range = 96.0
+attack_cooldown_seconds = 1.35
+max_pursuit_radius = 320.0
+reburrow_radius = 200.0
+player_emerge_offset = 24.0
+min_attack_separation = 18.0
+emerge_warning_seconds = 2.0
+health_bar_hide_delay = 2.0

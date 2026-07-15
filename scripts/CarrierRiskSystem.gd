@@ -1,4 +1,7 @@
+class_name CarrierRiskSystem
 extends Node
+
+const GameplayData = preload("res://scripts/GameplayData.gd")
 
 signal carrier_risk_warning(element_id: StringName, seconds_remaining: int)
 signal carrier_risk_cleared(element_id: StringName)
@@ -13,8 +16,6 @@ const MERCURY_ITEM_ID := &"mercury"
 const LITHIUM_CHARGE_LOSS_PER_SECOND := 0.15
 const LITHIUM_EXPLOSION_RADIUS_PIXELS := 16.0
 const LITHIUM_EXPLOSION_DAMAGE := 15
-const CHEMICAL_EXPLOSION_SCENE := preload("res://scenes/ChemicalExplosion.tscn")
-const TOXIC_CLOUD_SCENE := preload("res://scenes/ToxicCloud.tscn")
 
 var _check_timer: Timer = null
 var _countdowns: Dictionary = {}
@@ -63,7 +64,7 @@ func _get_active_volatile_items() -> Array[StringName]:
 		if item_id == MERCURY_ITEM_ID:
 			volatile_items.append(item_id)
 			continue
-		var element_data: Dictionary = ElementDatabase.get_element(item_id)
+		var element_data: Dictionary = GameplayData.elements().get_element(item_id)
 		if element_data.is_empty():
 			continue
 		if String(element_data.get(&"category", "")).to_lower() != "volatile":
@@ -80,7 +81,7 @@ func _should_trigger_risk_for(element_id: StringName) -> bool:
 	if bool(_external_triggers.get(element_id, false)):
 		return true
 
-	var element_data: Dictionary = ElementDatabase.get_element(element_id)
+	var element_data: Dictionary = GameplayData.elements().get_element(element_id)
 	if element_data.is_empty():
 		return false
 
@@ -150,7 +151,7 @@ func _is_lithium_exposed() -> bool:
 	if player == null:
 		return false
 
-	var weather_system := get_node_or_null("/root/WeatherSystem")
+	var weather_system := EventBus.get_weather_system()
 
 	if GameManager.active_environmental_warnings.has(&"rain"):
 		if weather_system != null and weather_system.has_method("get_shelter_at"):
@@ -212,7 +213,7 @@ func get_active_risk_reason(element_id: StringName) -> String:
 		var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
 		var player := GameManager.get_player()
 		if GameManager.active_environmental_warnings.has(&"rain"):
-			var weather_system := get_node_or_null("/root/WeatherSystem")
+			var weather_system := EventBus.get_weather_system()
 			if player != null and weather_system != null and weather_system.has_method("get_shelter_at"):
 				if bool(weather_system.call("get_shelter_at", player.global_position)):
 					return ""
@@ -251,7 +252,7 @@ func get_active_risk_reason(element_id: StringName) -> String:
 	if bool(_external_triggers.get(element_id, false)):
 		return str(_external_trigger_reasons.get(element_id, ""))
 
-	var element_data: Dictionary = ElementDatabase.get_element(element_id)
+	var element_data: Dictionary = GameplayData.elements().get_element(element_id)
 	if element_data.is_empty():
 		return ""
 
@@ -277,7 +278,7 @@ func get_active_risk_reason(element_id: StringName) -> String:
 
 
 func _get_item_display_name(item_id: StringName) -> String:
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		return str(element_data.get(&"display_name", item_id))
 	return String(item_id).replace("_", " ").capitalize()
@@ -352,7 +353,9 @@ func _trigger_ignition(element_id: StringName) -> void:
 	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
 	var player := GameManager.get_player()
 	if player is Node2D:
-		var effect: Node2D = TOXIC_CLOUD_SCENE.instantiate() if element_id == MERCURY_ITEM_ID else CHEMICAL_EXPLOSION_SCENE.instantiate()
+		var effect: Node2D = ObjectPool.get_instance_by_id(ObjectPool.SCENE_TOXIC_CLOUD) if element_id == MERCURY_ITEM_ID else ObjectPool.get_instance_by_id(ObjectPool.SCENE_CHEMICAL_EXPLOSION)
+		if effect == null:
+			return
 		scene_root.add_child(effect)
 		effect.global_position = (player as Node2D).global_position
 
@@ -368,7 +371,9 @@ func _trigger_lithium_explosion() -> void:
 	var scene_root: Node = get_tree().current_scene if get_tree().current_scene != null else get_tree().root
 	var player := GameManager.get_player()
 	if player is Node2D:
-		var explosion: Node2D = CHEMICAL_EXPLOSION_SCENE.instantiate()
+		var explosion := ObjectPool.get_instance_by_id(ObjectPool.SCENE_CHEMICAL_EXPLOSION) as Node2D
+		if explosion == null:
+			return
 		explosion.set("damage_radius_pixels", LITHIUM_EXPLOSION_RADIUS_PIXELS)
 		explosion.set("damage_amount", LITHIUM_EXPLOSION_DAMAGE)
 		explosion.set("damage_type", "explosion")

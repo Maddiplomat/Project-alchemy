@@ -1,65 +1,27 @@
 class_name FurnaceTheme
 extends RefCounted
 
+const FURNACE_STYLE := preload("res://assets/themes/furnace_style.tres")
+const SLOT_STYLE := preload("res://assets/themes/slot_style.tres")
+const PANEL_BG_STYLE := preload("res://assets/themes/panel_bg_style.tres")
+
 
 static func apply(panel: PanelContainer, slot_refs: Dictionary, temperature_gauge: ProgressBar, buttons: Dictionary, labels: Dictionary, colors: Dictionary) -> void:
 	if panel == null or temperature_gauge == null:
 		return
 
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = colors.get("panel_bg", Color(0.10, 0.11, 0.13, 0.96))
-	panel_style.border_width_left = 1
-	panel_style.border_width_top = 1
-	panel_style.border_width_right = 1
-	panel_style.border_width_bottom = 1
-	panel_style.border_color = colors.get("panel_border", Color(0.28, 0.30, 0.34, 1.0))
-	panel_style.corner_radius_top_left = 12
-	panel_style.corner_radius_top_right = 12
-	panel_style.corner_radius_bottom_right = 12
-	panel_style.corner_radius_bottom_left = 12
-	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.add_theme_stylebox_override("panel", FURNACE_STYLE)
 
 	for slot_id: StringName in slot_refs:
 		var slot_panel: PanelContainer = slot_refs[slot_id].get(&"panel")
-		var slot_style := StyleBoxFlat.new()
-		slot_style.bg_color = colors.get("slot_bg", Color(0.14, 0.16, 0.19, 1.0))
-		slot_style.border_width_left = 1
-		slot_style.border_width_top = 1
-		slot_style.border_width_right = 1
-		slot_style.border_width_bottom = 1
-		slot_style.border_color = colors.get("slot_border", Color(0.34, 0.37, 0.41, 1.0))
-		slot_style.corner_radius_top_left = 10
-		slot_style.corner_radius_top_right = 10
-		slot_style.corner_radius_bottom_right = 10
-		slot_style.corner_radius_bottom_left = 10
-		slot_panel.add_theme_stylebox_override("panel", slot_style)
+		if slot_panel != null:
+			slot_panel.add_theme_stylebox_override("panel", SLOT_STYLE)
 
 		var slot_visual: Panel = slot_refs[slot_id].get(&"visual")
-		var visual_style := StyleBoxFlat.new()
-		visual_style.bg_color = Color(0.09, 0.10, 0.12, 1.0)
-		visual_style.border_width_left = 1
-		visual_style.border_width_top = 1
-		visual_style.border_width_right = 1
-		visual_style.border_width_bottom = 1
-		visual_style.border_color = Color(0.23, 0.25, 0.29, 1.0)
-		visual_style.corner_radius_top_left = 8
-		visual_style.corner_radius_top_right = 8
-		visual_style.corner_radius_bottom_right = 8
-		visual_style.corner_radius_bottom_left = 8
-		slot_visual.add_theme_stylebox_override("panel", visual_style)
+		if slot_visual != null:
+			slot_visual.add_theme_stylebox_override("panel", PANEL_BG_STYLE)
 
-	var gauge_background := StyleBoxFlat.new()
-	gauge_background.bg_color = Color(0.08, 0.09, 0.11, 1.0)
-	gauge_background.border_width_left = 1
-	gauge_background.border_width_top = 1
-	gauge_background.border_width_right = 1
-	gauge_background.border_width_bottom = 1
-	gauge_background.border_color = colors.get("slot_border", Color(0.34, 0.37, 0.41, 1.0))
-	gauge_background.corner_radius_top_left = 8
-	gauge_background.corner_radius_top_right = 8
-	gauge_background.corner_radius_bottom_right = 8
-	gauge_background.corner_radius_bottom_left = 8
-	temperature_gauge.add_theme_stylebox_override("background", gauge_background)
+	temperature_gauge.add_theme_stylebox_override("background", PANEL_BG_STYLE)
 
 	var gauge_fill := StyleBoxFlat.new()
 	gauge_fill.bg_color = colors.get("gauge_normal", Color(0.95, 0.62, 0.22, 1.0))

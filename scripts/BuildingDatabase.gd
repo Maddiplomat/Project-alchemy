@@ -1,4 +1,12 @@
-extends Node
+class_name BuildingDatabaseResource
+extends Resource
+
+var _initialized := false
+
+
+func init() -> BuildingDatabaseResource:
+	_initialized = true
+	return self
 
 const BUILDABLE_ORDER: Array[StringName] = [
 	&"wall",
@@ -202,8 +210,9 @@ func is_buildable_unlocked(buildable_id: StringName) -> bool:
 	var entry_id := StringName(gate.get(&"entry_id", &""))
 	if entry_id.is_empty():
 		return true
-	if DiscoveryLog != null and DiscoveryLog.has_method("has_discovery"):
-		return bool(DiscoveryLog.has_discovery(entry_id))
+	var discovery_log := EventBus.get_discovery_log()
+	if discovery_log != null and discovery_log.has_method("has_discovery"):
+		return bool(discovery_log.has_discovery(entry_id))
 	return true
 
 

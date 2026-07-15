@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="EnemyConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/EnemyConfig.gd" id="1_enemy"]
+
+[resource]
+script = ExtResource("1_enemy")
+health = 120
+resistances = {
+"physical_sharp": 0.4,
+"physical_blunt": 0.0,
+"oxidation": 3.0,
+"electrical": 1.5,
+"chemical": 1.2,
+}
+move_speed = 60.0
+night_move_speed = 80.0
+patrol_radius = 96.0
+patrol_wait_seconds = 1.5
+detection_radius = 180.0
+night_detection_multiplier = 1.5
+attack_range = 48.0
+attack_cooldown_seconds = 0.8
+attack_damage = 12
+scanner_alert_radius = 150.0
+chase_repath_interval = 0.3
+leash_seconds = 10.0
+health_bar_hide_delay = 3.0
+health_bar_full_color = Color(0.31, 0.82, 0.38, 1)
+health_bar_mid_color = Color(0.91, 0.79, 0.23, 1)
+health_bar_low_color = Color(0.86, 0.24, 0.22, 1)
+alert_indicator_offset = Vector2(0, -48)
+alert_indicator_duration = 1.5

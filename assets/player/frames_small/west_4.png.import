@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://brsxnd12cismk"
-path="res://.godot/imported/west_4.png-0b1335788cd13b918e847bac48a39d05.ctex"
+path.s3tc="res://.godot/imported/west_4.png-0b1335788cd13b918e847bac48a39d05.s3tc.ctex"
+path.etc2="res://.godot/imported/west_4.png-0b1335788cd13b918e847bac48a39d05.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/player/frames_small/west_4.png"
-dest_files=["res://.godot/imported/west_4.png-0b1335788cd13b918e847bac48a39d05.ctex"]
+dest_files=["res://.godot/imported/west_4.png-0b1335788cd13b918e847bac48a39d05.s3tc.ctex", "res://.godot/imported/west_4.png-0b1335788cd13b918e847bac48a39d05.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

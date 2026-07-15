@@ -1,8 +1,10 @@
 extends CanvasLayer
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+
 signal ui_closed
 
-const SLOT_SCENE = preload("res://scenes/inventory_slot.tscn")
+const SLOT_SCENE = preload("res://scenes/InventorySlot.tscn")
 const DEFAULT_STORAGE_SLOT_COUNT := 20
 const SLOT_TOUCH_SIZE := Vector2(82.0, 82.0)
 
@@ -74,11 +76,12 @@ func _ready() -> void:
 	InventoryManager.inventory_changed.connect(_refresh_all.unbind(1))
 	InventoryManager.active_slot_changed.connect(_refresh_all.unbind(1))
 	InventoryManager.weight_changed.connect(_on_weight_changed)
-	StorageManager.chest_inventory_changed.connect(_on_chest_inventory_changed)
+	EventBus.get_storage_manager().chest_inventory_changed.connect(_on_chest_inventory_changed)
 	get_viewport().size_changed.connect(_layout_panel)
 	_on_weight_changed(InventoryManager.total_weight, InventoryManager.carry_capacity)
 	_refresh_action_panel()
 	_layout_panel()
+	set_process(false)
 
 
 func bind_chest(bound_chest_id: StringName) -> void:
@@ -88,9 +91,9 @@ func bind_chest(bound_chest_id: StringName) -> void:
 func bind_storage(bound_chest_id: StringName, context: Dictionary = {}) -> void:
 	chest_id = bound_chest_id
 	_storage_context = context.duplicate(true)
-	StorageManager.ensure_container(chest_id)
-	title_label.text = StorageManager.get_container_title(chest_id)
-	var title := StorageManager.get_container_title(chest_id)
+	EventBus.get_storage_manager().ensure_container(chest_id)
+	title_label.text = EventBus.get_storage_manager().get_container_title(chest_id)
+	var title: String = EventBus.get_storage_manager().get_container_title(chest_id)
 	chest_title_label.text = "%s %s" % [title, String(chest_id).substr(0, 8)] if title == "Storage Chest" else title
 	_refresh_storage_info()
 	_refresh_all()
@@ -102,6 +105,7 @@ func open_ui() -> void:
 	_layout_panel()
 	_refresh_storage_info()
 	_refresh_all()
+	_sync_drag_processing()
 
 
 func close_ui() -> void:
@@ -112,6 +116,7 @@ func close_ui() -> void:
 	_selected_container = ""
 	_selected_slot_index = -1
 	_refresh_action_panel()
+	_sync_drag_processing()
 	ui_closed.emit()
 
 
@@ -132,6 +137,7 @@ func _input(event: InputEvent) -> void:
 		var release_position := get_viewport().get_mouse_position()
 		var drop_target := _get_drop_target(release_position)
 		_finish_drag(String(drop_target.get(&"container", "")), int(drop_target.get(&"slot_index", -1)), release_position)
+	get_viewport().set_input_as_handled()
 
 
 func _process(_delta: float) -> void:
@@ -185,7 +191,7 @@ func _ensure_grid_slot_count(target_grid: GridContainer, count: int, container_n
 func _refresh_all(_unused = null) -> void:
 	if chest_id.is_empty():
 		return
-	_ensure_grid_slot_count(chest_grid, StorageManager.get_slot_count(chest_id), "chest")
+	_ensure_grid_slot_count(chest_grid, EventBus.get_storage_manager().get_slot_count(chest_id), "chest")
 	_refresh_storage_info()
 	_refresh_player_grid()
 	_refresh_chest_grid()
@@ -207,7 +213,7 @@ func _refresh_player_grid() -> void:
 func _refresh_chest_grid() -> void:
 	for i in range(chest_grid.get_child_count()):
 		var slot := chest_grid.get_child(i) as InventorySlot
-		var data := StorageManager.get_slot_item(chest_id, i)
+		var data: Dictionary = EventBus.get_storage_manager().get_slot_item(chest_id, i)
 		slot.is_equipped = false
 		if data.is_empty():
 			slot.clear()
@@ -238,8 +244,8 @@ func _refresh_storage_info() -> void:
 	if chest_id.is_empty() or _storage_status_label == null or _storage_detail_label == null:
 		return
 	var sheltered := bool(_storage_context.get(&"sheltered", false))
-	_storage_status_label.text = StorageManager.get_container_protection_summary(chest_id)
-	_storage_detail_label.text = StorageManager.get_container_exposure_summary(chest_id, sheltered)
+	_storage_status_label.text = EventBus.get_storage_manager().get_container_protection_summary(chest_id)
+	_storage_detail_label.text = EventBus.get_storage_manager().get_container_exposure_summary(chest_id, sheltered)
 
 
 func _on_chest_inventory_changed(changed_chest_id: StringName) -> void:
@@ -301,15 +307,15 @@ func _finish_drag(target_container: String, target_slot_index: int, release_posi
 	if target_slot_index >= 0:
 		if origin_container == target_container:
 			if origin_container == "chest" and origin_index != target_slot_index:
-				StorageManager.swap_slots(chest_id, origin_index, target_slot_index)
+				EventBus.get_storage_manager().swap_slots(chest_id, origin_index, target_slot_index)
 				success = true
 			elif origin_container == "player" and origin_index != target_slot_index:
 				InventoryManager.swap_slots(origin_index, target_slot_index)
 				success = true
 		elif origin_container == "player" and target_container == "chest":
-			success = StorageManager.store_from_player(chest_id, origin_index, target_slot_index, _drag_quantity)
+			success = EventBus.get_storage_manager().store_from_player(chest_id, origin_index, target_slot_index, _drag_quantity)
 		elif origin_container == "chest" and target_container == "player":
-			success = StorageManager.withdraw_to_player(chest_id, origin_index, target_slot_index, _drag_quantity)
+			success = EventBus.get_storage_manager().withdraw_to_player(chest_id, origin_index, target_slot_index, _drag_quantity)
 	_reset_drag_state()
 	if not success:
 		_refresh_all()
@@ -337,6 +343,7 @@ func _create_drag_ghost(source_slot: InventorySlot) -> void:
 	_drag_ghost.add_child(quantity_badge)
 	add_child(_drag_ghost)
 	_update_drag_ghost_quantity()
+	_sync_drag_processing()
 
 
 func _cancel_drag() -> void:
@@ -349,6 +356,11 @@ func _cancel_drag_visual() -> void:
 	if _drag_ghost != null:
 		_drag_ghost.queue_free()
 		_drag_ghost = null
+	_sync_drag_processing()
+
+
+func _sync_drag_processing() -> void:
+	set_process(panel != null and panel.visible and _drag_ghost != null)
 
 
 func _reset_drag_state() -> void:
@@ -387,7 +399,7 @@ func _get_slot_data(container_name: String, slot_index: int) -> Dictionary:
 	if container_name == "player":
 		return InventoryManager.get_slot_data(slot_index)
 	if container_name == "chest":
-		return StorageManager.get_slot_item(chest_id, slot_index)
+		return EventBus.get_storage_manager().get_slot_item(chest_id, slot_index)
 	return {}
 
 
@@ -471,11 +483,11 @@ func _transfer_selected(action: int, use_all: bool) -> void:
 		QuantityAction.PLAYER_TO_CHEST:
 			var chest_slot := _find_chest_target_slot(item_id)
 			if chest_slot != -1:
-				success = StorageManager.store_from_player(chest_id, _selected_slot_index, chest_slot, move_quantity)
+				success = EventBus.get_storage_manager().store_from_player(chest_id, _selected_slot_index, chest_slot, move_quantity)
 		QuantityAction.CHEST_TO_PLAYER:
 			var player_slot := _find_player_target_slot(item_id)
 			if player_slot != -1:
-				success = StorageManager.withdraw_to_player(chest_id, _selected_slot_index, player_slot, move_quantity)
+				success = EventBus.get_storage_manager().withdraw_to_player(chest_id, _selected_slot_index, player_slot, move_quantity)
 	if success:
 		action_hint_label.text = "Transferred %s x%d." % [_get_item_name(item_id), move_quantity]
 	else:
@@ -484,8 +496,8 @@ func _transfer_selected(action: int, use_all: bool) -> void:
 
 
 func _find_chest_target_slot(item_id: StringName) -> int:
-	for i in range(StorageManager.get_slot_count(chest_id)):
-		var slot_data := StorageManager.get_slot_item(chest_id, i)
+	for i in range(EventBus.get_storage_manager().get_slot_count(chest_id)):
+		var slot_data: Dictionary = EventBus.get_storage_manager().get_slot_item(chest_id, i)
 		if slot_data.is_empty() or StringName(str(slot_data.get("id", ""))) == item_id:
 			return i
 	return -1
@@ -542,18 +554,18 @@ func _confirm_quantity_modal() -> void:
 		QuantityAction.PLAYER_TO_CHEST:
 			var chest_slot := _find_chest_target_slot(StringName(String(slot_data.item_id)))
 			if chest_slot != -1:
-				StorageManager.store_from_player(chest_id, _selected_slot_index, chest_slot, _quantity_value)
+				EventBus.get_storage_manager().store_from_player(chest_id, _selected_slot_index, chest_slot, _quantity_value)
 		QuantityAction.CHEST_TO_PLAYER:
 			var player_slot := _find_player_target_slot(StringName(str(slot_data.get("id", ""))))
 			if player_slot != -1:
-				StorageManager.withdraw_to_player(chest_id, _selected_slot_index, player_slot, _quantity_value)
+				EventBus.get_storage_manager().withdraw_to_player(chest_id, _selected_slot_index, player_slot, _quantity_value)
 	_refresh_all()
 
 
 func _get_item_name(item_id: StringName) -> String:
 	if item_id.is_empty():
 		return "Unknown"
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		return str(element_data.get(&"display_name", String(item_id)))
 	return String(item_id).replace("_", " ").capitalize()

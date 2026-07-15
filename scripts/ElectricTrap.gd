@@ -1,5 +1,7 @@
 extends "res://scripts/PlacedObject.gd"
 
+const WeatherSystem = preload("res://scripts/WeatherSystem.gd")
+
 const STANDBY_DRAIN_UNITS_PER_MINUTE := 0.05
 const MAX_DURABILITY := 10
 const SHOCK_COST := 0.5
@@ -22,8 +24,10 @@ const TRAP_BROKEN_METAL := Color(0.18, 0.18, 0.18, 1.0)
 @export var durability: int = MAX_DURABILITY
 
 @onready var trigger_area: Area2D = $TriggerArea
+@onready var zap_area: Area2D = $ZapArea
 
 var _shock_cooldowns_by_enemy_id: Dictionary = {}
+var _targets_in_range: Array[Node2D] = []
 var _flash_timer := 0.0
 var _last_armed_visual := false
 var _is_broken := false
@@ -44,18 +48,21 @@ func _ready() -> void:
 	collision_mask = 0
 	_ensure_repair_prompt()
 	_sync_broken_state()
-	trigger_area.body_entered.connect(_on_trigger_body_entered)
+	trigger_area.body_entered.connect(_on_repair_body_entered)
+	trigger_area.body_exited.connect(_on_repair_body_exited)
+	zap_area.body_entered.connect(_on_zap_body_entered)
+	zap_area.body_exited.connect(_on_zap_body_exited)
 	_bind_power_services()
 	if not EventBus.service_registered.is_connected(_on_service_registered):
 		EventBus.service_registered.connect(_on_service_registered)
-	if BaseDefenseSystem != null and BaseDefenseSystem.has_method("register_power_consumer"):
-		BaseDefenseSystem.register_power_consumer(self, STANDBY_DRAIN_UNITS_PER_MINUTE)
+	if EventBus.get_base_defense_system() != null and EventBus.get_base_defense_system().has_method("register_power_consumer"):
+		EventBus.get_base_defense_system().register_power_consumer(self, STANDBY_DRAIN_UNITS_PER_MINUTE)
 	set_process(true)
 
 
 func _exit_tree() -> void:
-	if BaseDefenseSystem != null and BaseDefenseSystem.has_method("unregister_power_consumer"):
-		BaseDefenseSystem.unregister_power_consumer(self)
+	if EventBus.get_base_defense_system() != null and EventBus.get_base_defense_system().has_method("unregister_power_consumer"):
+		EventBus.get_base_defense_system().unregister_power_consumer(self)
 
 
 func _process(delta: float) -> void:
@@ -69,14 +76,35 @@ func _process(delta: float) -> void:
 		if _flash_timer <= 0.0:
 			_build_trap_texture(_is_armed())
 		return
-	for body_variant in trigger_area.get_overlapping_bodies():
-		var body: Node = body_variant as Node
-		_try_shock_body(body)
+	for target in _targets_in_range:
+		if is_instance_valid(target):
+			_try_shock_body(target)
 	_set_armed_visual(_is_armed())
 
 
-func _on_trigger_body_entered(body: Node) -> void:
+func _on_zap_body_entered(body: Node2D) -> void:
+	if body == null or _targets_in_range.has(body):
+		return
+	_targets_in_range.append(body)
 	_try_shock_body(body)
+
+
+func _on_zap_body_exited(body: Node2D) -> void:
+	_targets_in_range.erase(body)
+
+
+func _on_repair_body_entered(body: Node2D) -> void:
+	if body == null or not body.is_in_group(&"player"):
+		return
+	_player_in_repair_range = true
+	_refresh_repair_prompt()
+
+
+func _on_repair_body_exited(body: Node2D) -> void:
+	if body == null or not body.is_in_group(&"player"):
+		return
+	_player_in_repair_range = false
+	_refresh_repair_prompt()
 
 
 func _try_shock_body(body: Node) -> void:
@@ -197,18 +225,10 @@ func _trigger_short_circuit() -> void:
 
 
 func _apply_short_circuit_splash() -> void:
-	var query := PhysicsShapeQueryParameters2D.new()
-	var circle := CircleShape2D.new()
-	circle.radius = SHORT_CIRCUIT_SPLASH_RADIUS_PIXELS
-	query.shape = circle
-	query.transform = Transform2D(0.0, global_position)
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	query.collision_mask = 1
-
-	for hit in get_world_2d().direct_space_state.intersect_shape(query, 16):
-		var body := hit.get("collider") as Node
-		if body == null or body == self:
+	for body in _targets_in_range:
+		if not is_instance_valid(body) or body == self:
+			continue
+		if global_position.distance_to(body.global_position) > SHORT_CIRCUIT_SPLASH_RADIUS_PIXELS:
 			continue
 		if not body.is_in_group(&"enemy") and not body.is_in_group(&"player"):
 			continue
@@ -273,7 +293,6 @@ func _set_armed_visual(is_armed: bool) -> void:
 
 
 func _refresh_repair_interaction() -> void:
-	_player_in_repair_range = _find_player_in_trigger_area() != null
 	_refresh_repair_prompt()
 	if not _player_in_repair_range:
 		return
@@ -286,18 +305,6 @@ func _refresh_repair_interaction() -> void:
 	if not InventoryManager.remove_item(REPAIR_ITEM_ID, REPAIR_ITEM_COUNT):
 		return
 	repair_to_full()
-
-
-func _find_player_in_trigger_area() -> Node:
-	if trigger_area == null:
-		return null
-	for body_variant in trigger_area.get_overlapping_bodies():
-		var body := body_variant as Node
-		if body != null and body.is_in_group(&"player"):
-			return body
-	return null
-
-
 func _ensure_repair_prompt() -> void:
 	if _repair_prompt_label != null:
 		return
@@ -333,9 +340,9 @@ func _refresh_repair_prompt() -> void:
 
 
 func _is_raining() -> bool:
-	return WeatherSystem != null \
-		and WeatherSystem.has_method("get_current_state") \
-		and int(WeatherSystem.get_current_state()) == WeatherSystem.WeatherState.RAIN
+	return EventBus.get_weather_system() != null \
+		and EventBus.get_weather_system().has_method("get_current_state") \
+		and int(EventBus.get_weather_system().get_current_state()) == WeatherSystem.WeatherState.RAIN
 
 
 func _get_occupied_offsets() -> Array[Vector2i]:

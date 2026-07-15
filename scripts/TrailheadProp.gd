@@ -44,6 +44,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 			_close_overlay()
 			_mark_input_handled()
+			return
+		_mark_input_handled()
 		return
 
 	if _player_in_range == null:
@@ -93,8 +95,8 @@ func _confirm_travel() -> void:
 	if target_scene_path.is_empty():
 		_close_overlay()
 		return
-	if WorldSystem != null and WorldSystem.has_method("travel_to_scene"):
-		var travel_started := bool(WorldSystem.travel_to_scene(target_scene_path, target_entry_point_id))
+	if EventBus.get_world_system() != null and EventBus.get_world_system().has_method("travel_to_scene"):
+		var travel_started := bool(EventBus.get_world_system().travel_to_scene(target_scene_path, target_entry_point_id))
 		if travel_started:
 			_overlay_visible = false
 			return

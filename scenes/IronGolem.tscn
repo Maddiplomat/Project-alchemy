@@ -1,6 +1,7 @@
-[gd_scene load_steps=4 format=4]
+[gd_scene load_steps=5 format=4]
 
 [ext_resource type="Script" path="res://scripts/IronGolem.gd" id="1_golem"]
+[ext_resource type="Resource" path="res://data/config/iron_golem_config.tres" id="2_config"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 size = Vector2(20, 28)
@@ -12,6 +13,7 @@ radius = 90.0
 collision_layer = 1
 collision_mask = 3
 script = ExtResource("1_golem")
+config = ExtResource("2_config")
 
 [node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
 

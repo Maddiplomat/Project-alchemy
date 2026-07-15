@@ -1,7 +1,6 @@
 class_name AcidSpit
 extends Area2D
 
-const ACID_PUDDLE_SCENE := preload("res://scenes/AcidPuddle.tscn")
 const MAX_TRAVEL_DISTANCE := 96.0
 const ARC_HEIGHT := 20.0
 const IMPACT_RADIUS := 10.0
@@ -18,10 +17,13 @@ var _travel_distance := 0.0
 var _travel_duration := 0.0
 var _travel_elapsed := 0.0
 var _travel_direction := Vector2.RIGHT
+var _visual_ready := false
 
 
 func _ready() -> void:
-	_build_visual()
+	if not _visual_ready:
+		_build_visual()
+		_visual_ready = true
 
 
 func _physics_process(delta: float) -> void:
@@ -56,11 +58,7 @@ func configure(origin: Vector2, target_position: Vector2) -> void:
 
 
 static func spawn(parent: Node, origin: Vector2, target_position: Vector2) -> AcidSpit:
-	var scene := load("res://scenes/AcidSpit.tscn") as PackedScene
-	if scene == null:
-		push_error("AcidSpit: res://scenes/AcidSpit.tscn not found")
-		return null
-	var spit := scene.instantiate() as AcidSpit
+	var spit := ObjectPool.get_instance_by_id(ObjectPool.SCENE_ACID_SPIT) as AcidSpit
 	if spit == null:
 		return null
 	parent.add_child(spit)
@@ -71,7 +69,22 @@ static func spawn(parent: Node, origin: Vector2, target_position: Vector2) -> Ac
 func _land() -> void:
 	_apply_impact_damage()
 	_spawn_acid_puddle()
-	queue_free()
+	ObjectPool.release(self)
+
+
+func _pool_reset() -> void:
+	_start_position = Vector2.ZERO
+	_target_position = Vector2.ZERO
+	_travel_distance = 0.0
+	_travel_duration = 0.0
+	_travel_elapsed = 0.0
+	_travel_direction = Vector2.RIGHT
+	rotation = 0.0
+	monitoring = true
+	if sprite != null:
+		sprite.position.y = 0.0
+	if shadow != null:
+		shadow.modulate.a = 0.26
 
 
 func _apply_impact_damage() -> void:
@@ -103,12 +116,12 @@ func _apply_impact_damage() -> void:
 
 
 func _spawn_acid_puddle() -> void:
-	if ACID_PUDDLE_SCENE == null:
-		return
 	var parent := get_parent()
 	if parent == null:
 		return
-	var puddle := ACID_PUDDLE_SCENE.instantiate()
+	var puddle := ObjectPool.get_instance_by_id(ObjectPool.SCENE_ACID_PUDDLE)
+	if puddle == null:
+		return
 	if puddle is Node2D:
 		(puddle as Node2D).global_position = global_position
 	parent.call_deferred("add_child", puddle)

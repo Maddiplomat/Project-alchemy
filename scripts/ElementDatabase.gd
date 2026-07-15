@@ -1,4 +1,5 @@
-extends Node
+class_name ElementDatabaseResource
+extends Resource
 
 enum ElementCategory { ORGANIC, MINERAL, METAL, VOLATILE, GAS, RADIOACTIVE, CATALYST }
 enum RiskLevel { NONE, LOW, MEDIUM, HIGH, EXTREME }
@@ -21,15 +22,22 @@ const PERSISTENCE_KEY := &"element_database"
 var starter_element_ids: Array[StringName] = [&"wood", &"stone", &"iron"]
 var mid_game_element_ids: Array[StringName] = []
 var late_game_element_ids: Array[StringName] = []
+var _initialized := false
 
 
-func _ready() -> void:
+
+func init() -> ElementDatabaseResource:
+	if _initialized:
+		return self
+	_initialized = true
 	_seed_elements()
 	database_ready.emit(elements.size())
+	return self
 
 
 
 func has_element(element_id: StringName) -> bool:
+	init()
 	return elements.has(element_id)
 
 
@@ -41,6 +49,7 @@ func get_element(element_id: StringName) -> Dictionary:
 
 
 func get_elements_for_biome(biome_id: StringName) -> Array[StringName]:
+	init()
 	if not biome_elements.has(biome_id):
 		return []
 
@@ -52,6 +61,7 @@ func get_elements_for_biome(biome_id: StringName) -> Array[StringName]:
 
 
 func get_elements_by_category(category: ElementCategory) -> Array[StringName]:
+	init()
 	var result: Array[StringName] = []
 	var category_name := _category_to_string(category)
 	for element_id: StringName in elements:
@@ -63,6 +73,7 @@ func get_elements_by_category(category: ElementCategory) -> Array[StringName]:
 
 
 func get_elements_by_risk(risk_level: RiskLevel) -> Array[StringName]:
+	init()
 	var result: Array[StringName] = []
 	var risk_name := _risk_to_string(risk_level)
 	for element_id: StringName in elements:
@@ -74,6 +85,7 @@ func get_elements_by_risk(risk_level: RiskLevel) -> Array[StringName]:
 
 
 func discover_element(element_id: StringName) -> bool:
+	init()
 	if not has_element(element_id) or discovered_elements.has(element_id):
 		return false
 
@@ -83,10 +95,12 @@ func discover_element(element_id: StringName) -> bool:
 
 
 func is_element_discovered(element_id: StringName) -> bool:
+	init()
 	return discovered_elements.has(element_id)
 
 
 func mark_element_scanned(element_id: StringName) -> bool:
+	init()
 	if not has_element(element_id) or scanned_elements.has(element_id):
 		return false
 
@@ -96,10 +110,12 @@ func mark_element_scanned(element_id: StringName) -> bool:
 
 
 func is_element_scanned(element_id: StringName) -> bool:
+	init()
 	return scanned_elements.has(element_id)
 
 
 func get_scanned_elements() -> Array[StringName]:
+	init()
 	var result: Array[StringName] = []
 	for element_id: StringName in scanned_elements.keys():
 		result.append(element_id)
@@ -118,6 +134,7 @@ func capture_persistent_state() -> Dictionary:
 
 
 func restore_persistent_state(data: Dictionary) -> void:
+	init()
 	scanned_elements.clear()
 	for raw_element_id in data.get("scanned_elements", []):
 		var element_id := StringName(str(raw_element_id))
@@ -127,10 +144,12 @@ func restore_persistent_state(data: Dictionary) -> void:
 
 
 func clear_scanned_elements() -> void:
+	init()
 	scanned_elements.clear()
 
 
 func register_element(element_data: Dictionary) -> bool:
+	init()
 	var element_id: StringName = element_data.get(&"id", &"")
 	if element_id.is_empty():
 		return false

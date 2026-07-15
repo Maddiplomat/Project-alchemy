@@ -1,8 +1,11 @@
 extends CanvasLayer
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+
 signal ui_closed
 
 const STABILIZATION_MINIGAME_SCENE := preload("res://scenes/UI/StabilizationMinigame.tscn")
+const PANEL_BG_STYLE := preload("res://assets/themes/panel_bg_style.tres")
 const SLOT_PANEL_COLOR := Color(0.18, 0.19, 0.22, 1.0)
 const SLOT_FILLED_COLOR := Color(0.24, 0.31, 0.36, 1.0)
 const SLOT_OUTPUT_READY_COLOR := Color(0.34, 0.28, 0.15, 1.0)
@@ -53,6 +56,10 @@ const RAIN_CONTAMINATION_REASON := &"rain_contamination"
 @onready var close_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/CloseButton
 @onready var footer_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/FooterLabel
 @onready var footer_row: HBoxContainer = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow
+@onready var _power_status_label: Label = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/PowerColumn/PowerStatusLabel
+@onready var _power_button: Button = $Root/PanelContainer/MarginContainer/VBoxContainer/FooterRow/PowerColumn/PowerButton
+@onready var _lesson_banner: PanelContainer = $Root/LessonBanner
+@onready var _lesson_banner_label: Label = $Root/LessonBanner/LessonBannerLabel
 
 var _chem_bench: Node = null
 var _stabilization_overlay: CanvasLayer = null
@@ -61,10 +68,6 @@ var _pending_result: Dictionary = {}
 var _slot_refs: Dictionary[StringName, Dictionary] = {}
 var _is_open := false
 var _ratio_target_slot: StringName = RATIO_TARGET_INPUT_B
-var _power_status_label: Label = null
-var _power_button: Button = null
-var _lesson_banner: PanelContainer = null
-var _lesson_banner_label: Label = null
 var _lesson_banner_tween: Tween = null
 
 
@@ -111,6 +114,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	):
 		emit_signal("ui_closed")
 		get_viewport().set_input_as_handled()
+		return
+	get_viewport().set_input_as_handled()
 
 
 func bind_chem_bench(chem_bench: Node) -> void:
@@ -363,8 +368,8 @@ func _on_stabilization_failed(reason: StringName) -> void:
 	if _chem_bench != null and _chem_bench.has_method("trigger_stabilization_failure"):
 		_chem_bench.trigger_stabilization_failure(reason)
 	_consume_result_inputs(result, true)
-	if ChemistryEngine != null and ChemistryEngine.has_method("emit_chemistry_lesson_for_result"):
-		ChemistryEngine.emit_chemistry_lesson_for_result(result)
+	if EventBus.get_chemistry_engine() != null and EventBus.get_chemistry_engine().has_method("emit_chemistry_lesson_for_result"):
+		EventBus.get_chemistry_engine().emit_chemistry_lesson_for_result(result)
 	_log_chem_bench_result(result, false, reason, inputs_log, catalyst_id)
 	output_name_label.text = _format_failure_label(reason)
 	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_DANGER_COLOR)
@@ -401,11 +406,11 @@ func _apply_success_result(result: Dictionary) -> void:
 		react_button.text = "Inventory Full"
 		return
 
-	if ChemistryEngine != null and ChemistryEngine.has_method("emit_chemistry_lesson_for_result"):
-		ChemistryEngine.emit_chemistry_lesson_for_result(result)
+	if EventBus.get_chemistry_engine() != null and EventBus.get_chemistry_engine().has_method("emit_chemistry_lesson_for_result"):
+		EventBus.get_chemistry_engine().emit_chemistry_lesson_for_result(result)
 	_log_chem_bench_result(result, true, &"", inputs_log, catalyst_id)
-	if bool(result.get("requires_stabilization", false)) and DiscoveryLog != null and DiscoveryLog.has_method("log_progression_discovery"):
-		DiscoveryLog.log_progression_discovery(
+	if bool(result.get("requires_stabilization", false)) and EventBus.get_discovery_log() != null and EventBus.get_discovery_log().has_method("log_progression_discovery"):
+		EventBus.get_discovery_log().log_progression_discovery(
 			STABILIZATION_DISCOVERY_ID,
 			"Stabilization Theory",
 			"First live stabilization achieved. Buffered sulfur chemistry can now be identified in recipe references."
@@ -422,8 +427,8 @@ func _apply_failure_result(result: Dictionary, failure_reason: StringName) -> vo
 	_consume_result_inputs(result, true)
 	if _chem_bench != null and _chem_bench.has_method("trigger_stabilization_failure"):
 		_chem_bench.trigger_stabilization_failure(failure_reason)
-	if ChemistryEngine != null and ChemistryEngine.has_method("emit_chemistry_lesson_for_result"):
-		ChemistryEngine.emit_chemistry_lesson_for_result(result)
+	if EventBus.get_chemistry_engine() != null and EventBus.get_chemistry_engine().has_method("emit_chemistry_lesson_for_result"):
+		EventBus.get_chemistry_engine().emit_chemistry_lesson_for_result(result)
 	_log_chem_bench_result(result, false, failure_reason, inputs_log, catalyst_id)
 	output_name_label.text = _format_failure_label(failure_reason)
 	_apply_slot_panel_style(output_visual, SLOT_OUTPUT_DANGER_COLOR)
@@ -447,7 +452,7 @@ func _consume_result_inputs(result: Dictionary, include_failure_consumption: boo
 
 
 func _log_chem_bench_result(result: Dictionary, discover_output: bool, failure_reason: StringName = &"", inputs_log: Array = [], catalyst_id: StringName = &"") -> void:
-	if not DiscoveryLog.has_method("log_chemistry") or not is_instance_valid(_chem_bench):
+	if not EventBus.get_discovery_log().has_method("log_chemistry") or not is_instance_valid(_chem_bench):
 		return
 
 	var output_id := StringName(str(result.get("output_id", "")))
@@ -472,7 +477,7 @@ func _log_chem_bench_result(result: Dictionary, discover_output: bool, failure_r
 
 	var result_for_log := result.duplicate(true)
 	result_for_log[&"notes"] = conditions_summary
-	DiscoveryLog.log_chemistry(
+	EventBus.get_discovery_log().log_chemistry(
 		result_for_log,
 		inputs_log,
 		conditions_summary,
@@ -559,27 +564,10 @@ func _ensure_stabilization_overlay() -> void:
 
 func _ensure_power_controls() -> void:
 	if _power_status_label != null and _power_button != null:
+		if not _power_button.pressed.is_connected(_on_power_button_pressed):
+			_power_button.pressed.connect(_on_power_button_pressed)
 		return
-	var power_column := VBoxContainer.new()
-	power_column.name = "PowerColumn"
-	power_column.alignment = BoxContainer.ALIGNMENT_CENTER
-	power_column.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	power_column.custom_minimum_size = Vector2(170.0, 0.0)
-
-	_power_status_label = Label.new()
-	_power_status_label.name = "PowerStatusLabel"
-	_power_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_power_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	power_column.add_child(_power_status_label)
-
-	_power_button = Button.new()
-	_power_button.name = "PowerButton"
-	_power_button.text = "Insert Energy Cell"
-	_power_button.pressed.connect(_on_power_button_pressed)
-	power_column.add_child(_power_button)
-
-	footer_row.add_child(power_column)
-	footer_row.move_child(power_column, 1)
+	push_error("ChemBenchUI is missing its pre-baked power controls.")
 
 
 func _update_power_panel(power_state: Dictionary) -> void:
@@ -641,40 +629,7 @@ func _on_inventory_button_pressed() -> void:
 func _ensure_lesson_banner() -> void:
 	if _lesson_banner != null:
 		return
-	_lesson_banner = PanelContainer.new()
-	_lesson_banner.name = "LessonBanner"
-	_lesson_banner.visible = false
-	_lesson_banner.modulate.a = 0.0
-	_lesson_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(_lesson_banner)
-	_lesson_banner.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	_lesson_banner.offset_left = 96.0
-	_lesson_banner.offset_top = 22.0
-	_lesson_banner.offset_right = -96.0
-	_lesson_banner.offset_bottom = 78.0
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.18, 0.12, 0.08, 0.96)
-	style.border_color = Color(0.82, 0.56, 0.24, 1.0)
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.corner_radius_top_left = 8
-	style.corner_radius_top_right = 8
-	style.corner_radius_bottom_left = 8
-	style.corner_radius_bottom_right = 8
-	style.content_margin_left = 14
-	style.content_margin_right = 14
-	style.content_margin_top = 10
-	style.content_margin_bottom = 10
-	_lesson_banner.add_theme_stylebox_override("panel", style)
-
-	_lesson_banner_label = Label.new()
-	_lesson_banner_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_lesson_banner_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_lesson_banner_label.add_theme_font_size_override("font_size", 15)
-	_lesson_banner.add_child(_lesson_banner_label)
+	push_error("ChemBenchUI is missing its pre-baked lesson banner.")
 
 
 func _on_chemistry_lesson_triggered(_lesson_id: StringName, message: String) -> void:
@@ -728,21 +683,7 @@ func _finalize_open_ui_layout() -> void:
 
 func _apply_theme() -> void:
 	backdrop.color = Color(0.01, 0.02, 0.03, 0.54)
-
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.08, 0.09, 0.10, 0.97)
-	panel_style.border_color = Color(0.42, 0.35, 0.21, 1.0)
-	panel_style.border_width_left = 2
-	panel_style.border_width_right = 2
-	panel_style.border_width_top = 2
-	panel_style.border_width_bottom = 2
-	panel_style.corner_radius_top_left = 10
-	panel_style.corner_radius_top_right = 10
-	panel_style.corner_radius_bottom_left = 10
-	panel_style.corner_radius_bottom_right = 10
-	panel_style.shadow_color = Color(0, 0, 0, 0.6)
-	panel_style.shadow_size = 6
-	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.add_theme_stylebox_override("panel", PANEL_BG_STYLE)
 
 	title_label.add_theme_color_override("font_color", Color(0.90, 0.82, 0.63, 1.0))
 	summary_label.add_theme_color_override("font_color", Color(0.70, 0.72, 0.68, 1.0))
@@ -750,7 +691,7 @@ func _apply_theme() -> void:
 	ratio_value_label.add_theme_color_override("font_color", Color(0.76, 0.81, 0.76, 1.0))
 	temperature_value_label.add_theme_color_override("font_color", Color(0.83, 0.77, 0.69, 1.0))
 
-	var react_style := StyleBoxFlat.new()
+	var react_style := UIFactory.button_style()
 	react_style.bg_color = Color(0.34, 0.22, 0.12, 1.0)
 	react_style.border_color = Color(0.78, 0.55, 0.24, 1.0)
 	react_style.border_width_left = 1
@@ -822,7 +763,7 @@ func _withdraw_slot_to_inventory(slot_id: StringName) -> void:
 	if item_id.is_empty() or quantity <= 0:
 		return
 
-	var item_data := ElementDatabase.get_element(item_id)
+	var item_data := GameplayData.elements().get_element(item_id)
 	if item_data.is_empty():
 		action_hint_label.text = "Cannot return %s from this slot." % _get_item_name(item_id)
 		return
@@ -843,7 +784,7 @@ func _withdraw_slot_to_inventory(slot_id: StringName) -> void:
 
 
 func _apply_slot_panel_style(panel_node: Panel, bg_color: Color) -> void:
-	var style := StyleBoxFlat.new()
+	var style := UIFactory.panel_style()
 	style.bg_color = bg_color
 	style.border_color = Color(0.44, 0.39, 0.24, 1.0)
 	style.border_width_left = 1
@@ -860,7 +801,7 @@ func _apply_slot_panel_style(panel_node: Panel, bg_color: Color) -> void:
 func _get_item_name(item_id: StringName) -> String:
 	if item_id.is_empty():
 		return "Unknown"
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if not element_data.is_empty():
 		return str(element_data.get(&"display_name", String(item_id)))
 	return String(item_id).replace("_", " ").capitalize()

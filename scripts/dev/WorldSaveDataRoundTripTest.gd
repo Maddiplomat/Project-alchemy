@@ -50,6 +50,11 @@ func _run_test() -> void:
 		bool(source.call("_verify_integrity_checksum", repaired_backend, false)),
 		"Expected repaired backend envelopes to validate cleanly."
 	)
+	_assert(source.validate(serialized), "Expected a serialized save payload to pass validation.")
+	_assert_validation_rejects(_with_player_override(serialized, "health", -1), source, "health")
+	_assert_validation_rejects(_with_inventory_override(serialized, &"tampered_item"), source, "unknown item")
+	_assert_validation_rejects(_with_game_manager_override(serialized, "current_day", 0), source, "Current day")
+	_assert_validation_rejects(_with_game_manager_override(serialized, "time_of_day", 1.5), source, "Time of day")
 	_assert(
 		_states_match(source, target),
 		"Expected deserialize(serialize(state)) to preserve WorldSaveData fields. Mismatch: %s" % _describe_first_mismatch(source, target)
@@ -188,6 +193,49 @@ func _seed_source_state(world_save_data: Node) -> void:
 	var discoveries: Array[StringName] = [&"sulfur_flats_weather_unlocked", &"mercury_handling"]
 	world_save_data.set("discoveries", discoveries)
 	world_save_data.set("scanner_tier", 1)
+
+
+func _with_player_override(payload: Dictionary, key: String, value: Variant) -> Dictionary:
+	var result := payload.duplicate(true)
+	var scene_state := result.get("current_scene_state", {}) as Dictionary
+	var player_state := scene_state.get("player", {}) as Dictionary
+	player_state[key] = value
+	scene_state["player"] = player_state
+	result["current_scene_state"] = scene_state
+	return result
+
+
+func _with_inventory_override(payload: Dictionary, item_id: StringName) -> Dictionary:
+	var result := payload.duplicate(true)
+	var scene_state := result.get("current_scene_state", {}) as Dictionary
+	var player_state := scene_state.get("player", {}) as Dictionary
+	var inventory := player_state.get("inventory", []) as Array
+	if inventory.is_empty():
+		inventory.append({})
+	inventory[0] = {"id": item_id, "item_id": item_id, "quantity": 1}
+	player_state["inventory"] = inventory
+	scene_state["player"] = player_state
+	result["current_scene_state"] = scene_state
+	return result
+
+
+func _with_game_manager_override(payload: Dictionary, key: String, value: Variant) -> Dictionary:
+	var result := payload.duplicate(true)
+	var game_manager_state := result.get("game_manager", {}) as Dictionary
+	game_manager_state[key] = value
+	result["game_manager"] = game_manager_state
+	return result
+
+
+func _assert_validation_rejects(payload: Dictionary, world_save_data: Node, error_fragment: String) -> void:
+	_assert(not world_save_data.validate(payload), "Expected invalid payload to be rejected by validation.")
+	var errors: Array[String] = world_save_data.get_validation_errors()
+	var found_error := false
+	for error in errors:
+		if error.to_lower().contains(error_fragment.to_lower()):
+			found_error = true
+			break
+	_assert(found_error, "Expected validation error mentioning '%s', got %s." % [error_fragment, errors])
 
 
 func _states_match(expected: Node, actual: Node) -> bool:

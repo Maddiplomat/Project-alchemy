@@ -12,40 +12,11 @@ const WATER_TILE := Vector2i(3, 0)
 const SULFUR_FLATS_PLAY_RECT := Rect2i(3, 12, 40, 38)
 const SULFUR_FLATS_ORIGIN := Vector2i(9, 18)
 const SULFUR_FLATS_SIZE := Vector2i(28, 18)
-const IRON_HILLS_LITHIUM_SIZE := Vector2i(10, 9)
-const SULFUR_FLATS_CRACKED_SPEED_MULTIPLIER := 0.7
-const SULFUR_MIN_SPAWNS := 8
-const SULFUR_MAX_SPAWNS := 12
-const LITHIUM_MIN_SPAWNS := 5
-const LITHIUM_MAX_SPAWNS := 6
-const SPARSE_TREE_MIN := 0.62
-const DENSE_TREE_MIN := 0.78
-const HARVESTABLE_TREE_COUNT := 20
-const TREE_RESPAWN_SECONDS := 600.0
-const TREE_RESPAWN_RETRY_SECONDS := 30.0
-const ELEMENT_SPAWN_SYSTEM_SCRIPT := preload("res://scripts/ElementSpawn.gd")
-const RUSTED_WARNING_SIGN_SCENE := preload("res://scenes/RustedWarningSign.tscn")
-const CHARRED_SKELETON_PROP_SCENE := preload("res://scenes/CharredSkeletonProp.tscn")
-const SCORCHED_CRATE_NOTE_SCENE := preload("res://scenes/ScorchedCrateNote.tscn")
-const STONE_QUARRY_SCENE := preload("res://scenes/StoneQuarry.tscn")
-const IRON_MINE_SCENE := preload("res://scenes/IronMine.tscn")
-const LIMESTONE_MINE_SCENE := preload("res://scenes/LimestoneMine.tscn")
-const ACID_CRAWLER_SPAWNER_SCENE := preload("res://scenes/AcidCrawlerSpawner.tscn")
-const ENEMY_SPAWNER_SCENE := preload("res://scenes/EnemySpawner.tscn")
-const LIGHT_SWARMER_SCENE := preload("res://scenes/LightSwarmer.tscn")
-const BATTERY_STATION_SCENE := preload("res://scenes/BatteryStation.tscn")
-const TREE_RESOURCE_SCENE := preload("res://scenes/TreeResource.tscn")
-const TRAILHEAD_PROP_SCENE := preload("res://scenes/TrailheadProp.tscn")
-const WATER_RESPAWN_SECONDS := 120.0
-const LITHIUM_RESPAWN_SECONDS := 210.0
+const ELEMENT_SPAWN_SYSTEM_SCRIPT_PATH := "res://scripts/ElementSpawn.gd"
+const CHARRED_SKELETON_PROP_SCENE_PATH := "res://scenes/CharredSkeletonProp.tscn"
 const SODIUM_SHOALS_PLAY_RECT := Rect2i(2, 12, 38, 40)
 const SODIUM_SHOALS_ORIGIN := Vector2i(11, 17)
 const SODIUM_SHOALS_SIZE := Vector2i(26, 22)
-const SODIUM_MIN_SPAWNS := 8
-const SODIUM_MAX_SPAWNS := 12
-const MERCURY_MIN_SPAWNS := 3
-const MERCURY_MAX_SPAWNS := 5
-const SODIUM_SHOALS_BRINE_SPEED_MULTIPLIER := 0.84
 const OVERWORLD_SCENE_PATH := "res://scenes/World.tscn"
 const SODIUM_SHOALS_SCENE_PATH := "res://scenes/SodiumShoals.tscn"
 const SULFUR_FLATS_SCENE_PATH := "res://scenes/SulfurFlats.tscn"
@@ -56,6 +27,11 @@ const TREE_CANOPY_SOURCE_ID := SOURCE_ID
 const TREE_CANOPY_ATLAS_COORDS := TREE_TILE
 const IRON_MINE_COORDS := Vector2i(12, 8)
 const OVERWORLD_SULFUR_TRAILHEAD_TILE := Vector2i(58, 54)
+const TERRAIN_GENERATOR_SCRIPT_PATH := "res://scripts/TerrainGenerator.gd"
+const PROP_SPAWNER_SCRIPT_PATH := "res://scripts/PropSpawner.gd"
+const ENEMY_DIRECTOR_SCRIPT_PATH := "res://scripts/EnemyDirector.gd"
+const TREE_MANAGER_SCRIPT_PATH := "res://scripts/TreeManager.gd"
+const DEFAULT_CONFIG: WorldGenConfig = preload("res://data/config/world_gen_config.tres")
 
 var _river_tile_coords: Array[Vector2i] = []
 var _sulfur_flats_ash_tiles: Dictionary = {}
@@ -66,14 +42,16 @@ var _iron_hills_lithium_deep_tiles: Dictionary = {}
 var _sodium_shoals_tiles: Dictionary = {}
 var _sodium_shoals_brine_tiles: Dictionary = {}
 var _world_generation_id := 0
-var _tree_respawn_deadlines: Dictionary = {}
-var _next_tree_respawn_id := 0
-var _tree_spawn_sequence := 0
+var _scene_cache: Dictionary[String, PackedScene] = {}
+var _script_cache: Dictionary[String, Script] = {}
+var terrain_generator: Node
+var prop_spawner: Node
+var enemy_director: Node
+var tree_manager: Node
 
 @export var generate_on_ready := true
 @export var world_profile: WorldProfile = WorldProfile.OVERWORLD
-@export var noise_frequency := 0.08
-@export_range(0.0, 1.0, 0.01) var sparse_tree_density := 0.20
+@export var config: WorldGenConfig = DEFAULT_CONFIG
 
 @onready var ground_layer: TileMapLayer = $Ground
 @onready var decor_layer: TileMapLayer = $Decor
@@ -88,6 +66,7 @@ var _tree_spawn_sequence := 0
 func _ready() -> void:
 	_ensure_active_game_session()
 	_prepare_element_spawn_system()
+	_setup_generation_components()
 	if generate_on_ready:
 		generate_world(_get_world_seed())
 		var world_save_data := EventBus.get_world_save_data()
@@ -99,7 +78,7 @@ func _ready() -> void:
 func _ensure_active_game_session() -> void:
 	if GameManager == null:
 		return
-	var world_system := get_tree().root.get_node_or_null("WorldSystem")
+	var world_system := EventBus.get_world_system()
 	if world_system != null and world_system.has_method("has_pending_restore_state"):
 		if bool(world_system.call("has_pending_restore_state")):
 			return
@@ -109,32 +88,18 @@ func _ensure_active_game_session() -> void:
 
 
 func generate_world(world_seed: int) -> void:
+	if config == null:
+		config = DEFAULT_CONFIG
 	_world_generation_id += 1
 	_set_world_seed(world_seed)
 	_clear_layers()
 
-	var noise := FastNoiseLite.new()
-	noise.seed = world_seed
-	noise.frequency = noise_frequency
 	var playable_rect := _get_playable_rect()
-
-	for y in range(playable_rect.position.y, playable_rect.end.y):
-		for x in range(playable_rect.position.x, playable_rect.end.x):
-			var coords := Vector2i(x, y)
-			ground_layer.set_cell(coords, SOURCE_ID, GRASS_TILE, 0)
-
-			if _is_playable_rect_edge(coords, playable_rect):
-				objects_layer.set_cell(coords, SOURCE_ID, ROCK_TILE, 0)
-				continue
-
-			if _is_spawn_area(coords):
-				continue
-
-			var noise_value := _normalized_noise(noise, coords)
-			if noise_value >= DENSE_TREE_MIN:
-				objects_layer.set_cell(coords, SOURCE_ID, TREE_TILE, 0)
-			elif noise_value >= SPARSE_TREE_MIN and _passes_sparse_tree_roll(world_seed, coords):
-				objects_layer.set_cell(coords, SOURCE_ID, TREE_TILE, 0)
+	terrain_generator.generate_base(
+		ground_layer, objects_layer, world_seed, config.noise_frequency, config.sparse_tree_density,
+		playable_rect, _get_spawn_coords(), SOURCE_ID, GRASS_TILE, ROCK_TILE, TREE_TILE
+	)
+	tree_manager.begin_generation(_world_generation_id)
 
 	match world_profile:
 		WorldProfile.SODIUM_SHOALS:
@@ -161,7 +126,6 @@ func _clear_layers() -> void:
 	_iron_hills_lithium_deep_tiles.clear()
 	_sodium_shoals_tiles.clear()
 	_sodium_shoals_brine_tiles.clear()
-	_tree_respawn_deadlines.clear()
 	_clear_generated_children(generated_zone_decor)
 	_clear_generated_children(generated_zone_props)
 	_clear_generated_children(generated_tree_resources)
@@ -170,36 +134,36 @@ func _clear_layers() -> void:
 func _generate_overworld(world_seed: int) -> void:
 	_place_iron_hills_lithium_zone()
 	_place_river_cluster(world_seed)
-	_place_stone_quarry(world_seed)
-	_place_iron_mines(world_seed)
-	_place_limestone_mine(world_seed)
-	_place_battery_station(world_seed)
-	_place_overworld_sodium_trailhead()
-	_place_overworld_sulfur_trailhead()
-	_spawn_interactive_trees(world_seed)
+	prop_spawner.place_stone_quarry(world_seed)
+	prop_spawner.place_iron_mine()
+	prop_spawner.place_limestone_mine()
+	prop_spawner.place_battery_station(world_seed)
+	prop_spawner.place_overworld_sodium_trailhead()
+	prop_spawner.place_overworld_sulfur_trailhead()
+	tree_manager.spawn_interactive_trees(world_seed)
 	_spawn_elements(world_seed)
 	_spawn_lithium_deposits(world_seed)
 	_spawn_water_pickups(world_seed)
-	_place_light_swarmer_spawners()
+	enemy_director.place_light_swarmer_spawners()
 
 
 func _generate_sodium_shoals(world_seed: int) -> void:
 	_log_sodium_shoals_discovery()
 	_place_sodium_shoals_zone(world_seed)
-	_place_sodium_shoals_return_trailhead()
-	_place_sodium_shoals_contamination_props()
+	prop_spawner.place_sodium_return_trailhead()
+	prop_spawner.place_sodium_contamination_props()
 	_spawn_elements(world_seed)
 	_spawn_sodium_deposits(world_seed)
 	_spawn_mercury_deposits(world_seed)
-	_place_sodium_shoals_threats(world_seed)
+	enemy_director.place_sodium_shoals_threats()
 
 
 func _generate_sulfur_flats(world_seed: int) -> void:
 	_place_sulfur_flats_zone()
-	_place_sulfur_flats_return_trailhead()
+	prop_spawner.place_sulfur_return_trailhead()
 	_spawn_elements(world_seed)
 	_spawn_sulfur_crystals(world_seed)
-	_place_sulfur_flats_threats()
+	enemy_director.place_sulfur_flats_threats()
 
 
 func _place_river_cluster(world_seed: int) -> void:
@@ -245,16 +209,12 @@ func _get_playable_rect() -> Rect2i:
 			return Rect2i(Vector2i.ZERO, MAP_SIZE)
 
 
-func _is_playable_rect_edge(coords: Vector2i, playable_rect: Rect2i) -> bool:
-	return (
-		coords.x == playable_rect.position.x
-		or coords.y == playable_rect.position.y
-		or coords.x == playable_rect.end.x - 1
-		or coords.y == playable_rect.end.y - 1
-	)
-
-
 func _is_spawn_area(coords: Vector2i) -> bool:
+	var spawn_coords := _get_spawn_coords()
+	return abs(coords.x - spawn_coords.x) <= 2 and abs(coords.y - spawn_coords.y) <= 2
+
+
+func _get_spawn_coords() -> Vector2i:
 	var spawn_coords := Vector2i(MAP_SIZE.x >> 1, MAP_SIZE.y >> 1)
 	if world_profile == WorldProfile.SODIUM_SHOALS:
 		spawn_coords = Vector2i(
@@ -266,16 +226,7 @@ func _is_spawn_area(coords: Vector2i) -> bool:
 			SULFUR_FLATS_PLAY_RECT.position.x + 5,
 			SULFUR_FLATS_PLAY_RECT.position.y + (SULFUR_FLATS_PLAY_RECT.size.y >> 1)
 		)
-	return abs(coords.x - spawn_coords.x) <= 2 and abs(coords.y - spawn_coords.y) <= 2
-
-
-func _normalized_noise(noise: FastNoiseLite, coords: Vector2i) -> float:
-	return (noise.get_noise_2d(coords.x, coords.y) + 1.0) * 0.5
-
-
-func _passes_sparse_tree_roll(world_seed: int, coords: Vector2i) -> bool:
-	var roll := posmod(hash("%d:%d:%d" % [world_seed, coords.x, coords.y]), 10000) / 10000.0
-	return roll < sparse_tree_density
+	return spawn_coords
 
 
 func _prepare_element_spawn_system() -> void:
@@ -283,7 +234,7 @@ func _prepare_element_spawn_system() -> void:
 		return
 
 	if element_spawn_system.get_script() == null:
-		element_spawn_system.set_script(ELEMENT_SPAWN_SYSTEM_SCRIPT)
+		element_spawn_system.set_script(_get_script(ELEMENT_SPAWN_SYSTEM_SCRIPT_PATH))
 
 
 func _spawn_elements(world_seed: int) -> void:
@@ -342,324 +293,6 @@ func _paint_river_tile(coords: Vector2i) -> void:
 		_river_tile_coords.append(coords)
 
 
-func _place_stone_quarry(world_seed: int) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = world_seed + 12345
-
-	var coords := Vector2i.ZERO
-	for _attempt in range(12):
-		var q_x := rng.randi_range(6, MAP_SIZE.x / 4)
-		var q_y := rng.randi_range(6, MAP_SIZE.y / 4)
-		coords = Vector2i(q_x, q_y)
-		if coords.distance_to(IRON_MINE_COORDS) >= 7.0:
-			break
-
-	for dy in range(-2, 3):
-		for dx in range(-2, 3):
-			var clear_coords := coords + Vector2i(dx, dy)
-			if not _is_edge(clear_coords):
-				objects_layer.erase_cell(clear_coords)
-
-	var quarry := STONE_QUARRY_SCENE.instantiate()
-	quarry.position = ground_layer.to_global(ground_layer.map_to_local(coords))
-	generated_zone_props.add_child(quarry)
-
-
-func _place_battery_station(world_seed: int) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = world_seed + 99999
-
-	# Place near spawn area (centre) but slightly offset so it's clearly visible
-	var centre := MAP_SIZE / 2
-	var offsets: Array[Vector2i] = [
-		Vector2i(-5, -4),
-		Vector2i(5, -4),
-		Vector2i(-5, 4),
-		Vector2i(5, 4),
-	]
-	var offset_idx := rng.randi_range(0, offsets.size() - 1)
-	var coords: Vector2i = centre + offsets[offset_idx]
-
-	# Clear a small area so the station isn't buried in trees
-	for dy in range(-1, 2):
-		for dx in range(-1, 2):
-			var clear: Vector2i = coords + Vector2i(dx, dy)
-			if not _is_edge(clear):
-				objects_layer.erase_cell(clear)
-
-	var station := BATTERY_STATION_SCENE.instantiate()
-	station.position = ground_layer.to_global(ground_layer.map_to_local(coords))
-	generated_zone_props.add_child(station)
-
-
-func _place_iron_mines(world_seed: int) -> void:
-	if generated_zone_props == null:
-		return
-	_clear_tree_patch(IRON_MINE_COORDS, 1, 1)
-	var mine := IRON_MINE_SCENE.instantiate()
-	mine.position = ground_layer.to_global(ground_layer.map_to_local(IRON_MINE_COORDS))
-	generated_zone_props.add_child(mine)
-
-
-func _place_limestone_mine(world_seed: int) -> void:
-	if generated_zone_props == null or _river_tile_coords.is_empty():
-		return
-	
-	var min_x := MAP_SIZE.x
-	var target_y := MAP_SIZE.y / 2
-	for coords in _river_tile_coords:
-		if coords.x < min_x:
-			min_x = coords.x
-			target_y = coords.y
-
-	# Place it to the left of the river
-	var mine_x := maxi(min_x - 4, 3)
-	var coords := Vector2i(mine_x, target_y)
-
-	# Clear surrounding objects (like trees)
-	for dy in range(-2, 3):
-		for dx in range(-2, 3):
-			var clear_coords := coords + Vector2i(dx, dy)
-			if not _is_edge(clear_coords):
-				objects_layer.erase_cell(clear_coords)
-
-	var mine := LIMESTONE_MINE_SCENE.instantiate()
-	mine.position = ground_layer.to_global(ground_layer.map_to_local(coords))
-	generated_zone_props.add_child(mine)
-
-
-func _place_acid_crawler_spawn(world_seed: int) -> void:
-	if generated_zone_props == null or ACID_CRAWLER_SPAWNER_SCENE == null:
-		return
-	if _river_tile_coords.is_empty():
-		return
-
-	var spawn_coords := _find_acid_crawler_spawn_tile(world_seed)
-	if spawn_coords == Vector2i(-1, -1):
-		return
-
-	_clear_tree_patch(spawn_coords, 1, 1)
-	var spawn_world_position := ground_layer.to_global(ground_layer.map_to_local(spawn_coords))
-	var spawner := ACID_CRAWLER_SPAWNER_SCENE.instantiate()
-	spawner.name = "AcidCrawlerSpawner"
-	spawner.position = spawn_world_position
-	spawner.set("spawn_position", spawn_world_position)
-	generated_zone_props.add_child(spawner)
-
-
-func _find_acid_crawler_spawn_tile(world_seed: int) -> Vector2i:
-	var sulfur_origin := MAP_SIZE - SULFUR_FLATS_SIZE
-	var south_band_min_y := MAP_SIZE.y - 12
-	var river_anchor := Vector2i(-1, -1)
-	for coords: Vector2i in _river_tile_coords:
-		if coords.y < south_band_min_y:
-			continue
-		if coords.x > river_anchor.x:
-			river_anchor = coords
-
-	var min_x := maxi(river_anchor.x + 3, sulfur_origin.x - 12)
-	var max_x := sulfur_origin.x - 2
-	if min_x > max_x:
-		min_x = sulfur_origin.x - 8
-		max_x = sulfur_origin.x - 2
-
-	var candidates: Array[Vector2i] = []
-	for y in range(MAP_SIZE.y - 5, south_band_min_y - 1, -1):
-		for x in range(min_x, max_x + 1):
-			var coords := Vector2i(x, y)
-			if not _can_place_acid_crawler_at(coords):
-				continue
-			candidates.append(coords)
-
-	if candidates.is_empty():
-		return Vector2i(-1, -1)
-
-	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-		var a_score := _score_acid_crawler_spawn_tile(a, sulfur_origin)
-		var b_score := _score_acid_crawler_spawn_tile(b, sulfur_origin)
-		if is_equal_approx(a_score, b_score):
-			return a.x > b.x
-		return a_score > b_score
-	)
-	return candidates[0]
-
-
-func _score_acid_crawler_spawn_tile(coords: Vector2i, sulfur_origin: Vector2i) -> float:
-	var sulfur_bias := float(coords.x - sulfur_origin.x)
-	var south_bias := float(coords.y)
-	return sulfur_bias * 3.0 + south_bias
-
-
-func _can_place_acid_crawler_at(coords: Vector2i) -> bool:
-	if _is_edge(coords) or _is_spawn_area(coords):
-		return false
-	if _river_tile_coords.has(coords):
-		return false
-	if _get_all_blocked_tiles().has(coords):
-		return false
-	if objects_layer.get_cell_source_id(coords) != -1:
-		return false
-	return true
-
-
-func _spawn_interactive_trees(world_seed: int) -> void:
-	var candidate_tiles := _get_harvestable_tree_candidates()
-	if candidate_tiles.is_empty():
-		return
-
-	var rng := RandomNumberGenerator.new()
-	rng.seed = world_seed + 55123
-	for index in range(candidate_tiles.size() - 1, 0, -1):
-		var swap_index := rng.randi_range(0, index)
-		var tmp: Vector2i = candidate_tiles[index]
-		candidate_tiles[index] = candidate_tiles[swap_index]
-		candidate_tiles[swap_index] = tmp
-
-	var spawn_count := mini(HARVESTABLE_TREE_COUNT, candidate_tiles.size())
-	for index in range(spawn_count):
-		_spawn_interactive_tree_at(candidate_tiles[index], 10)
-
-
-func _get_harvestable_tree_candidates() -> Array[Vector2i]:
-	var candidates: Array[Vector2i] = []
-	var blocked_tiles := _get_all_blocked_tiles()
-	for coords: Vector2i in objects_layer.get_used_cells():
-		if not _is_tree_canopy_tile(coords):
-			continue
-		if blocked_tiles.has(coords):
-			continue
-		candidates.append(coords)
-	return candidates
-
-
-func _spawn_interactive_tree_at(coords: Vector2i, stock: int) -> TreeResource:
-	if generated_tree_resources == null:
-		return null
-	var existing_tree := _get_tree_at_tile(coords)
-	if existing_tree != null:
-		existing_tree.configure(coords, stock)
-		return existing_tree
-	if _is_tree_canopy_tile(coords):
-		objects_layer.erase_cell(coords)
-	var tree := TREE_RESOURCE_SCENE.instantiate() as TreeResource
-	if tree == null:
-		return null
-	tree.name = "Tree_%d_%d" % [coords.x, coords.y]
-	tree.position = ground_layer.map_to_local(coords)
-	tree.configure(coords, stock)
-	generated_tree_resources.add_child(tree)
-	tree.depleted.connect(_on_tree_depleted.bind(_world_generation_id))
-	return tree
-
-
-func _get_tree_at_tile(coords: Vector2i) -> TreeResource:
-	if generated_tree_resources == null:
-		return null
-	for child in generated_tree_resources.get_children():
-		var tree := child as TreeResource
-		if tree == null:
-			continue
-		if tree.is_queued_for_deletion():
-			continue
-		if tree.tile_coords == coords:
-			return tree
-	return null
-
-
-func _on_tree_depleted(tree: TreeResource, generation_id: int) -> void:
-	if generation_id != _world_generation_id:
-		return
-	if tree != null and is_instance_valid(tree):
-		tree.queue_free()
-	_schedule_tree_respawn(generation_id, TREE_RESPAWN_SECONDS)
-	GameManager.mark_dirty()
-
-
-func _schedule_tree_respawn(generation_id: int, delay_seconds: float) -> void:
-	_next_tree_respawn_id += 1
-	var respawn_id := _next_tree_respawn_id
-	var clamped_delay := maxf(0.0, delay_seconds)
-	_tree_respawn_deadlines[respawn_id] = Time.get_ticks_msec() + int(round(clamped_delay * 1000.0))
-	var timer := get_tree().create_timer(clamped_delay)
-	timer.timeout.connect(_respawn_tree.bind(respawn_id, generation_id), CONNECT_ONE_SHOT)
-
-
-func _respawn_tree(respawn_id: int, generation_id: int) -> void:
-	if generation_id != _world_generation_id:
-		return
-	if not _tree_respawn_deadlines.has(respawn_id):
-		return
-	_tree_respawn_deadlines.erase(respawn_id)
-	var coords := _find_random_tree_spawn_tile()
-	if coords == Vector2i(-1, -1):
-		_schedule_tree_respawn(generation_id, TREE_RESPAWN_RETRY_SECONDS)
-		return
-	_spawn_interactive_tree_at(coords, 10)
-	GameManager.mark_dirty()
-
-
-func _find_random_tree_spawn_tile() -> Vector2i:
-	var rng := RandomNumberGenerator.new()
-	_tree_spawn_sequence += 1
-	rng.seed = _get_world_seed() + (_world_generation_id * 4099) + _tree_spawn_sequence + Time.get_ticks_msec()
-	var candidates: Array[Vector2i] = []
-	for coords: Vector2i in ground_layer.get_used_cells():
-		candidates.append(coords)
-	for index in range(candidates.size() - 1, 0, -1):
-		var swap_index := rng.randi_range(0, index)
-		var tmp: Vector2i = candidates[index]
-		candidates[index] = candidates[swap_index]
-		candidates[swap_index] = tmp
-	for coords: Vector2i in candidates:
-		if _can_spawn_tree_at(coords):
-			return coords
-	return Vector2i(-1, -1)
-
-
-func _can_spawn_tree_at(coords: Vector2i) -> bool:
-	if ground_layer == null or ground_layer.get_cell_source_id(coords) == -1:
-		return false
-	if _is_edge(coords) or _is_spawn_area(coords):
-		return false
-	if _river_tile_coords.has(coords):
-		return false
-	if _get_all_blocked_tiles().has(coords):
-		return false
-	if objects_layer != null and objects_layer.get_cell_source_id(coords) != -1:
-		return false
-	if _get_tree_at_tile(coords) != null:
-		return false
-	if element_spawn_system != null and element_spawn_system.has_method("get_pickup_at_tile"):
-		if element_spawn_system.get_pickup_at_tile(coords) != null:
-			return false
-	if BuildSystem != null and BuildSystem.has_method("_has_placed_object_at_tile"):
-		if BuildSystem.call("_has_placed_object_at_tile", self, coords):
-			return false
-	return not _has_tree_overlap_at_world_position(ground_layer.to_global(ground_layer.map_to_local(coords)))
-
-
-func _has_tree_overlap_at_world_position(world_position: Vector2) -> bool:
-	var query_shape := CircleShape2D.new()
-	query_shape.radius = 9.0
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = query_shape
-	query.transform = Transform2D(0.0, world_position)
-	query.collide_with_bodies = true
-	query.collide_with_areas = true
-	query.collision_mask = 1
-	var world_2d := get_world_2d()
-	if world_2d == null:
-		return false
-	for hit in world_2d.direct_space_state.intersect_shape(query, 16):
-		var collider := hit.get("collider") as Node
-		if collider == null:
-			continue
-		if collider == ground_layer or collider == objects_layer:
-			continue
-		return true
-	return false
-
-
 func _place_sulfur_flats_zone() -> void:
 	var zone_origin := SULFUR_FLATS_ORIGIN
 	var zone_rect := Rect2i(zone_origin, SULFUR_FLATS_SIZE)
@@ -690,7 +323,7 @@ func _place_sulfur_flats_zone() -> void:
 	var skeleton_tile := zone_origin + Vector2i(5, (SULFUR_FLATS_SIZE.y / 2) + 2)
 	_clear_tree_patch(skeleton_tile, 1, 1)
 
-	var charred_skeleton := CHARRED_SKELETON_PROP_SCENE.instantiate()
+	var charred_skeleton := _get_scene(CHARRED_SKELETON_PROP_SCENE_PATH).instantiate()
 	generated_zone_props.add_child(charred_skeleton)
 	charred_skeleton.position = ground_layer.map_to_local(skeleton_tile) + Vector2(-2.0, 4.0)
 
@@ -728,8 +361,8 @@ func _is_sulfur_flats_path_tile(local_coords: Vector2i) -> bool:
 
 
 func _place_iron_hills_lithium_zone() -> void:
-	var zone_origin := Vector2i(MAP_SIZE.x - IRON_HILLS_LITHIUM_SIZE.x, 0)
-	var zone_rect := Rect2i(zone_origin, IRON_HILLS_LITHIUM_SIZE)
+	var zone_origin := Vector2i(MAP_SIZE.x - config.iron_hills_lithium_size.x, 0)
+	var zone_rect := Rect2i(zone_origin, config.iron_hills_lithium_size)
 
 	for y in range(zone_rect.position.y, zone_rect.end.y):
 		for x in range(zone_rect.position.x, zone_rect.end.x):
@@ -751,23 +384,23 @@ func _is_iron_hills_lithium_zone_tile(zone_rect: Rect2i, coords: Vector2i) -> bo
 	var local_coords := coords - zone_rect.position
 	if local_coords.x < 0 or local_coords.y < 0:
 		return false
-	if local_coords.x >= IRON_HILLS_LITHIUM_SIZE.x or local_coords.y >= IRON_HILLS_LITHIUM_SIZE.y:
+	if local_coords.x >= config.iron_hills_lithium_size.x or local_coords.y >= config.iron_hills_lithium_size.y:
 		return false
 
 	# Shape an inset quarry pocket so the lithium area reads as an Iron Hills sub-zone, not a map-edge stamp.
 	if local_coords.x <= 0 or local_coords.y <= 0:
 		return false
-	if local_coords.x >= IRON_HILLS_LITHIUM_SIZE.x - 1 or local_coords.y >= IRON_HILLS_LITHIUM_SIZE.y - 1:
+	if local_coords.x >= config.iron_hills_lithium_size.x - 1 or local_coords.y >= config.iron_hills_lithium_size.y - 1:
 		return false
 	if local_coords.x == 1 and local_coords.y <= 2:
 		return false
 	if local_coords.x <= 2 and local_coords.y == 1:
 		return false
-	if local_coords.x >= IRON_HILLS_LITHIUM_SIZE.x - 3 and local_coords.y == 1:
+	if local_coords.x >= config.iron_hills_lithium_size.x - 3 and local_coords.y == 1:
 		return false
-	if local_coords.x == IRON_HILLS_LITHIUM_SIZE.x - 2 and local_coords.y == 2:
+	if local_coords.x == config.iron_hills_lithium_size.x - 2 and local_coords.y == 2:
 		return false
-	if local_coords.y >= IRON_HILLS_LITHIUM_SIZE.y - 2 and local_coords.x == 1:
+	if local_coords.y >= config.iron_hills_lithium_size.y - 2 and local_coords.x == 1:
 		return false
 	return true
 
@@ -778,7 +411,7 @@ func _is_iron_hills_lithium_deep_tile(zone_rect: Rect2i, coords: Vector2i) -> bo
 		return false
 	if local_coords.x <= 2 or local_coords.y <= 2:
 		return false
-	if local_coords.x >= IRON_HILLS_LITHIUM_SIZE.x - 2 or local_coords.y >= IRON_HILLS_LITHIUM_SIZE.y - 2:
+	if local_coords.x >= config.iron_hills_lithium_size.x - 2 or local_coords.y >= config.iron_hills_lithium_size.y - 2:
 		return false
 	return local_coords.x >= 4 and local_coords.y >= 3
 
@@ -876,7 +509,7 @@ func _draw_iron_hills_lithium_tile(coords: Vector2i) -> void:
 
 
 func _place_iron_hills_lithium_teaching_props(zone_origin: Vector2i) -> void:
-	var puddle_tile := zone_origin + Vector2i(1, IRON_HILLS_LITHIUM_SIZE.y - 2)
+	var puddle_tile := zone_origin + Vector2i(1, config.iron_hills_lithium_size.y - 2)
 	var charred_tile := puddle_tile + Vector2i(1, -1)
 	_clear_tree_patch(puddle_tile, 1, 1)
 	_clear_tree_patch(charred_tile, 1, 1)
@@ -888,87 +521,6 @@ func _place_iron_hills_lithium_teaching_props(zone_origin: Vector2i) -> void:
 	var charred_deposit := _build_charred_lithium_deposit_prop()
 	generated_zone_props.add_child(charred_deposit)
 	charred_deposit.position = ground_layer.map_to_local(charred_tile) + Vector2(0.0, 1.0)
-
-
-func _place_overworld_sodium_trailhead() -> void:
-	if generated_zone_props == null:
-		return
-	var trailhead_tile := Vector2i(MAP_SIZE.x - 4, MAP_SIZE.y / 2)
-	_clear_tree_patch(trailhead_tile, 1, 2)
-	var trailhead := TRAILHEAD_PROP_SCENE.instantiate()
-	trailhead.position = ground_layer.map_to_local(trailhead_tile) + Vector2(0.0, -2.0)
-	trailhead.set("trail_name", "Sodium Shoals Trailhead")
-	trailhead.set("prompt_text", "Tap Interact to travel" if MobileInputRouter.prefers_touch_controls() else "Press E to travel")
-	trailhead.set("travel_blurb", "This route leaves the base behind. Pack dry storage space and return capacity before heading into the shoals.")
-	trailhead.set("target_scene_path", SODIUM_SHOALS_SCENE_PATH)
-	trailhead.set("target_entry_point_id", &"arrival_from_overworld")
-	generated_zone_props.add_child(trailhead)
-
-
-func _place_overworld_sulfur_trailhead() -> void:
-	if generated_zone_props == null:
-		return
-	var trailhead_tile := OVERWORLD_SULFUR_TRAILHEAD_TILE
-	_clear_tree_patch(trailhead_tile, 1, 2)
-	var trailhead := TRAILHEAD_PROP_SCENE.instantiate()
-	trailhead.position = ground_layer.map_to_local(trailhead_tile) + Vector2(0.0, -2.0)
-	trailhead.set("trail_name", "Sulfur Flats Trailhead")
-	trailhead.set("prompt_text", "Tap Interact to travel" if MobileInputRouter.prefers_touch_controls() else "Press E to travel")
-	trailhead.set("travel_blurb", "This route breaks away from the home map and drops straight into the flats. Bring a distillation kit and room to haul sulfur back.")
-	trailhead.set("target_scene_path", SULFUR_FLATS_SCENE_PATH)
-	trailhead.set("target_entry_point_id", &"arrival_from_overworld")
-	generated_zone_props.add_child(trailhead)
-	_place_overworld_sulfur_teaching_props(trailhead_tile)
-
-
-func _place_overworld_sulfur_teaching_props(trailhead_tile: Vector2i) -> void:
-	if generated_zone_props == null:
-		return
-	var sign_tile := trailhead_tile + Vector2i(-5, -3)
-	var crate_tile := trailhead_tile + Vector2i(2, -1)
-	_clear_tree_patch(sign_tile, 1, 1)
-	_clear_tree_patch(crate_tile, 1, 1)
-
-	var sign := RUSTED_WARNING_SIGN_SCENE.instantiate()
-	generated_zone_props.add_child(sign)
-	sign.position = ground_layer.map_to_local(sign_tile) + Vector2(0.0, -4.0)
-
-	var scorched_crate := SCORCHED_CRATE_NOTE_SCENE.instantiate()
-	generated_zone_props.add_child(scorched_crate)
-	scorched_crate.position = ground_layer.map_to_local(crate_tile) + Vector2(0.0, 2.0)
-
-
-func _place_sodium_shoals_return_trailhead() -> void:
-	if generated_zone_props == null:
-		return
-	var trailhead_tile := Vector2i(4, MAP_SIZE.y / 2)
-	_clear_tree_patch(trailhead_tile, 1, 2)
-	var trailhead := TRAILHEAD_PROP_SCENE.instantiate()
-	trailhead.position = ground_layer.map_to_local(trailhead_tile) + Vector2(0.0, -2.0)
-	trailhead.set("trail_name", "Return Trail")
-	trailhead.set("prompt_text", "Tap Interact to return" if MobileInputRouter.prefers_touch_controls() else "Press E to return")
-	trailhead.set("travel_blurb", "Head back to the home zone. Unstable cargo keeps its risk on the walk out.")
-	trailhead.set("target_scene_path", OVERWORLD_SCENE_PATH)
-	trailhead.set("target_entry_point_id", &"from_sodium_shoals")
-	generated_zone_props.add_child(trailhead)
-
-
-func _place_sulfur_flats_return_trailhead() -> void:
-	if generated_zone_props == null:
-		return
-	var trailhead_tile := Vector2i(
-		SULFUR_FLATS_ORIGIN.x - 2,
-		SULFUR_FLATS_ORIGIN.y + (SULFUR_FLATS_SIZE.y / 2)
-	)
-	_clear_tree_patch(trailhead_tile, 1, 2)
-	var trailhead := TRAILHEAD_PROP_SCENE.instantiate()
-	trailhead.position = ground_layer.map_to_local(trailhead_tile) + Vector2(0.0, -2.0)
-	trailhead.set("trail_name", "Return Trail")
-	trailhead.set("prompt_text", "Tap Interact to return" if MobileInputRouter.prefers_touch_controls() else "Press E to return")
-	trailhead.set("travel_blurb", "Head back to the home zone. Unstable cargo keeps its risk on the walk out.")
-	trailhead.set("target_scene_path", OVERWORLD_SCENE_PATH)
-	trailhead.set("target_entry_point_id", &"from_sulfur_flats")
-	generated_zone_props.add_child(trailhead)
 
 
 func _place_sodium_shoals_zone(world_seed: int) -> void:
@@ -1145,7 +697,7 @@ func _spawn_sodium_deposits(world_seed: int) -> void:
 		var tmp: Vector2i = candidate_tiles[index]
 		candidate_tiles[index] = candidate_tiles[swap_index]
 		candidate_tiles[swap_index] = tmp
-	var spawn_count := mini(rng.randi_range(SODIUM_MIN_SPAWNS, SODIUM_MAX_SPAWNS), candidate_tiles.size())
+	var spawn_count := mini(rng.randi_range(config.sodium_spawn_min, config.sodium_spawn_max), candidate_tiles.size())
 	for index in range(spawn_count):
 		element_spawn_system.spawn_element_at(&"sodium", candidate_tiles[index], ground_layer)
 
@@ -1163,7 +715,7 @@ func _spawn_mercury_deposits(world_seed: int) -> void:
 		var tmp: Vector2i = candidate_tiles[index]
 		candidate_tiles[index] = candidate_tiles[swap_index]
 		candidate_tiles[swap_index] = tmp
-	var spawn_count := mini(rng.randi_range(MERCURY_MIN_SPAWNS, MERCURY_MAX_SPAWNS), candidate_tiles.size())
+	var spawn_count := mini(rng.randi_range(config.mercury_spawn_min, config.mercury_spawn_max), candidate_tiles.size())
 	for index in range(spawn_count):
 		element_spawn_system.spawn_element_at(&"mercury", candidate_tiles[index], ground_layer)
 
@@ -1206,105 +758,14 @@ func _has_adjacent_sodium_shoals_brine_tile(coords: Vector2i) -> bool:
 	return false
 
 
-func _place_sodium_shoals_contamination_props() -> void:
-	if generated_zone_props == null:
-		return
-	var sign_tile := SODIUM_SHOALS_ORIGIN + Vector2i(18, 8)
-	var crate_tile := SODIUM_SHOALS_ORIGIN + Vector2i(20, 10)
-	_clear_tree_patch(sign_tile, 1, 1)
-	_clear_tree_patch(crate_tile, 1, 1)
-
-	var sign := RUSTED_WARNING_SIGN_SCENE.instantiate()
-	generated_zone_props.add_child(sign)
-	sign.position = ground_layer.map_to_local(sign_tile) + Vector2(0.0, -4.0)
-
-	var scorched_crate := SCORCHED_CRATE_NOTE_SCENE.instantiate()
-	scorched_crate.set("note_title", "Dumping Manifest")
-	scorched_crate.set("note_text", "Brine held the sodium waste. Mercury beads settled in the black mud below it. Do not heat the sample drums.")
-	scorched_crate.set("discovery_entry_id", &"mercury_dumping_warning")
-	scorched_crate.set("discovery_title", "Shoals Dumping Warning")
-	scorched_crate.set("discovery_notes", "Industrial dumping left mercury in the Sodium Shoals sediment. Heat and acid exposure can turn carried mercury into toxic vapor.")
-	generated_zone_props.add_child(scorched_crate)
-	scorched_crate.position = ground_layer.map_to_local(crate_tile) + Vector2(0.0, 2.0)
-
-
-func _place_sodium_shoals_threats(world_seed: int) -> void:
-	if generated_zone_props == null:
-		return
-	var crawler_tiles := [
-		SODIUM_SHOALS_ORIGIN + Vector2i(14, 4),
-		SODIUM_SHOALS_ORIGIN + Vector2i(18, 14),
-	]
-	for coords: Vector2i in crawler_tiles:
-		if _is_edge(coords):
-			continue
-		var spawner := ACID_CRAWLER_SPAWNER_SCENE.instantiate()
-		var spawn_world_position := ground_layer.to_global(ground_layer.map_to_local(coords))
-		spawner.name = "ShoalsCrawlerSpawner_%d_%d" % [coords.x, coords.y]
-		spawner.position = spawn_world_position
-		spawner.set("spawn_position", spawn_world_position)
-		generated_zone_props.add_child(spawner)
-
-	var golem_spawner := ENEMY_SPAWNER_SCENE.instantiate()
-	golem_spawner.position = Vector2.ZERO
-	golem_spawner.set("spawn_position", [
-		ground_layer.to_global(ground_layer.map_to_local(SODIUM_SHOALS_ORIGIN + Vector2i(20, 3))),
-		ground_layer.to_global(ground_layer.map_to_local(SODIUM_SHOALS_ORIGIN + Vector2i(21, 16))),
-	])
-	generated_zone_props.add_child(golem_spawner)
-
-
-func _place_light_swarmer_spawners() -> void:
-	if generated_zone_props == null or ENEMY_SPAWNER_SCENE == null or LIGHT_SWARMER_SCENE == null:
-		return
-	var swarmer_spawn_tiles := [
-		Vector2i(8, 50),
-		Vector2i(56, 16),
-	]
-	var spawn_positions: Array[Vector2] = []
-	for coords: Vector2i in swarmer_spawn_tiles:
-		if _is_edge(coords):
-			continue
-		_clear_tree_patch(coords, 1, 1)
-		spawn_positions.append(ground_layer.to_global(ground_layer.map_to_local(coords)))
-	if spawn_positions.is_empty():
-		return
-	var spawner := ENEMY_SPAWNER_SCENE.instantiate()
-	spawner.name = "LightSwarmerSpawner"
-	spawner.set("enemy_scene", LIGHT_SWARMER_SCENE)
-	spawner.set("spawn_position", spawn_positions)
-	spawner.set("spawn_group_size", 3)
-	spawner.set("spawn_group_radius", 16.0)
-	spawner.set("requires_post_tutorial_loop", true)
-	generated_zone_props.add_child(spawner)
-
-
 func _log_sodium_shoals_discovery() -> void:
-	if DiscoveryLog == null or not DiscoveryLog.has_method("log_progression_discovery"):
+	if EventBus.get_discovery_log() == null or not EventBus.get_discovery_log().has_method("log_progression_discovery"):
 		return
-	DiscoveryLog.log_progression_discovery(
+	EventBus.get_discovery_log().log_progression_discovery(
 		SODIUM_SHOALS_DISCOVERY_ENTRY_ID,
 		SODIUM_SHOALS_DISCOVERY_TITLE,
 		SODIUM_SHOALS_DISCOVERY_NOTES
 	)
-
-
-func _place_sulfur_flats_threats() -> void:
-	if generated_zone_props == null or ACID_CRAWLER_SPAWNER_SCENE == null:
-		return
-	var crawler_tiles := [
-		SULFUR_FLATS_ORIGIN + Vector2i(16, 4),
-		SULFUR_FLATS_ORIGIN + Vector2i(20, 12),
-	]
-	for coords: Vector2i in crawler_tiles:
-		if _is_edge(coords):
-			continue
-		var spawner := ACID_CRAWLER_SPAWNER_SCENE.instantiate()
-		var spawn_world_position := ground_layer.to_global(ground_layer.map_to_local(coords))
-		spawner.name = "SulfurCrawlerSpawner_%d_%d" % [coords.x, coords.y]
-		spawner.position = spawn_world_position
-		spawner.set("spawn_position", spawn_world_position)
-		generated_zone_props.add_child(spawner)
 
 
 func _is_point_in_ellipse(local_coords: Vector2i, center: Vector2, radii: Vector2) -> bool:
@@ -1318,7 +779,7 @@ func _is_point_in_ellipse(local_coords: Vector2i, center: Vector2, radii: Vector
 
 
 func _get_iron_hills_lithium_local_coords(coords: Vector2i) -> Vector2i:
-	var zone_origin := Vector2i(MAP_SIZE.x - IRON_HILLS_LITHIUM_SIZE.x, 0)
+	var zone_origin := Vector2i(MAP_SIZE.x - config.iron_hills_lithium_size.x, 0)
 	return coords - zone_origin
 
 
@@ -1624,7 +1085,7 @@ func _spawn_sulfur_crystals(world_seed: int) -> void:
 		candidate_tiles[index] = candidate_tiles[swap_index]
 		candidate_tiles[swap_index] = tmp
 
-	var spawn_count := mini(rng.randi_range(SULFUR_MIN_SPAWNS, SULFUR_MAX_SPAWNS), candidate_tiles.size())
+	var spawn_count := mini(rng.randi_range(config.sulfur_spawn_min, config.sulfur_spawn_max), candidate_tiles.size())
 	for index in range(spawn_count):
 		element_spawn_system.spawn_element_at(&"sulfur", candidate_tiles[index], ground_layer)
 
@@ -1644,7 +1105,7 @@ func _spawn_lithium_deposits(world_seed: int) -> void:
 		candidate_tiles[index] = candidate_tiles[swap_index]
 		candidate_tiles[swap_index] = tmp
 
-	var spawn_count := mini(rng.randi_range(LITHIUM_MIN_SPAWNS, LITHIUM_MAX_SPAWNS), candidate_tiles.size())
+	var spawn_count := mini(rng.randi_range(config.lithium_spawn_min, config.lithium_spawn_max), candidate_tiles.size())
 	for index in range(spawn_count):
 		_spawn_lithium_pickup_at(candidate_tiles[index], _world_generation_id)
 
@@ -1654,7 +1115,7 @@ func _on_water_pickup_collected(_item_data: Dictionary, _quantity: int, coords: 
 
 
 func _schedule_water_respawn(coords: Vector2i, generation_id: int) -> void:
-	var timer := get_tree().create_timer(WATER_RESPAWN_SECONDS)
+	var timer := get_tree().create_timer(config.water_respawn_seconds)
 	timer.timeout.connect(_respawn_water_pickup.bind(coords, generation_id), CONNECT_ONE_SHOT)
 
 
@@ -1691,7 +1152,7 @@ func _on_lithium_pickup_collected(_item_data: Dictionary, _quantity: int, coords
 
 
 func _schedule_lithium_respawn(coords: Vector2i, generation_id: int) -> void:
-	var timer := get_tree().create_timer(LITHIUM_RESPAWN_SECONDS)
+	var timer := get_tree().create_timer(config.lithium_respawn_seconds)
 	timer.timeout.connect(_respawn_lithium_pickup.bind(coords, generation_id), CONNECT_ONE_SHOT)
 
 
@@ -1711,9 +1172,9 @@ func get_movement_speed_multiplier_at_world_position(world_position: Vector2) ->
 	var local_position := ground_layer.to_local(world_position)
 	var coords := ground_layer.local_to_map(local_position)
 	if _sodium_shoals_brine_tiles.has(coords):
-		return SODIUM_SHOALS_BRINE_SPEED_MULTIPLIER
+		return config.sodium_shoals_brine_speed_multiplier
 	if _sulfur_flats_cracked_tiles.has(coords):
-		return SULFUR_FLATS_CRACKED_SPEED_MULTIPLIER
+		return config.sulfur_flats_cracked_speed_multiplier
 	return 1.0
 
 
@@ -1785,55 +1246,12 @@ func _get_all_spawn_blocked_tiles() -> Dictionary:
 
 
 func export_tree_state() -> Dictionary:
-	var active_tree_state: Array[Dictionary] = []
-	if generated_tree_resources != null:
-		for child in generated_tree_resources.get_children():
-			var tree := child as TreeResource
-			if tree == null:
-				continue
-			active_tree_state.append(tree.export_state())
-
-	var pending_respawns: Array[Dictionary] = []
-	var now_msec := Time.get_ticks_msec()
-	for respawn_id in _tree_respawn_deadlines.keys():
-		var deadline_msec := int(_tree_respawn_deadlines[respawn_id])
-		var remaining_seconds := maxf(0.0, float(deadline_msec - now_msec) / 1000.0)
-		pending_respawns.append({
-			&"remaining_seconds": remaining_seconds,
-		})
-
-	return {
-		&"active_trees": active_tree_state,
-		&"pending_tree_respawns": pending_respawns,
-	}
+	return tree_manager.export_state() if tree_manager != null else {}
 
 
 func import_tree_state(active_tree_state: Array, pending_respawns: Array) -> void:
-	# Preserve freshly generated trees when older or invalid saves omit tree state.
-	if active_tree_state.is_empty() and pending_respawns.is_empty():
-		return
-	_tree_respawn_deadlines.clear()
-	_clear_generated_children(generated_tree_resources)
-	for entry in active_tree_state:
-		if not (entry is Dictionary):
-			continue
-		var coords := _dict_to_coords(entry.get("tile_coords", {}))
-		if coords == Vector2i(-1, -1):
-			continue
-		var remaining_wood := clampi(int(entry.get("remaining_wood", 10)), 1, 10)
-		_spawn_interactive_tree_at(coords, remaining_wood)
-	for entry in pending_respawns:
-		if not (entry is Dictionary):
-			continue
-		var remaining_seconds := maxf(0.0, float(entry.get("remaining_seconds", TREE_RESPAWN_SECONDS)))
-		_schedule_tree_respawn(_world_generation_id, remaining_seconds)
-
-
-func _dict_to_coords(raw_coords: Variant) -> Vector2i:
-	if not (raw_coords is Dictionary):
-		return Vector2i(-1, -1)
-	var coords := raw_coords as Dictionary
-	return Vector2i(int(coords.get("x", -1)), int(coords.get("y", -1)))
+	if tree_manager != null:
+		tree_manager.import_state(active_tree_state, pending_respawns)
 
 
 func _get_sulfur_flats_ash_tile_array() -> Array[Vector2i]:
@@ -1860,7 +1278,7 @@ func _get_iron_hills_lithium_spawn_tiles() -> Array[Vector2i]:
 
 
 func _get_world_seed() -> int:
-	var world_system := get_tree().root.get_node_or_null("WorldSystem")
+	var world_system := EventBus.get_world_system()
 	var scene_path := _get_scene_path()
 	if world_system != null and world_system.has_method("get_seed_for_scene") and not scene_path.is_empty():
 		return int(world_system.get_seed_for_scene(scene_path))
@@ -1870,7 +1288,7 @@ func _get_world_seed() -> int:
 
 
 func _set_world_seed(world_seed: int) -> void:
-	var world_system := get_tree().root.get_node_or_null("WorldSystem")
+	var world_system := EventBus.get_world_system()
 	var scene_path := _get_scene_path()
 	if world_system != null and world_system.has_method("set_seed_for_scene") and not scene_path.is_empty():
 		world_system.set_seed_for_scene(scene_path, world_seed)
@@ -1934,6 +1352,43 @@ func _wire_camera_bounds() -> void:
 	var camera := find_child("Camera2D", true, false) as Camera2D
 	if camera != null and camera.has_method("set_bounds"):
 		camera.call("set_bounds", get_world_bounds())
+
+
+func _setup_generation_components() -> void:
+	terrain_generator = _ensure_generation_component("TerrainGenerator", _get_script(TERRAIN_GENERATOR_SCRIPT_PATH))
+	prop_spawner = _ensure_generation_component("PropSpawner", _get_script(PROP_SPAWNER_SCRIPT_PATH))
+	enemy_director = _ensure_generation_component("EnemyDirector", _get_script(ENEMY_DIRECTOR_SCRIPT_PATH))
+	tree_manager = _ensure_generation_component("TreeManager", _get_script(TREE_MANAGER_SCRIPT_PATH))
+	prop_spawner.configure(self, ground_layer, objects_layer, generated_zone_props)
+	enemy_director.configure(self, ground_layer, generated_zone_props)
+	tree_manager.configure(self, ground_layer, objects_layer, generated_tree_resources, element_spawn_system, config)
+
+
+func _ensure_generation_component(node_name: String, component_script: Script) -> Node:
+	var component := get_node_or_null(node_name)
+	if component != null:
+		return component
+	component = Node.new()
+	component.name = node_name
+	component.set_script(component_script)
+	add_child(component)
+	return component
+
+
+func _get_scene(scene_path: String) -> PackedScene:
+	var scene := _scene_cache.get(scene_path) as PackedScene
+	if scene == null:
+		scene = load(scene_path) as PackedScene
+		_scene_cache[scene_path] = scene
+	return scene
+
+
+func _get_script(script_path: String) -> Script:
+	var script := _script_cache.get(script_path) as Script
+	if script == null:
+		script = load(script_path) as Script
+		_script_cache[script_path] = script
+	return script
 
 
 func _ensure_generated_child(node_name: String) -> Node2D:

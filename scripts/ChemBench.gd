@@ -1,9 +1,8 @@
 extends StaticBody2D
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+
 const CHEM_BENCH_UI_SCENE := preload("res://scenes/UI/ChemBenchUI.tscn")
-const CHEMICAL_EXPLOSION_SCENE := preload("res://scenes/ChemicalExplosion.tscn")
-const SHRAPNEL_BURST_SCENE := preload("res://scenes/ShrapnelBurst.tscn")
-const TOXIC_CLOUD_SCENE := preload("res://scenes/ToxicCloud.tscn")
 const DISTILLATION_KIT_ITEM_ID := &"distillation_kit"
 const SLOT_INPUT_A := &"input_a"
 const SLOT_INPUT_B := &"input_b"
@@ -58,19 +57,19 @@ func _ready() -> void:
 	_bind_power_services()
 	if not EventBus.service_registered.is_connected(_on_service_registered):
 		EventBus.service_registered.connect(_on_service_registered)
+	if EventBus.get_weather_system() != null and EventBus.get_weather_system().has_signal("weather_changed"):
+		EventBus.get_weather_system().weather_changed.connect(_on_weather_changed)
+	_update_rain_visual_state()
 	_hide_prompt()
 
 
-func _process(_delta: float) -> void:
-	_drain_power_bonus(_delta)
-	_update_rain_visual_state()
-	if _interact_locked_until_release:
-		if not Input.is_action_pressed("interact"):
-			_interact_locked_until_release = false
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_released("interact"):
+		_interact_locked_until_release = false
 		return
-
-	if _player_in_range and not _is_interacting and Input.is_action_just_pressed("interact"):
+	if _player_in_range and not _is_interacting and not _interact_locked_until_release and event.is_action_pressed("interact"):
 		_start_interaction()
+		get_viewport().set_input_as_handled()
 
 
 func open_ui() -> void:
@@ -211,7 +210,13 @@ func set_temperature(value: float) -> void:
 
 
 func evaluate_current_reaction() -> Dictionary:
-	var result := ChemistryEngine.evaluate_chem_bench_reaction(_build_reaction_state())
+	var chemistry_engine := EventBus.get_chemistry_engine()
+	if chemistry_engine == null or not chemistry_engine.has_method("evaluate_chem_bench_reaction"):
+		return {
+			&"preview_label": "Chemistry system unavailable",
+			&"notes": "Chemistry data is still loading.",
+		}
+	var result: Dictionary = chemistry_engine.evaluate_chem_bench_reaction(_build_reaction_state())
 	if has_rain_condition_risk():
 		var notes := str(result.get(&"notes", result.get("notes", "")))
 		result[&"notes"] = "%s Rainwater is contaminating the bench." % notes if not notes.is_empty() else "Rainwater is contaminating the bench."
@@ -235,15 +240,21 @@ func trigger_stabilization_failure(reason: StringName) -> void:
 		RAIN_CONTAMINATION_REASON:
 			pass
 		&"heat_runaway":
-			var explosion := CHEMICAL_EXPLOSION_SCENE.instantiate() as Node2D
+			var explosion := ObjectPool.get_instance_by_id(ObjectPool.SCENE_CHEMICAL_EXPLOSION) as Node2D
+			if explosion == null:
+				return
 			current_scene.add_child(explosion)
 			explosion.global_position = global_position
 		&"pressure_spike":
-			var shrapnel_burst := SHRAPNEL_BURST_SCENE.instantiate() as Node2D
+			var shrapnel_burst := ObjectPool.get_instance_by_id(ObjectPool.SCENE_SHRAPNEL_BURST) as Node2D
+			if shrapnel_burst == null:
+				return
 			current_scene.add_child(shrapnel_burst)
 			shrapnel_burst.global_position = global_position
 		&"timer_expiry":
-			var toxic_cloud := TOXIC_CLOUD_SCENE.instantiate() as Node2D
+			var toxic_cloud := ObjectPool.get_instance_by_id(ObjectPool.SCENE_TOXIC_CLOUD) as Node2D
+			if toxic_cloud == null:
+				return
 			current_scene.add_child(toxic_cloud)
 			toxic_cloud.global_position = global_position
 
@@ -277,15 +288,15 @@ func has_rain_condition_risk() -> bool:
 
 
 func get_rain_condition_risk() -> float:
-	if BaseThreatDirector == null or not BaseThreatDirector.has_method("get_chemistry_rain_risk"):
+	if EventBus.get_base_threat_director() == null or not EventBus.get_base_threat_director().has_method("get_chemistry_rain_risk"):
 		return 0.0
-	return float(BaseThreatDirector.get_chemistry_rain_risk(global_position))
+	return float(EventBus.get_base_threat_director().get_chemistry_rain_risk(global_position))
 
 
 func get_rain_slowdown_multiplier() -> float:
-	if BaseThreatDirector == null or not BaseThreatDirector.has_method("get_chemistry_slowdown_multiplier"):
+	if EventBus.get_base_threat_director() == null or not EventBus.get_base_threat_director().has_method("get_chemistry_slowdown_multiplier"):
 		return 1.0
-	return float(BaseThreatDirector.get_chemistry_slowdown_multiplier(global_position))
+	return float(EventBus.get_base_threat_director().get_chemistry_slowdown_multiplier(global_position))
 
 
 func should_rain_contaminate_reaction(result: Dictionary) -> bool:
@@ -331,14 +342,14 @@ func _build_reaction_state() -> Dictionary:
 
 
 func _can_accept_reactant_item(item_id: StringName) -> bool:
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if element_data.is_empty():
 		return false
-	return ChemistryEngine.can_use_chem_bench_reactant(item_id)
+	return EventBus.get_chemistry_engine().can_use_chem_bench_reactant(item_id)
 
 
 func _can_accept_catalyst_item(item_id: StringName) -> bool:
-	var element_data := ElementDatabase.get_element(item_id)
+	var element_data := GameplayData.elements().get_element(item_id)
 	if element_data.is_empty():
 		return false
 	return str(element_data.get(&"category", "")) == "catalyst"
@@ -390,7 +401,7 @@ func _has_reactive_inputs() -> bool:
 		var item_id := StringName(slot_state.get(&"item_id", &""))
 		if item_id.is_empty():
 			continue
-		var element_data := ElementDatabase.get_element(item_id)
+		var element_data := GameplayData.elements().get_element(item_id)
 		var properties: Dictionary = element_data.get(&"properties", {})
 		if String(element_data.get(&"category", "")).to_lower() == "volatile":
 			return true
@@ -407,6 +418,11 @@ func _update_rain_visual_state() -> void:
 		sprite.modulate = Color.WHITE
 	else:
 		sprite.modulate = Color(0.72, 0.82, 0.92, 1.0)
+
+
+func _on_weather_changed(_new_state: int) -> void:
+	_update_rain_visual_state()
+	state_changed.emit()
 
 
 func _start_interaction() -> void:

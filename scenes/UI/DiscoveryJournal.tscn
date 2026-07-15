@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/DiscoveryJournalPanel.gd" id="1_panel"]
+[ext_resource type="Theme" path="res://assets/themes/game_theme.tres" id="2_theme"]
 
 [node name="DiscoveryJournal" type="Panel"]
 visible = false
@@ -16,6 +17,7 @@ offset_bottom = 250.0
 mouse_filter = 1
 z_index = 25
 script = ExtResource("1_panel")
+theme = ExtResource("2_theme")
 
 [node name="MarginContainer" type="MarginContainer" parent="."]
 layout_mode = 1

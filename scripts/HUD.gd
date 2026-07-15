@@ -1,5 +1,8 @@
 extends CanvasLayer
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+const WeatherSystem = preload("res://scripts/WeatherSystem.gd")
+
 const WORLD_SCENE_PATH := "res://scenes/World.tscn"
 const MAIN_MENU_SCENE_PATH := "res://scenes/MainMenu.tscn"
 const DEATH_OVERLAY_FADE_SECONDS := 1.0
@@ -7,6 +10,10 @@ const DISCOVERY_JOURNAL_SCENE := preload("res://scenes/UI/Journal.tscn")
 const CARRIER_WARNING_SFX_DURATION := 0.11
 const SCANNER_TOAST_SECONDS := 1.6
 const NIGHT_DEFENSE_TOAST_SECONDS := 2.2
+const HealthDisplayScript = preload("res://scripts/HealthDisplay.gd")
+const CarrierRiskDisplayScript = preload("res://scripts/CarrierRiskDisplay.gd")
+const WeatherDisplayScript = preload("res://scripts/WeatherDisplay.gd")
+const ObjectivesDisplayScript = preload("res://scripts/ObjectivesDisplay.gd")
 
 @onready var carrier_risk_strip: Panel = $CarrierRiskStrip
 @onready var carrier_risk_warning_label: Label = $CarrierRiskStrip/VBoxContainer/WarningLabel
@@ -98,9 +105,15 @@ var _current_touch_interactable: Node2D = null
 var _objectives_collapsed := false
 var _minimap_collapsed := false
 var _player_combat_source: Node = null
-var _hud_poll_elapsed := 0.0
+var _touch_interaction_candidates: Dictionary[int, Node2D] = {}
+var _bound_touch_areas: Dictionary[int, bool] = {}
+var health_display: Node
+var carrier_risk_display: Node
+var weather_display: Node
+var objectives_display: Node
 
 func _ready() -> void:
+	_setup_display_components()
 	GameManager.player_health_changed.connect(_update_health)
 	GameManager.player_died.connect(_show_death_overlay)
 	GameManager.scanner_tier_changed.connect(_on_scanner_tier_changed)
@@ -109,14 +122,12 @@ func _ready() -> void:
 	InventoryManager.inventory_changed.connect(_refresh_held_item.unbind(1))
 	InventoryManager.active_slot_changed.connect(_on_held_item_changed.unbind(1))
 	InventoryManager.weight_changed.connect(_on_weight_changed)
-	if ResearchObjectives != null:
-		ResearchObjectives.objective_completed.connect(_on_objectives_changed)
-		ResearchObjectives.objective_activated.connect(_on_objectives_changed)
-		ResearchObjectives.objective_progressed.connect(_on_objectives_progressed)
-		if ResearchObjectives.has_signal("objectives_restored"):
-			ResearchObjectives.objectives_restored.connect(_on_objectives_state_restored)
-	retry_button.pressed.connect(_on_retry_button_pressed)
-	quit_button.pressed.connect(_on_quit_button_pressed)
+	if EventBus.get_research_objectives() != null:
+		EventBus.get_research_objectives().objective_completed.connect(_on_objectives_changed)
+		EventBus.get_research_objectives().objective_activated.connect(_on_objectives_changed)
+		EventBus.get_research_objectives().objective_progressed.connect(_on_objectives_progressed)
+		if EventBus.get_research_objectives().has_signal("objectives_restored"):
+			EventBus.get_research_objectives().objectives_restored.connect(_on_objectives_state_restored)
 	context_interact_button.pressed.connect(_on_context_interact_button_pressed)
 	objectives_collapse_button.pressed.connect(_toggle_objectives_collapsed)
 	minimap_toggle_button.pressed.connect(_toggle_minimap_collapsed)
@@ -131,12 +142,12 @@ func _ready() -> void:
 	GameManager.player_unregistered.connect(_on_player_unregistered)
 	if MobileInputRouter != null and MobileInputRouter.has_signal("input_mode_changed"):
 		MobileInputRouter.input_mode_changed.connect(_on_input_mode_changed)
-	if BuildSystem != null and BuildSystem.has_signal("build_mode_changed"):
-		BuildSystem.build_mode_changed.connect(_on_build_mode_changed)
-	if has_node("/root/CarrierRiskSystem"):
-		CarrierRiskSystem.carrier_risk_warning.connect(_on_carrier_risk_warning)
-		CarrierRiskSystem.carrier_risk_cleared.connect(_on_carrier_risk_cleared)
-		CarrierRiskSystem.carrier_risk_ignition.connect(_on_carrier_risk_ignition)
+	if EventBus.get_build_system() != null and EventBus.get_build_system().has_signal("build_mode_changed"):
+		EventBus.get_build_system().build_mode_changed.connect(_on_build_mode_changed)
+	if EventBus.get_carrier_risk_system() != null:
+		EventBus.get_carrier_risk_system().carrier_risk_warning.connect(_on_carrier_risk_warning)
+		EventBus.get_carrier_risk_system().carrier_risk_cleared.connect(_on_carrier_risk_cleared)
+		EventBus.get_carrier_risk_system().carrier_risk_ignition.connect(_on_carrier_risk_ignition)
 
 	_update_health(GameManager.player_health, GameManager.max_player_health)
 	_refresh_held_item()
@@ -146,27 +157,32 @@ func _ready() -> void:
 	_hide_death_overlay()
 	_hide_carrier_risk_warning()
 	_hide_scanner_upgrade_toast()
-	_setup_carrier_warning_audio()
 	_setup_discovery_journal()
 	_setup_journal_update_indicator()
 	_setup_night_defense_warning()
-	_setup_weather_strip()
 	if EventBus != null and EventBus.has_signal("night_threat_detected"):
 		EventBus.night_threat_detected.connect(_on_night_threat_detected)
 	if EventBus != null and EventBus.has_signal("loop_milestone_reached"):
 		EventBus.loop_milestone_reached.connect(_on_loop_milestone_reached)
 	if EventBus != null and EventBus.has_signal("discovery_entry_added"):
 		EventBus.discovery_entry_added.connect(_on_discovery_entry_added)
-	if has_node("/root/BaseThreatDirector"):
-		BaseThreatDirector.threat_lesson_triggered.connect(_on_base_threat_lesson_triggered)
-	if WeatherSystem != null:
-		if WeatherSystem.has_signal("weather_warning_started"):
-			WeatherSystem.weather_warning_started.connect(_on_weather_warning_started)
-		if WeatherSystem.has_signal("weather_warning_ended"):
-			WeatherSystem.weather_warning_ended.connect(_on_weather_warning_ended)
+	if EventBus.get_base_threat_director() != null and EventBus.get_base_threat_director().has_signal("threat_lesson_triggered"):
+		EventBus.get_base_threat_director().threat_lesson_triggered.connect(_on_base_threat_lesson_triggered)
+	if EventBus.get_weather_system() != null:
+		if EventBus.get_weather_system().has_signal("weather_changed"):
+			EventBus.get_weather_system().weather_changed.connect(_on_weather_changed)
+		if EventBus.get_weather_system().has_signal("weather_forecast_changed"):
+			EventBus.get_weather_system().weather_forecast_changed.connect(_on_weather_forecast_changed)
+		if EventBus.get_weather_system().has_signal("weather_warning_started"):
+			EventBus.get_weather_system().weather_warning_started.connect(_on_weather_warning_started)
+		if EventBus.get_weather_system().has_signal("weather_warning_ended"):
+			EventBus.get_weather_system().weather_warning_ended.connect(_on_weather_warning_ended)
+	if not get_tree().node_added.is_connected(_on_scene_node_added):
+		get_tree().node_added.connect(_on_scene_node_added)
+	call_deferred("_bind_existing_touch_interactables")
 
 	if debug_seed_journal_entries > 0:
-		DiscoveryLog.seed_debug_entries(debug_seed_journal_entries, true)
+		EventBus.get_discovery_log().seed_debug_entries(debug_seed_journal_entries, true)
 
 	if debug_open_journal_on_ready:
 		call_deferred("_open_debug_journal")
@@ -179,27 +195,41 @@ func _ready() -> void:
 	_bind_player_combat_source(GameManager.get_player())
 	if mobile_tutorial_overlay != null:
 		mobile_tutorial_overlay.visible = false
+	set_process(false)
 	_apply_hud_layout()
 	call_deferred("_show_first_run_mobile_overlay_if_needed")
 
 
-func _process(delta: float) -> void:
-	if _active_carrier_risk_seconds > 0:
-		_carrier_vignette_phase += delta * (
-			CARRIER_VIGNETTE_URGENT_SPEED if _active_carrier_risk_seconds <= 1 else CARRIER_VIGNETTE_PULSE_SPEED
-		)
-		_update_carry_vignette()
-	_hud_poll_elapsed += maxf(delta, 0.0)
-	if _hud_poll_elapsed < _get_hud_poll_interval():
-		return
-	_hud_poll_elapsed = 0.0
-	_update_weather_strip()
-	_update_touch_interaction_prompt()
-	_maybe_show_station_tutorial()
+func _setup_display_components() -> void:
+	health_display = _ensure_display_component("HealthDisplay", HealthDisplayScript)
+	carrier_risk_display = _ensure_display_component("CarrierRiskDisplay", CarrierRiskDisplayScript)
+	weather_display = _ensure_display_component("WeatherDisplay", WeatherDisplayScript)
+	objectives_display = _ensure_display_component("ObjectivesDisplay", ObjectivesDisplayScript)
+	health_display.configure(health_bar, health_label, death_overlay, death_cause_label, death_last_hits_label, retry_button, quit_button)
+	carrier_risk_display.configure(carrier_risk_strip, carrier_risk_warning_label, carrier_risk_hint_label, carry_vignette)
+	weather_display.configure(self)
+	_weather_strip = weather_display.weather_strip
+	_weather_day_label = weather_display.day_label
+	if day_time_label != null:
+		day_time_label.visible = false
+	var objective_labels: Array[Label] = [objective_1_label, objective_2_label, objective_3_label]
+	objectives_display.configure(objectives_panel, objectives_collapse_button, objective_title_label, objective_labels)
+
+
+func _ensure_display_component(node_name: String, component_script: Script) -> Node:
+	var component := get_node_or_null(node_name)
+	if component != null:
+		return component
+	component = Node.new()
+	component.name = node_name
+	component.set_script(component_script)
+	add_child(component)
+	return component
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if death_overlay.visible:
+		get_viewport().set_input_as_handled()
 		return
 
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE and _journal_open:
@@ -217,6 +247,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event.is_action_pressed("toggle_inventory"):
 		_maybe_show_inventory_tutorial()
+		get_viewport().set_input_as_handled()
 		return
 
 	if event.is_action_pressed(&"toggle_objectives_panel") or (
@@ -261,6 +292,7 @@ func _update_touch_interaction_prompt() -> void:
 		_hide_touch_interaction_prompt()
 		return
 
+	var previous_interactable := _current_touch_interactable
 	_current_touch_interactable = interactable
 	var prompt_text := "Interact"
 	if interactable.has_method("get_touch_interaction_prompt"):
@@ -295,6 +327,8 @@ func _update_touch_interaction_prompt() -> void:
 	context_interact_button.global_position = screen_position - Vector2(context_interact_button.size.x * 0.5, 0.0)
 	context_interact_label.text = prompt_text
 	context_interact_label.global_position = screen_position - Vector2(context_interact_label.size.x * 0.5, 26.0)
+	if interactable != previous_interactable:
+		_maybe_show_station_tutorial()
 
 
 func _hide_touch_interaction_prompt() -> void:
@@ -316,9 +350,11 @@ func _should_show_touch_interaction_prompt() -> bool:
 func _find_touch_interactable(player: Node2D) -> Node2D:
 	var best_node: Node2D = null
 	var best_distance := INF
-	for node in get_tree().get_nodes_in_group(&"touch_interactable"):
-		var interactable := node as Node2D
+	var stale_ids: Array[int] = []
+	for instance_id: int in _touch_interaction_candidates.keys():
+		var interactable := _touch_interaction_candidates[instance_id] as Node2D
 		if interactable == null or not is_instance_valid(interactable):
+			stale_ids.append(instance_id)
 			continue
 		if not interactable.has_method("can_touch_interact"):
 			continue
@@ -328,7 +364,74 @@ func _find_touch_interactable(player: Node2D) -> Node2D:
 		if distance < best_distance:
 			best_distance = distance
 			best_node = interactable
+	for instance_id in stale_ids:
+		_touch_interaction_candidates.erase(instance_id)
 	return best_node
+
+
+func _bind_existing_touch_interactables() -> void:
+	for interactable in get_tree().get_nodes_in_group(&"touch_interactable"):
+		_bind_touch_interactable(interactable)
+
+
+func _on_scene_node_added(node: Node) -> void:
+	if node == null:
+		return
+	call_deferred("_bind_touch_interactable", node)
+
+
+func _bind_touch_interactable(node: Variant) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	if not node is Node:
+		return
+	var candidate := node as Node
+	if not candidate.is_in_group(&"touch_interactable"):
+		return
+	var interactable := candidate as Node2D
+	if interactable == null:
+		return
+	var interaction_area := interactable as Area2D
+	if interaction_area == null:
+		interaction_area = interactable.get_node_or_null("InteractionArea") as Area2D
+	if interaction_area == null:
+		return
+	var area_id := interaction_area.get_instance_id()
+	if _bound_touch_areas.has(area_id):
+		return
+	_bound_touch_areas[area_id] = true
+	interaction_area.body_entered.connect(_on_touch_interaction_body_entered.bind(interactable))
+	interaction_area.body_exited.connect(_on_touch_interaction_body_exited.bind(interactable))
+	interaction_area.tree_exited.connect(_on_touch_interaction_area_exited.bind(area_id, interactable.get_instance_id()))
+	var prompt_label := interactable.get_node_or_null("PromptLabel") as CanvasItem
+	if prompt_label != null:
+		prompt_label.visibility_changed.connect(_on_touch_interactable_state_changed)
+	for body in interaction_area.get_overlapping_bodies():
+		_on_touch_interaction_body_entered(body, interactable)
+
+
+func _on_touch_interaction_body_entered(body: Node, interactable: Node2D) -> void:
+	if body == null or not body.is_in_group(&"player"):
+		return
+	_touch_interaction_candidates[interactable.get_instance_id()] = interactable
+	_update_touch_interaction_prompt()
+
+
+func _on_touch_interaction_body_exited(body: Node, interactable: Node2D) -> void:
+	if body == null or not body.is_in_group(&"player"):
+		return
+	_touch_interaction_candidates.erase(interactable.get_instance_id())
+	_update_touch_interaction_prompt()
+
+
+func _on_touch_interaction_area_exited(area_id: int, interactable_id: int) -> void:
+	_bound_touch_areas.erase(area_id)
+	_touch_interaction_candidates.erase(interactable_id)
+	_update_touch_interaction_prompt()
+
+
+func _on_touch_interactable_state_changed() -> void:
+	_update_touch_interaction_prompt()
 
 
 func _world_to_screen(world_position: Vector2) -> Vector2:
@@ -348,15 +451,19 @@ func _on_input_mode_changed(_mode: StringName) -> void:
 	_apply_hud_layout()
 	_refresh_journal_indicator_copy()
 	_show_first_run_mobile_overlay_if_needed()
+	_update_touch_interaction_prompt()
 
 
 func _on_player_registered(player_node: Node2D) -> void:
 	_bind_player_combat_source(player_node)
+	call_deferred("_bind_existing_touch_interactables")
 
 
 func _on_player_unregistered(player_node: Node2D) -> void:
 	if _player_combat_source == player_node:
 		_bind_player_combat_source(null)
+	_touch_interaction_candidates.clear()
+	_hide_touch_interaction_prompt()
 
 
 func _bind_player_combat_source(player_node: Node) -> void:
@@ -383,9 +490,7 @@ func _on_build_mode_changed(active: bool) -> void:
 	_queue_mobile_tutorial(MOBILE_HINT_BUILDING, "Building: tap Build, pick a card, drag to adjust the snapped preview, then use Rotate, Confirm, or Cancel.")
 
 func _update_health(current_health: int, max_health: int) -> void:
-	health_bar.max_value = max_health
-	health_bar.value = current_health
-	health_label.text = "%d / %d HP" % [current_health, max_health]
+	health_display.update_health(current_health, max_health)
 
 func _refresh_held_item() -> void:
 	var held_item := InventoryManager.get_slot_data(InventoryManager.active_slot_index)
@@ -396,7 +501,7 @@ func _refresh_held_item() -> void:
 		return
 
 	var item_id := String(held_item.item_id)
-	var element_data := ElementDatabase.get_element(held_item.item_id)
+	var element_data := GameplayData.elements().get_element(held_item.item_id)
 	held_item_icon.texture = _get_placeholder_texture(item_id)
 	held_item_icon.modulate = _get_item_color(item_id)
 	held_item_label.text = (
@@ -409,15 +514,7 @@ func _on_held_item_changed() -> void:
 
 func _on_weight_changed(total_weight: float, carry_capacity: float) -> void:
 	weight_label.text = "%.1f / %.1f kg" % [total_weight, carry_capacity]
-	var capacity_ratio := 0.0
-	if carry_capacity > 0.0:
-		capacity_ratio = total_weight / carry_capacity
-
-	_weight_vignette_alpha = 0.0
-	if capacity_ratio >= CARRY_VIGNETTE_START_RATIO:
-		var alpha_ratio := inverse_lerp(CARRY_VIGNETTE_START_RATIO, CARRY_VIGNETTE_END_RATIO, minf(capacity_ratio, CARRY_VIGNETTE_END_RATIO))
-		_weight_vignette_alpha = alpha_ratio * CARRY_VIGNETTE_MAX_ALPHA
-	_update_carry_vignette()
+	carrier_risk_display.update_weight(total_weight, carry_capacity)
 
 
 func _on_save_completed(result: Dictionary) -> void:
@@ -440,8 +537,7 @@ func _on_time_of_day_changed(_time_of_day: float) -> void:
 func _refresh_day_time() -> void:
 	var day_time_text := _get_day_time_text()
 	day_time_label.text = day_time_text
-	if _weather_day_label != null:
-		_weather_day_label.text = day_time_text
+	weather_display.refresh_day_time()
 
 
 func _on_objectives_changed(_objective_id: StringName) -> void:
@@ -453,41 +549,13 @@ func _on_objectives_state_restored() -> void:
 
 
 func _refresh_objectives() -> void:
-	var lines: Array[String] = []
-	if ResearchObjectives != null and ResearchObjectives.has_method("get_all_objectives"):
-		var objective_list: Array[Dictionary] = ResearchObjectives.get_all_objectives()
-		for objective: Dictionary in objective_list:
-			if bool(objective.get(&"completed", false)):
-				continue
-			var title := str(objective.get(&"title", "Untitled Objective"))
-			var hint := str(objective.get(&"hint", ""))
-			var prefix := "[Active] " if bool(objective.get(&"active", false)) else "[Queued] "
-			var progress_suffix := _format_objective_progress(objective)
-			var line := "%s%s" % [prefix, title]
-			if not progress_suffix.is_empty():
-				line = "%s %s" % [line, progress_suffix]
-			if not hint.is_empty():
-				line = "%s - %s" % [line, hint]
-			lines.append(line)
-			if lines.size() >= 3:
-				break
-
-	objective_title_label.text = "Research Objectives"
-	objective_1_label.text = lines[0] if lines.size() > 0 else "No active objectives"
-	objective_2_label.text = lines[1] if lines.size() > 1 else ""
-	objective_3_label.text = lines[2] if lines.size() > 2 else ""
-	objectives_panel.visible = _objectives_panel_visible
-	if _objectives_collapsed:
-		objective_title_label.text = "Objectives (%d)" % lines.size()
-	_refresh_objectives_collapse_state()
+	objectives_display.panel_visible = _objectives_panel_visible
+	objectives_display.set_collapsed(_objectives_collapsed)
+	objectives_display.refresh()
 
 
 func _refresh_objectives_collapse_state() -> void:
-	var show_body := not _objectives_collapsed
-	objective_1_label.visible = show_body
-	objective_2_label.visible = show_body
-	objective_3_label.visible = show_body
-	objectives_collapse_button.text = "+" if _objectives_collapsed else "-"
+	objectives_display.set_collapsed(_objectives_collapsed)
 
 
 func _apply_hud_layout() -> void:
@@ -680,68 +748,28 @@ func _get_safe_insets(viewport_size: Vector2) -> Dictionary:
 	}
 
 
-func _format_objective_progress(objective: Dictionary) -> String:
-	var target := int(objective.get(&"condition_count", 0))
-	if target <= 1:
-		return ""
-	var current := clampi(int(objective.get(&"progress", 0)), 0, target)
-	return "(%d/%d)" % [current, target]
-
-
 func _show_death_overlay(cause_of_death: StringName) -> void:
-	if _death_overlay_tween != null:
-		_death_overlay_tween.kill()
-
-	death_overlay.visible = true
-	death_overlay.modulate.a = 0.0
-	death_cause_label.text = "Cause of death: %s" % _format_cause_of_death(cause_of_death)
-	death_last_hits_label.text = _build_last_hits_text()
-	retry_button.disabled = true
-	quit_button.disabled = true
-	_death_overlay_tween = create_tween()
-	_death_overlay_tween.tween_property(death_overlay, "modulate:a", 1.0, DEATH_OVERLAY_FADE_SECONDS)
-	_death_overlay_tween.finished.connect(_on_death_overlay_fade_finished)
+	health_display.show_death(cause_of_death)
 
 
 func _hide_death_overlay() -> void:
-	death_overlay.visible = false
-	death_overlay.modulate.a = 0.0
-	death_cause_label.text = "Cause of death: Unknown"
-	death_last_hits_label.text = "Last hits:\nNo recent damage recorded."
-	retry_button.disabled = false
-	quit_button.disabled = false
+	health_display.hide_death()
 
 
 func _on_carrier_risk_warning(element_id: StringName, seconds_remaining: int) -> void:
-	_active_carrier_risk_element = element_id
-	_active_carrier_risk_seconds = seconds_remaining
-	carrier_risk_strip.visible = true
-	carrier_risk_warning_label.text = "%s UNSTABLE - %ds" % [_get_risk_item_name(element_id).to_upper(), seconds_remaining]
-	carrier_risk_hint_label.text = "Drop %s from inventory to cancel" % _get_risk_item_name(element_id)
-	_update_carry_vignette()
-	if seconds_remaining == 1:
-		_play_carrier_warning_sfx()
+	carrier_risk_display.show_warning(element_id, seconds_remaining)
 
 
 func _on_carrier_risk_cleared(element_id: StringName) -> void:
-	if element_id != _active_carrier_risk_element:
-		return
-	_hide_carrier_risk_warning()
+	carrier_risk_display.clear_warning(element_id)
 
 
 func _on_carrier_risk_ignition(element_id: StringName) -> void:
-	if element_id == _active_carrier_risk_element:
-		_hide_carrier_risk_warning()
+	carrier_risk_display.clear_warning(element_id)
 
 
 func _hide_carrier_risk_warning() -> void:
-	_active_carrier_risk_element = &""
-	_active_carrier_risk_seconds = -1
-	_carrier_vignette_phase = 0.0
-	carrier_risk_strip.visible = false
-	carrier_risk_warning_label.text = "SULFUR UNSTABLE - 3s"
-	carrier_risk_hint_label.text = "Drop Sulfur from inventory to cancel"
-	_update_carry_vignette()
+	carrier_risk_display.clear_warning()
 
 
 func _on_scanner_tier_changed(previous_tier: int, new_tier: int) -> void:
@@ -802,88 +830,6 @@ func _setup_night_defense_warning() -> void:
 	_night_defense_strip.add_child(_night_defense_label)
 
 
-func _setup_weather_strip() -> void:
-	_weather_strip = Panel.new()
-	_weather_strip.name = "WeatherStrip"
-	_weather_strip.anchor_left = 0.5
-	_weather_strip.anchor_right = 0.5
-	_weather_strip.offset_left = -240.0
-	_weather_strip.offset_top = 16.0
-	_weather_strip.offset_right = 240.0
-	_weather_strip.offset_bottom = 132.0
-	_weather_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_weather_strip)
-
-	_weather_strip_style = StyleBoxFlat.new()
-	_weather_strip_style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
-	_weather_strip_style.border_color = Color(0.0, 0.0, 0.0, 0.0)
-	_weather_strip_style.border_width_left = 0
-	_weather_strip_style.border_width_top = 0
-	_weather_strip_style.border_width_right = 0
-	_weather_strip_style.border_width_bottom = 0
-	_weather_strip_style.corner_radius_top_left = 0
-	_weather_strip_style.corner_radius_top_right = 0
-	_weather_strip_style.corner_radius_bottom_left = 0
-	_weather_strip_style.corner_radius_bottom_right = 0
-	_weather_strip.add_theme_stylebox_override("panel", _weather_strip_style)
-
-	var content := VBoxContainer.new()
-	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	content.offset_left = 12.0
-	content.offset_top = 10.0
-	content.offset_right = -12.0
-	content.offset_bottom = -10.0
-	content.add_theme_constant_override("separation", 3)
-	_weather_strip.add_child(content)
-
-	var header_row := HBoxContainer.new()
-	header_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.add_child(header_row)
-
-	var title_label := Label.new()
-	title_label.text = "Weather"
-	title_label.add_theme_font_size_override("font_size", 15)
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	header_row.add_child(title_label)
-
-	var header_spacer := Control.new()
-	header_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header_row.add_child(header_spacer)
-
-	_weather_day_label = Label.new()
-	_weather_day_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_weather_day_label.text = _get_day_time_text()
-	header_row.add_child(_weather_day_label)
-
-	_weather_status_label = Label.new()
-	_weather_status_label.text = "Clear Skies"
-	_weather_status_label.add_theme_font_size_override("font_size", 19)
-	_weather_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	content.add_child(_weather_status_label)
-
-	_weather_detail_label = Label.new()
-	_weather_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_weather_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_weather_detail_label.text = "Danger: Low   Time left: about 3m\nShelter: Exposed"
-	content.add_child(_weather_detail_label)
-
-	_weather_warning_label = Label.new()
-	_weather_warning_label.visible = false
-	_weather_warning_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_weather_warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_weather_warning_label.modulate = Color(1.0, 0.87, 0.48, 1.0)
-	content.add_child(_weather_warning_label)
-
-	if day_time_label != null:
-		day_time_label.visible = false
-
-	if objectives_panel != null:
-		objectives_panel.offset_top = OBJECTIVES_PANEL_DEFAULT_TOP
-		objectives_panel.offset_bottom = OBJECTIVES_PANEL_DEFAULT_BOTTOM
-
-	_update_weather_strip()
-
-
 func _on_night_threat_detected(_world_position: Vector2, stack_count: int) -> void:
 	if _night_defense_strip == null or _night_defense_label == null:
 		return
@@ -914,19 +860,12 @@ func _on_weather_warning_ended(_target_state: int) -> void:
 	_update_weather_strip()
 
 
-func _on_death_overlay_fade_finished() -> void:
-	retry_button.disabled = false
-	quit_button.disabled = false
+func _on_weather_changed(_new_state: int) -> void:
+	_update_weather_strip()
 
 
-func _on_retry_button_pressed() -> void:
-	GameManager.start_new_game()
-	get_tree().change_scene_to_file(WORLD_SCENE_PATH)
-
-
-func _on_quit_button_pressed() -> void:
-	GameManager.set_game_state(GameManager.GameState.MAIN_MENU)
-	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
+func _on_weather_forecast_changed(_next_state: int, _seconds_until_change: float) -> void:
+	_update_weather_strip()
 
 
 func _setup_discovery_journal() -> void:
@@ -958,19 +897,6 @@ func _setup_journal_update_indicator() -> void:
 	_journal_update_indicator.offset_bottom = 72.0
 	_journal_update_indicator.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_journal_update_indicator)
-
-
-func _setup_carrier_warning_audio() -> void:
-	_carrier_warning_audio_player = AudioStreamPlayer.new()
-	add_child(_carrier_warning_audio_player)
-	_carrier_warning_audio_player.stream = _build_carrier_warning_stream()
-
-
-func _play_carrier_warning_sfx() -> void:
-	if _carrier_warning_audio_player == null or _carrier_warning_audio_player.stream == null:
-		return
-	_carrier_warning_audio_player.stop()
-	_carrier_warning_audio_player.play()
 
 
 func _open_journal() -> void:
@@ -1042,57 +968,6 @@ func _open_debug_journal() -> void:
 		_journal_panel.debug_report_layout()
 
 
-func _format_cause_of_death(cause_of_death: StringName) -> String:
-	match cause_of_death:
-		&"physical":
-			return "Physical damage"
-		&"burn":
-			return "Burn damage"
-		&"explosion":
-			return "Explosion damage"
-		&"Furnace overheated":
-			return "Furnace overheated"
-		&"toxic":
-			return "Toxic exposure"
-		&"radiation":
-			return "Radiation exposure"
-		&"unknown", &"":
-			return "Unknown"
-		_:
-			return String(cause_of_death).replace("_", " ").capitalize()
-
-
-func _build_last_hits_text() -> String:
-	var health_system := GameManager.player_health_system
-	if health_system == null or not health_system.has_method("get_recent_damage_entries"):
-		return "Last hits:\nNo recent damage recorded."
-
-	var recent_entries: Array = health_system.get_recent_damage_entries(3)
-	if recent_entries.is_empty():
-		return "Last hits:\nNo recent damage recorded."
-
-	var lines: Array[String] = ["Last hits:"]
-	for index in range(recent_entries.size() - 1, -1, -1):
-		lines.append(_format_damage_log_entry(recent_entries[index]))
-	return "\n".join(lines)
-
-
-func _format_damage_log_entry(entry: Dictionary) -> String:
-	var source_label := str(entry.get(&"source_label", "")).strip_edges()
-	if source_label.is_empty():
-		source_label = _format_cause_of_death(StringName(entry.get(&"damage_type", &"physical")))
-
-	var amount := int(entry.get(&"amount", 0))
-	var damage_type := _format_damage_type(StringName(entry.get(&"damage_type", &"physical")))
-	return "%s - %d %s" % [source_label, amount, damage_type]
-
-
-func _format_damage_type(damage_type: StringName) -> String:
-	var normalized := String(damage_type).replace("_", " ").strip_edges()
-	if normalized.is_empty():
-		normalized = "physical"
-	return "%s damage" % normalized
-
 func _get_item_color(item_id: String) -> Color:
 	match item_id:
 		"wood":
@@ -1125,106 +1000,14 @@ func _get_item_color(item_id: String) -> Color:
 			return Color.WHITE
 
 
-func _get_risk_item_name(item_id: StringName) -> String:
-	var element_data := ElementDatabase.get_element(item_id)
-	if not element_data.is_empty():
-		return str(element_data.get(&"display_name", item_id))
-	return String(item_id).replace("_", " ").capitalize()
-
-
 func _update_weather_strip() -> void:
-	if _weather_strip == null or _weather_status_label == null or _weather_detail_label == null:
-		return
-	if WeatherSystem == null or not WeatherSystem.has_method("get_current_state"):
-		_weather_strip.visible = false
-		return
-
-	_weather_strip.visible = true
-	var current_state := int(WeatherSystem.get_current_state())
-	var sheltered := _is_player_sheltered()
-	_weather_status_label.text = _get_weather_state_name(current_state)
-	_weather_detail_label.text = "Danger: %s   Time left: %s\nShelter: %s" % [
-		_get_weather_danger_label(current_state),
-		_format_weather_eta(float(WeatherSystem.get_state_time_remaining())),
-		"Covered" if sheltered else "Exposed",
-	]
-
-	var warning_active := WeatherSystem.has_method("is_transition_warning_active") \
-		and bool(WeatherSystem.is_transition_warning_active())
-	if warning_active:
-		var target_state := int(WeatherSystem.get_transition_warning_state())
-		var warning_eta := float(WeatherSystem.get_transition_warning_seconds_remaining())
-		_weather_warning_label.visible = true
-		_weather_warning_label.text = "Incoming: %s in %s" % [
-			_get_weather_state_name(target_state),
-			_format_weather_eta(warning_eta),
-		]
-	else:
-		_weather_warning_label.visible = false
-		_weather_warning_label.text = ""
-
-	_apply_weather_strip_style(current_state, sheltered)
-
-
-func _apply_weather_strip_style(current_state: int, sheltered: bool) -> void:
-	if _weather_strip_style == null or _weather_status_label == null or _weather_detail_label == null:
-		return
-	match current_state:
-		WeatherSystem.WeatherState.RAIN:
-			_weather_status_label.modulate = Color(0.82, 0.92, 1.0, 1.0)
-			_weather_detail_label.modulate = Color(0.82, 0.92, 1.0, 1.0)
-		WeatherSystem.WeatherState.ACID_MIST:
-			_weather_status_label.modulate = Color(0.82, 1.0, 0.76, 1.0)
-			_weather_detail_label.modulate = Color(0.82, 1.0, 0.76, 1.0)
-		WeatherSystem.WeatherState.ELECTRICAL_STORM:
-			_weather_status_label.modulate = Color(1.0, 0.94, 0.70, 1.0)
-			_weather_detail_label.modulate = Color(1.0, 0.94, 0.70, 1.0)
-		_:
-			_weather_status_label.modulate = Color(1.0, 1.0, 1.0, 1.0)
-			_weather_detail_label.modulate = Color(1.0, 1.0, 1.0, 1.0)
-
-	if _weather_day_label != null:
-		_weather_day_label.modulate = Color(1.0, 1.0, 1.0, 0.95)
-	if sheltered:
-		_weather_detail_label.modulate = _weather_detail_label.modulate.lightened(0.08)
-
+	weather_display.refresh()
 
 func _get_weather_state_name(state: int) -> String:
-	match state:
-		WeatherSystem.WeatherState.RAIN:
-			return "Rain"
-		WeatherSystem.WeatherState.ACID_MIST:
-			return "Acid Mist"
-		WeatherSystem.WeatherState.ELECTRICAL_STORM:
-			return "Electrical Storm"
-		_:
-			return "Clear Skies"
-
-
-func _get_weather_danger_label(state: int) -> String:
-	match state:
-		WeatherSystem.WeatherState.RAIN:
-			return "Medium"
-		WeatherSystem.WeatherState.ACID_MIST:
-			return "High"
-		WeatherSystem.WeatherState.ELECTRICAL_STORM:
-			return "Severe"
-		_:
-			return "Low"
-
+	return weather_display.state_name(state)
 
 func _format_weather_eta(seconds: float) -> String:
-	var clamped_seconds := maxi(int(round(maxf(seconds, 0.0))), 0)
-	if clamped_seconds <= 20:
-		return "under 20s"
-	if clamped_seconds < 60:
-		return "about %ds" % clamped_seconds
-	if clamped_seconds < 90:
-		return "about 1m"
-	if clamped_seconds < 150:
-		return "about 2m"
-	return "about %dm" % int(round(float(clamped_seconds) / 60.0))
-
+	return weather_display.format_eta(seconds)
 
 func _get_day_time_text() -> String:
 	var total_minutes: int = int(round(GameManager.time_of_day * 24.0 * 60.0)) % (24 * 60)
@@ -1232,67 +1015,6 @@ func _get_day_time_text() -> String:
 	var minute: int = total_minutes % 60
 	return "Day %d  %02d:%02d" % [GameManager.current_day, hour, minute]
 
-
-func _get_weather_player() -> Node2D:
-	if _weather_player != null and is_instance_valid(_weather_player):
-		return _weather_player
-	_weather_player = GameManager.get_player()
-	return _weather_player
-
-
-func _is_player_sheltered() -> bool:
-	var player := _get_weather_player()
-	if player == null:
-		return false
-	if WeatherSystem != null and WeatherSystem.has_method("get_shelter_at"):
-		if bool(WeatherSystem.get_shelter_at(player.global_position)):
-			return true
-	var current_scene := get_tree().current_scene
-	return current_scene != null \
-		and current_scene.has_method("is_rain_blocked_at_world_position") \
-		and bool(current_scene.call("is_rain_blocked_at_world_position", player.global_position))
-
-
-func _update_carry_vignette() -> void:
-	var risk_alpha := 0.0
-	if _active_carrier_risk_seconds > 0:
-		var pulse := 0.5 + (0.5 * sin(_carrier_vignette_phase))
-		var minimum_alpha := 0.12 if _active_carrier_risk_seconds > 1 else 0.22
-		var maximum_alpha := 0.24 if _active_carrier_risk_seconds > 1 else 0.34
-		risk_alpha = lerpf(minimum_alpha, maximum_alpha, pulse)
-
-	carry_vignette.color = Color(
-		carry_vignette.color.r,
-		carry_vignette.color.g,
-		carry_vignette.color.b,
-		clampf(_weight_vignette_alpha + risk_alpha, 0.0, 0.45)
-	)
-
-
-func _build_carrier_warning_stream() -> AudioStreamWAV:
-	var sample_rate := 22050
-	var frame_count := int(sample_rate * CARRIER_WARNING_SFX_DURATION)
-	var data := PackedByteArray()
-	data.resize(frame_count * 2)
-
-	for frame in range(frame_count):
-		var t := float(frame) / float(sample_rate)
-		var envelope := 1.0 - (float(frame) / float(frame_count))
-		var sample := (
-			sin(TAU * 1480.0 * t) * 0.45
-			+ sin(TAU * 2120.0 * t) * 0.18
-		) * envelope * 0.8
-		var sample_value := int(clampi(int(sample * 32767.0), -32768, 32767))
-		var packed_value := sample_value & 0xffff
-		data[frame * 2] = packed_value & 0xff
-		data[frame * 2 + 1] = (packed_value >> 8) & 0xff
-
-	var stream := AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.mix_rate = sample_rate
-	stream.stereo = false
-	stream.data = data
-	return stream
 
 func _get_placeholder_texture(item_id: String) -> Texture2D:
 	if _placeholder_textures.has(item_id):
@@ -1344,18 +1066,18 @@ func _setup_toast_notification() -> void:
 	_toast_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_toast_panel.z_index = 100
 	
-	if ElementDatabase != null:
-		ElementDatabase.element_discovered.connect(_on_element_discovered_toast)
+	if GameplayData.elements() != null:
+		GameplayData.elements().element_discovered.connect(_on_element_discovered_toast)
 
 func _on_element_discovered_toast(element_id: StringName) -> void:
-	var elem = ElementDatabase.get_element(element_id)
+	var elem = GameplayData.elements().get_element(element_id)
 	if elem.is_empty():
 		return
 	var display_name = str(elem.get("display_name", element_id))
 	_queue_toast("%s discovered — new entries added to journal" % display_name)
 	
-	for recipe_id in RecipeDatabase.recipes.keys():
-		var recipe = RecipeDatabase.get_recipe(recipe_id)
+	for recipe_id in GameplayData.recipes().recipes.keys():
+		var recipe = GameplayData.recipes().get_recipe(recipe_id)
 		if recipe.get("requires_discovery") == element_id:
 			_queue_toast("New recipe available: %s" % recipe.get("name", recipe_id))
 
@@ -1398,12 +1120,6 @@ func _queue_toast(message: String) -> void:
 
 func _prefers_touch_hud() -> bool:
 	return MobileInputRouter != null and MobileInputRouter.prefers_touch_controls()
-
-
-func _get_hud_poll_interval() -> float:
-	if MobilePerformance != null and MobilePerformance.has_method("get_hud_poll_interval"):
-		return float(MobilePerformance.get_hud_poll_interval())
-	return 0.12
 
 
 func _queue_mobile_tutorial(hint_id: StringName, message: String) -> void:

@@ -1,5 +1,7 @@
 extends StaticBody2D
 
+const GameplayData = preload("res://scripts/GameplayData.gd")
+
 const FURNACE_UI_SCENE := preload("res://scenes/UI/FurnaceUI.tscn")
 const DEFAULT_FUEL_BURN_DURATION := 30.0
 const PASSIVE_COOL_RATE := 15.0
@@ -108,7 +110,7 @@ func add_fuel(element_id: StringName, qty: int) -> bool:
 	if qty <= 0:
 		return false
 
-	var fuel_value := ChemistryEngine.get_fuel_value(String(element_id))
+	var fuel_value: float = EventBus.get_chemistry_engine().get_fuel_value(String(element_id))
 	if fuel_value <= 0.0:
 		return false
 
@@ -167,7 +169,7 @@ func set_input(slot_name: StringName, element_id: StringName, qty: int) -> bool:
 
 	if not _input_slots.has(slot_name):
 		return false
-	if ElementDatabase.get_element(element_id).is_empty():
+	if GameplayData.elements().get_element(element_id).is_empty():
 		return false
 
 	var slot_state: Dictionary = _input_slots[slot_name]
@@ -606,8 +608,8 @@ func _bind_power_services() -> void:
 func _emit_heat_signature() -> void:
 	if current_temp < HEAT_EVENT_MIN_TEMP:
 		return
-	if ChemistryEngine == null or not ChemistryEngine.has_method("emit_heat_event"):
+	if EventBus.get_chemistry_engine() == null or not EventBus.get_chemistry_engine().has_method("emit_heat_event"):
 		return
 	var intensity := clampf(current_temp / POWERED_TEMPERATURE_CAP, 0.0, 1.0)
 	var radius := lerpf(HEAT_EVENT_MIN_RADIUS, HEAT_EVENT_MAX_RADIUS, intensity)
-	ChemistryEngine.emit_heat_event(self, radius, intensity)
+	EventBus.get_chemistry_engine().emit_heat_event(self, radius, intensity)

@@ -1,4 +1,7 @@
+class_name DiscoveryJournal
 extends Node
+
+const GameplayData = preload("res://scripts/GameplayData.gd")
 # Autoload: DiscoveryJournal
 
 signal journal_entry_added(entry: Dictionary)
@@ -180,10 +183,10 @@ func ensure_entry(element_id: StringName) -> Dictionary:
 
 
 func _connect_sources() -> void:
-	if ElementDatabase != null and not ElementDatabase.element_discovered.is_connected(_on_element_discovered):
-		ElementDatabase.element_discovered.connect(_on_element_discovered)
-	if ChemistryEngine != null and not ChemistryEngine.reaction_evaluated.is_connected(_on_reaction_evaluated):
-		ChemistryEngine.reaction_evaluated.connect(_on_reaction_evaluated)
+	if GameplayData.elements() != null and not GameplayData.elements().element_discovered.is_connected(_on_element_discovered):
+		GameplayData.elements().element_discovered.connect(_on_element_discovered)
+	if EventBus.get_chemistry_engine() != null and not EventBus.get_chemistry_engine().reaction_evaluated.is_connected(_on_reaction_evaluated):
+		EventBus.get_chemistry_engine().reaction_evaluated.connect(_on_reaction_evaluated)
 
 
 func _on_element_discovered(element_id: StringName) -> void:
@@ -208,7 +211,7 @@ func _default_next_hint(element_id: StringName) -> String:
 
 
 func _default_scanner_clue(element_id: StringName) -> String:
-	var element_data: Dictionary = ElementDatabase.get_element(element_id) if ElementDatabase != null else {}
+	var element_data: Dictionary = GameplayData.elements().get_element(element_id) if GameplayData.elements() != null else {}
 	if element_data.is_empty():
 		return "No scanner clue logged."
 	return "Scanner tagged %s as %s." % [
@@ -219,9 +222,9 @@ func _default_scanner_clue(element_id: StringName) -> String:
 
 func _get_recipe_ids_for_output(output_id: StringName) -> Array[StringName]:
 	var result: Array[StringName] = []
-	if RecipeDatabase == null or not RecipeDatabase.has_method("get_recipes_for_output"):
+	if GameplayData.recipes() == null or not GameplayData.recipes().has_method("get_recipes_for_output"):
 		return result
-	var recipes: Array[Dictionary] = RecipeDatabase.get_recipes_for_output(output_id)
+	var recipes: Array[Dictionary] = GameplayData.recipes().get_recipes_for_output(output_id)
 	for recipe: Dictionary in recipes:
 		var recipe_id: StringName = StringName(recipe.get(&"id", &""))
 		if not recipe_id.is_empty():

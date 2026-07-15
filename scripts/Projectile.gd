@@ -14,7 +14,8 @@ extends Area2D
 
 func _ready() -> void:
 	_ensure_default_visual()
-	body_entered.connect(_on_body_entered)
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
 
 func _physics_process(delta: float) -> void:
 	position += velocity * delta
@@ -30,7 +31,16 @@ func _on_body_entered(body: Node) -> void:
 		_apply_resolved_damage_to_body(body, resolved_damage, damage_type, global_position)
 
 	if not pierce:
-		queue_free()
+		ObjectPool.release(self)
+
+
+func _pool_reset() -> void:
+	velocity = Vector2.ZERO
+	damage = 10.0
+	damage_type = "physical_sharp"
+	pierce = false
+	rotation = 0.0
+	monitoring = true
 
 
 func _calculate_damage_for_body(body: Node, damage_amount: float, resolved_damage_type: String, damage_origin: Vector2) -> int:

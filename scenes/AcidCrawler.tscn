@@ -1,6 +1,8 @@
-[gd_scene format=3 uid="uid://b7xw2xygoq3ba"]
+[gd_scene load_steps=6 format=3 uid="uid://b7xw2xygoq3ba"]
 
 [ext_resource type="Script" uid="uid://c5i70e6hx6eax" path="res://scripts/AcidCrawler.gd" id="1_crawler"]
+[ext_resource type="ParticleProcessMaterial" path="res://assets/particles/acid_death_particles.tres" id="2_particles"]
+[ext_resource type="Resource" path="res://data/config/acid_crawler_config.tres" id="3_config"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 size = Vector2(18, 14)
@@ -8,9 +10,26 @@ size = Vector2(18, 14)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_scan"]
 size = Vector2(30, 20)
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxHealthBackground"]
+resource_local_to_scene = true
+bg_color = Color(0.09, 0.09, 0.08, 0.88)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxHealthFill"]
+resource_local_to_scene = true
+bg_color = Color(0.66, 0.88, 0.25, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
 [node name="AcidCrawler" type="CharacterBody2D" unique_id=448043540]
 collision_mask = 3
 script = ExtResource("1_crawler")
+config = ExtResource("3_config")
 
 [node name="NavigationAgent2D" type="NavigationAgent2D" parent="." unique_id=1084403911]
 
@@ -24,6 +43,26 @@ offset_top = -22.0
 offset_right = 18.0
 offset_bottom = -18.0
 show_percentage = false
+theme_override_styles/background = SubResource("StyleBoxHealthBackground")
+theme_override_styles/fill = SubResource("StyleBoxHealthFill")
+
+[node name="EmergeWarningParticles" type="GPUParticles2D" parent="."]
+emitting = false
+amount = 28
+lifetime = 0.7
+one_shot = true
+explosiveness = 1.0
+local_coords = false
+process_material = ExtResource("2_particles")
+
+[node name="DeathParticles" type="GPUParticles2D" parent="."]
+emitting = false
+amount = 40
+lifetime = 0.8
+one_shot = true
+explosiveness = 1.0
+local_coords = false
+process_material = ExtResource("2_particles")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1245246633]
 position = Vector2(0, 2)

@@ -1,6 +1,5 @@
 extends Node2D
 
-const FIRE_PATCH_SCENE := preload("res://scenes/FirePatch.tscn")
 const MIN_IGNITION_DELAY := 8.0
 const MAX_IGNITION_DELAY := 15.0
 
@@ -44,7 +43,9 @@ func _spawn_random_fire_patch() -> void:
 		if _has_fire_patch_at(coords):
 			continue
 
-		var fire_patch := FIRE_PATCH_SCENE.instantiate()
+		var fire_patch := ObjectPool.get_instance_by_id(ObjectPool.SCENE_FIRE_PATCH)
+		if fire_patch == null:
+			return
 		fire_patch.set_meta(&"tile_coords", coords)
 		add_child(fire_patch)
 		fire_patch.global_position = _ground_layer.to_global(_ground_layer.map_to_local(coords))
@@ -82,4 +83,4 @@ func _clear_fire_patches() -> void:
 	for child in get_children():
 		if child is Timer:
 			continue
-		child.queue_free()
+		ObjectPool.release(child)

@@ -4,8 +4,6 @@ extends RefCounted
 ## DamageCalculator
 ## Static class to resolve final damage considering resistances.
 
-const DAMAGE_NUMBER_SCENE := preload("res://scenes/DamageNumber.tscn")
-
 static func get_multiplier(damage_type: StringName, target: Node) -> float:
 	var multiplier := 1.0
 
@@ -26,14 +24,14 @@ static func calculate(base_damage: float, damage_type: StringName, target: Node,
 
 static func _spawn_damage_number(amount: float, damage_type: StringName, target: Node, impact_position) -> void:
 	var tree := Engine.get_main_loop() as SceneTree
-	if tree == null or tree.current_scene == null or DAMAGE_NUMBER_SCENE == null:
+	if tree == null or tree.current_scene == null:
 		return
 
 	var spawn_position: Variant = _resolve_spawn_position(target, impact_position)
 	if spawn_position == null:
 		return
 
-	var damage_number := DAMAGE_NUMBER_SCENE.instantiate()
+	var damage_number := ObjectPool.get_instance_by_id(ObjectPool.SCENE_DAMAGE_NUMBER)
 	if damage_number == null:
 		return
 

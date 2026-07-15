@@ -1,8 +1,6 @@
 class_name WeaponSystem
 extends Node
 
-const DebugLog = preload("res://scripts/DebugLog.gd")
-
 ## WeaponSystem
 ## Holds equipped weapon state and interacts with DamageCalculator.
 

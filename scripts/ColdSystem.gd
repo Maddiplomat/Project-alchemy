@@ -79,10 +79,10 @@ func _update_cold_level(delta: float) -> void:
 	var cold_buildup_multiplier := 1.0
 	var warmth_decay_multiplier := 1.0
 	var effectively_warmed := is_player_warmed
-	if GameManager.is_night() and has_node("/root/BaseThreatDirector") and player_position != null:
-		cold_buildup_multiplier = float(BaseThreatDirector.get_cold_buildup_multiplier(player_position))
-		warmth_decay_multiplier = float(BaseThreatDirector.get_warmth_decay_multiplier(player_position))
-		effectively_warmed = bool(BaseThreatDirector.should_count_as_warmed(player_position))
+	if GameManager.is_night() and EventBus.get_base_threat_director() != null and player_position != null:
+		cold_buildup_multiplier = float(EventBus.get_base_threat_director().get_cold_buildup_multiplier(player_position))
+		warmth_decay_multiplier = float(EventBus.get_base_threat_director().get_warmth_decay_multiplier(player_position))
+		effectively_warmed = bool(EventBus.get_base_threat_director().should_count_as_warmed(player_position))
 
 	if not GameManager.is_night():
 		_set_cold_level(maxf(0.0, cold_level - COLD_DECAY_RATE * delta))

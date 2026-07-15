@@ -4,7 +4,7 @@ var _failures := 0
 
 
 func _ready() -> void:
-	_run_test()
+	await _run_test()
 	get_tree().quit(1 if _failures > 0 else 0)
 
 
@@ -18,9 +18,11 @@ func _run_test() -> void:
 	var callback := func(result: Dictionary) -> void:
 		signal_results.append(result.duplicate(true))
 
-	game_manager.save_completed.connect(callback)
 	var result: Dictionary = game_manager.request_save(game_manager.SaveTrigger.MANUAL)
-	game_manager.save_completed.disconnect(callback)
+	game_manager.save_completed.connect(callback)
+	await get_tree().process_frame
+	if game_manager.save_completed.is_connected(callback):
+		game_manager.save_completed.disconnect(callback)
 
 	_assert(not bool(result.get(&"success", true)), "Expected save to fail when no WorldSaveData service is registered.")
 	_assert(str(result.get(&"error", "")).contains("WorldSaveData"), "Expected failure result to explain missing WorldSaveData.")
@@ -36,7 +38,9 @@ func _run_test() -> void:
 	save_event.action = &"manual_save"
 	save_event.pressed = true
 	game_manager._input(save_event)
-	game_manager.save_completed.disconnect(callback)
+	await get_tree().process_frame
+	if game_manager.save_completed.is_connected(callback):
+		game_manager.save_completed.disconnect(callback)
 
 	_assert(signal_results.size() == 1, "Expected manual_save input to route through GameManager and emit save_completed once.")
 	if signal_results.size() == 1:
